@@ -205,3 +205,15 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+
+CONDUCTOR.md
+deep-research-report.md
+.claude
+.docs
+.serena
+CLAUDE.md
+
+# Conductor
+logs/*.log
+*.bak
