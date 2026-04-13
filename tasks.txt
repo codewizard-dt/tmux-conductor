@@ -1,2 +1,3 @@
-/tackle .docs/tasks/active/047.7-walk-forward-optimization.md
-Review and simplify backend/app/services/order_service.py
+jobfinder: /tackle .docs/tasks/active/047.7-walk-forward-optimization.md
+webapp: Review and simplify backend/app/services/order_service.py
+/tackle .docs/tasks/active/005-shared-lib.md

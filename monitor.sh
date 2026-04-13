@@ -18,12 +18,45 @@ for entry in "${AGENTS[@]}"; do
 done
 
 pop_task() {
-  if [ -f "$TASK_QUEUE" ] && [ -s "$TASK_QUEUE" ]; then
-    head -1 "$TASK_QUEUE"
-    sed -i.bak '1d' "$TASK_QUEUE" && rm -f "${TASK_QUEUE}.bak"
-    return 0
+  local agent_name="$1"
+  if [ ! -f "$TASK_QUEUE" ] || [ ! -s "$TASK_QUEUE" ]; then
+    return 1
   fi
-  return 1
+
+  local match_line=""
+  local match_cmd=""
+
+  # Priority 1: lines prefixed with this agent's name
+  local line_num=0
+  while IFS= read -r line; do
+    line_num=$((line_num + 1))
+    if [[ "$line" =~ ^${agent_name}:\ (.+) ]]; then
+      match_line="$line_num"
+      match_cmd="${BASH_REMATCH[1]}"
+      break
+    fi
+  done < "$TASK_QUEUE"
+
+  # Priority 2: global/unscoped lines (no colon-space prefix pattern)
+  if [ -z "$match_line" ]; then
+    line_num=0
+    while IFS= read -r line; do
+      line_num=$((line_num + 1))
+      if ! [[ "$line" =~ ^[a-zA-Z0-9_-]+:\ .+ ]]; then
+        match_line="$line_num"
+        match_cmd="$line"
+        break
+      fi
+    done < "$TASK_QUEUE"
+  fi
+
+  if [ -z "$match_line" ]; then
+    return 1
+  fi
+
+  echo "$match_cmd"
+  sed -i.bak "${match_line}d" "$TASK_QUEUE" && rm -f "${TASK_QUEUE}.bak"
+  return 0
 }
 
 is_idle() {
@@ -83,7 +116,7 @@ while true; do
       all_usage_hit=false
 
       # Pop next task or use default command
-      if task=$(pop_task); then
+      if task=$(pop_task "$name"); then
         log "$name — dispatching task: $task"
         dispatch "$target" "/clear"
         sleep 2  # let /clear complete

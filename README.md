@@ -36,12 +36,16 @@ Adjust `IDLE_PATTERN` to match your agent's prompt. Defaults:
 
 ### 3. Add tasks to the queue
 
-Add one task per line to `tasks.txt`:
+Add one task per line to `tasks.txt`. Tasks can optionally be scoped to a specific agent by prefixing with the agent name:
 
 ```
-Refactor the authentication middleware to use JWT
+backend: Refactor the authentication middleware to use JWT
+frontend: Fix the login page CSS
 Add unit tests for the payment service
 ```
+
+- **Scoped tasks** (`backend: ...`) are only dispatched to the named agent
+- **Unscoped tasks** (no prefix) go to any idle agent
 
 When the queue is empty, agents receive `TASK_CMD` (default: `/tackle`) instead.
 
@@ -152,7 +156,7 @@ All settings live in `conductor.conf`:
 | `IDLE_PATTERN` | `^>` | Regex matched against last 5 lines of pane output |
 | `POLL_INTERVAL` | `15` | Seconds between idle-detection polls |
 | `USAGE_CHECK_CMD` | *(Claude example)* | Command that exits 0 (OK) or 1 (limit hit) |
-| `TASK_QUEUE` | `./tasks.txt` | Path to task queue file (one task per line) |
+| `TASK_QUEUE` | `./tasks.txt` | Path to task queue file (one task per line, optional `name: ` prefix for agent scoping) |
 | `LOG_DIR` | `./logs` | Directory for log files |
 | `EXEC_MODE` | `local` | `local` or `container` |
 | `COMPOSE_FILE` | `conductor-compose.yml` | Docker Compose file for container mode |
