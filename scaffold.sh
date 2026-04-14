@@ -93,7 +93,7 @@ else
 FROM ${IMAGE}
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      curl ca-certificates git sudo nodejs npm python3 python3-venv \
+      curl ca-certificates git sudo nodejs npm python3 python3-venv rsync jq \
     && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user (claude --dangerously-skip-permissions refuses root)

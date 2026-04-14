@@ -209,10 +209,8 @@ __marimo__/
 
 CONDUCTOR.md
 deep-research-report.md
-.claude
-.docs
+.claude/settings.local.json
 .serena
-CLAUDE.md
 
 # Conductor
 logs/*.log
