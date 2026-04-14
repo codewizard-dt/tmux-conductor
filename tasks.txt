@@ -1,0 +1,3 @@
+jobfinder: /uat-auto 60
+jobfinder: /uat-auto 62
+jobfinder: /uat-auto 64

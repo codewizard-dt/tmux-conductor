@@ -40,10 +40,15 @@ case "$MODE" in
     exec docker compose -f "$COMPOSE_FILE" exec \
       -e ANTHROPIC_API_KEY= \
       -e ANTHROPIC_AUTH_TOKEN= \
+      -e CONDUCTOR_AGENT_NAME \
+      -e CONDUCTOR_STATE_DIR=/conductor-state \
       "$TARGET" "$@"
     ;;
   docker)
-    exec docker exec -i "$TARGET" "$@"
+    exec docker exec -i \
+      -e CONDUCTOR_AGENT_NAME \
+      -e CONDUCTOR_STATE_DIR=/conductor-state \
+      "$TARGET" "$@"
     ;;
   *)
     echo "Error: unknown mode '$MODE'" >&2

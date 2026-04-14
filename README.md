@@ -29,8 +29,8 @@ AGENTS=(
 )
 ```
 
-Adjust `IDLE_PATTERN` to match your agent's prompt. Defaults:
-- Claude Code: `"^>"`
+For Claude Code agents, idle detection is driven by a lifecycle hook that writes `working`/`done`/`wait` to `$STATE_DIR/<agent>.state` — no prompt regex tuning needed. For other CLIs (Codex, Aider) or when the hook is unavailable, the monitor falls back to `IDLE_PATTERN`. Defaults:
+- Claude Code: `"^>"` (fallback only)
 - Codex: `"^codex>"`
 - Aider: `"^aider>"`
 
@@ -178,8 +178,9 @@ All settings live in `conductor.conf`:
 | `AGENTS` | *(example entries)* | Array of `name:working_dir:launch_cmd` |
 | `CLEAR_CMD` | `/clear` | Command to clear agent context |
 | `TASK_CMD` | `/tackle` | Default command when queue is empty |
-| `IDLE_PATTERN` | `^>` | Regex matched against last 5 lines of pane output |
-| `POLL_INTERVAL` | `15` | Seconds between idle-detection polls |
+| `IDLE_PATTERN` | `^>` | Fallback regex matched against last 5 lines of pane output when the hook state file is absent or stale |
+| `STATE_DIR` | `./logs/state` | Directory where `hooks/claude-hook.sh` writes per-agent `<agent>.state` files (`working` / `done` / `wait`) |
+| `POLL_INTERVAL` | `15` | Seconds between idle-detection polls; state files older than `2 × POLL_INTERVAL` are treated as stale |
 | `USAGE_CHECK_CMD` | *(Claude example)* | Command that exits 0 (OK) or 1 (limit hit) |
 | `TASK_QUEUE` | `./tasks.txt` | Path to task queue file (one task per line, optional `name: ` prefix for agent scoping) |
 | `LOG_DIR` | `./logs` | Directory for log files |
@@ -199,6 +200,7 @@ All settings live in `conductor.conf`:
 | `teardown.sh` | Graceful shutdown |
 | `agent_exec.sh` | Container exec wrapper (compose/docker modes) |
 | `scaffold.sh` | Generate compose + devcontainer files for a target project |
+| `hooks/claude-hook.sh` | Claude Code lifecycle hook — writes agent state to `$STATE_DIR/<agent>.state` for reliable idle detection |
 
 ## How It Works
 
@@ -227,3 +229,11 @@ conductor.sh / spawn.sh
 4. **Dispatch**: The monitor pops the next task from `tasks.txt` and sends it via `dispatch.sh`
 5. **Repeat**: The cycle continues until the queue is empty and all agents are idle
 6. **Teardown**: Auto-triggers when all agents hit usage limits, or run `./teardown.sh` manually
+
+## How idle detection works
+
+```
+Claude Code → hook → $STATE_DIR/<agent>.state → monitor.sh
+```
+
+For Claude Code agents, `hooks/claude-hook.sh` is wired into Claude's lifecycle events: it writes `working` on `UserPromptSubmit` and `PreToolUse`, `done` on `Stop`, and `wait` on `Notification` (treated as busy). The monitor reads `$STATE_DIR/<agent>.state` each poll and considers an agent idle only when it contains `done`. The `CONDUCTOR_AGENT_NAME` environment variable tells the hook which file to write; `scaffold.sh` bakes this in per container (default: target directory basename, overridable via `--agent-name`). If the state file is missing or older than `2 × POLL_INTERVAL`, the monitor falls back to matching `IDLE_PATTERN` against the pane's `capture-pane` output — this covers Aider/Codex (no hook), any Claude instance running without the hook, and the Esc-interrupt case where no `Stop` event fires.

@@ -14,6 +14,12 @@ IMAGE="ubuntu:24.04"
 SERVICE="app"
 FORCE=false
 TARGET=""
+AGENT_NAME=""
+
+# Resolve conductor repo root (dir containing this script) at scaffold time,
+# so the generated compose file bakes absolute paths for hook + state mounts.
+CONDUCTOR_REPO="$(cd "$(dirname "$0")" && pwd)"
+CONDUCTOR_STATE_DIR_DEFAULT="${CONDUCTOR_REPO}/logs/state"
 
 # ── Usage ─────────────────────────────────────────────────────────────
 usage() {
@@ -21,8 +27,11 @@ usage() {
 Usage: scaffold.sh <target-project-path> [OPTIONS]
 
 Options:
-  --image <base-image>    Base Docker image (default: ubuntu:24.04)
+  --image <base-image>     Base Docker image (default: ubuntu:24.04)
   --service <service-name> Service name in compose file (default: app)
+  --agent-name <name>      Conductor agent name (default: target directory basename).
+                           Baked into the generated compose as CONDUCTOR_AGENT_NAME
+                           so hooks/claude-hook.sh writes the correct state file.
   --force                  Overwrite existing files without warning
   -h, --help               Show this help message
 USAGE
@@ -40,6 +49,11 @@ while [[ $# -gt 0 ]]; do
     --service)
       [[ -z "${2:-}" ]] && { echo "Error: --service requires a value"; exit 1; }
       SERVICE="$2"
+      shift 2
+      ;;
+    --agent-name)
+      [[ -z "${2:-}" ]] && { echo "Error: --agent-name requires a value"; exit 1; }
+      AGENT_NAME="$2"
       shift 2
       ;;
     --force)
@@ -65,6 +79,31 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+# ── Helpers ───────────────────────────────────────────────────────────
+# Returns 0 if the file should be (over)written, 1 if it should be skipped.
+# When --force is set, always overwrites. Otherwise prompts for a single y/n.
+should_write() {
+  local path="$1"
+  if [[ ! -f "$path" ]]; then
+    return 0
+  fi
+  if [[ "$FORCE" == true ]]; then
+    return 0
+  fi
+  local reply=""
+  while true; do
+    # Read a single character from the controlling TTY so piping the script
+    # still gives the user a chance to answer.
+    read -rsn1 -p "Overwrite existing $path? [y/n] " reply </dev/tty
+    echo
+    case "$reply" in
+      y|Y) return 0 ;;
+      n|N) echo "Skipping: $path"; return 1 ;;
+      *)   echo "Please answer y or n." ;;
+    esac
+  done
+}
+
 # ── Validate target path ─────────────────────────────────────────────
 if [[ -z "$TARGET" ]]; then
   echo "Error: target project path is required"
@@ -78,6 +117,13 @@ fi
 
 # ── Derived values ────────────────────────────────────────────────────
 DIRNAME="$(basename "$(cd "$TARGET" && pwd)")"
+
+# Default agent name to target dir basename (one agent per project — see
+# memory project_one_agent_per_project.md). Override via --agent-name.
+if [[ -z "$AGENT_NAME" ]]; then
+  AGENT_NAME="$DIRNAME"
+fi
+
 COMPOSE_FILE="$TARGET/conductor-compose.yml"
 DEVCONTAINER_DIR="$TARGET/.devcontainer"
 DEVCONTAINER_FILE="$DEVCONTAINER_DIR/devcontainer.json"
@@ -86,14 +132,12 @@ DOCKERFILE="$DEVCONTAINER_DIR/Dockerfile"
 # ── Generate .devcontainer/Dockerfile ─────────────────────────────────
 mkdir -p "$DEVCONTAINER_DIR"
 
-if [[ -f "$DOCKERFILE" ]] && [[ "$FORCE" != true ]]; then
-  echo "Warning: $DOCKERFILE already exists — skipping (use --force to overwrite)"
-else
+if should_write "$DOCKERFILE"; then
   cat > "$DOCKERFILE" <<'DOCKERFILE'
 FROM ${IMAGE}
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      curl ca-certificates git sudo nodejs npm python3 python3-venv rsync jq \
+      curl ca-certificates git sudo nodejs npm python3 python3-venv rsync jq vim \
     && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user (claude --dangerously-skip-permissions refuses root)
@@ -118,9 +162,7 @@ fi
 
 # ── Generate .devcontainer/init-claude-config.sh ──────────────────────
 INIT_SCRIPT="$DEVCONTAINER_DIR/init-claude-config.sh"
-if [[ -f "$INIT_SCRIPT" ]] && [[ "$FORCE" != true ]]; then
-  echo "Warning: $INIT_SCRIPT already exists — skipping (use --force to overwrite)"
-else
+if should_write "$INIT_SCRIPT"; then
   cat > "$INIT_SCRIPT" <<EOF
 #!/usr/bin/env bash
 set -euo pipefail
@@ -162,6 +204,22 @@ jq '.hasCompletedOnboarding = true | .installMethod = "native"' "\$HOME/.claude.
 cd "/workspaces/${DIRNAME}"
 claude mcp add serena -- uvx --from git+https://github.com/oraios/serena serena start-mcp-server --context claude-code --project /workspaces/${DIRNAME} 2>&1 || echo "Serena already registered, skipping"
 
+# Merge conductor hook config into ~/.claude/settings.json (preserves any host-synced settings).
+# Idempotency: the sentinel file \$HOME/.claude/.conductor-initialized (touched below) short-circuits
+# re-runs of this whole script, so this jq append runs exactly once per container lifetime — safe.
+SETTINGS_FILE="\$HOME/.claude/settings.json"
+[ -f "\$SETTINGS_FILE" ] || echo '{}' > "\$SETTINGS_FILE"
+HOOK_CMD="/conductor-hooks/claude-hook.sh"
+jq --arg cmd "\$HOOK_CMD" '
+  .hooks = ((.hooks // {}) as \$h |
+    \$h
+    | .UserPromptSubmit = ((.UserPromptSubmit // []) + [{"hooks":[{"type":"command","command":(\$cmd + " UserPromptSubmit")}]}])
+    | .PreToolUse       = ((.PreToolUse       // []) + [{"hooks":[{"type":"command","command":(\$cmd + " PreToolUse")}]}])
+    | .Stop             = ((.Stop             // []) + [{"hooks":[{"type":"command","command":(\$cmd + " Stop")}]}])
+    | .Notification     = ((.Notification     // []) + [{"hooks":[{"type":"command","command":(\$cmd + " Notification")}]}])
+  )
+' "\$SETTINGS_FILE" > /tmp/settings.json && mv /tmp/settings.json "\$SETTINGS_FILE"
+
 # Drop sentinel so subsequent container restarts skip this work
 touch "\$HOME/.claude/.conductor-initialized"
 
@@ -172,9 +230,11 @@ EOF
 fi
 
 # ── Generate conductor-compose.yml ────────────────────────────────────
-if [[ -f "$COMPOSE_FILE" ]] && [[ "$FORCE" != true ]]; then
-  echo "Warning: $COMPOSE_FILE already exists — skipping (use --force to overwrite)"
-else
+if should_write "$COMPOSE_FILE"; then
+  # Ensure the state dir exists on the host before compose tries to bind-mount it
+  # (otherwise Docker creates it as root-owned).
+  mkdir -p "${CONDUCTOR_STATE_DIR_DEFAULT}"
+
   cat > "$COMPOSE_FILE" <<EOF
 services:
   ${SERVICE}:
@@ -188,17 +248,20 @@ services:
       - .:/workspaces/${DIRNAME}:cached
       - \${HOME}/.claude:/host-claude-config/.claude:ro
       - \${HOME}/.claude.json:/host-claude-config/.claude.json:ro
+      - ${CONDUCTOR_REPO}/hooks:/conductor-hooks:ro
+      - ${CONDUCTOR_STATE_DIR_DEFAULT}:/conductor-state
     working_dir: /workspaces/${DIRNAME}
     env_file:
       - \${HOME}/.conductor_env
+    environment:
+      - CONDUCTOR_STATE_DIR=/conductor-state
+      - CONDUCTOR_AGENT_NAME=${AGENT_NAME}
 EOF
   echo "Created: $COMPOSE_FILE"
 fi
 
 # ── Generate .devcontainer/devcontainer.json ──────────────────────────
-if [[ -f "$DEVCONTAINER_FILE" ]] && [[ "$FORCE" != true ]]; then
-  echo "Warning: $DEVCONTAINER_FILE already exists — skipping (use --force to overwrite)"
-else
+if should_write "$DEVCONTAINER_FILE"; then
   cat > "$DEVCONTAINER_FILE" <<EOF
 {
   "name": "conductor-agent",
@@ -214,8 +277,11 @@ fi
 # ── Summary ───────────────────────────────────────────────────────────
 echo ""
 echo "Scaffold complete for: $TARGET"
-echo "  Image:   $IMAGE"
-echo "  Service: $SERVICE"
+echo "  Image:       $IMAGE"
+echo "  Service:     $SERVICE"
+echo "  Agent name:  $AGENT_NAME"
+echo "  Hooks mount: $CONDUCTOR_REPO/hooks -> /conductor-hooks (ro)"
+echo "  State dir:   $CONDUCTOR_STATE_DIR_DEFAULT -> /conductor-state"
 echo ""
 echo "Next steps:"
 echo "  1. Generate a token (once, valid 1 year):  claude setup-token"

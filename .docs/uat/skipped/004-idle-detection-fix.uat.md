@@ -1,7 +1,8 @@
 # UAT: Fix `is_idle` / `IDLE_PATTERN` for Claude Code v2.x
 
-> **Source task**: [`.docs/tasks/active/004-idle-detection-fix.md`](../../tasks/active/004-idle-detection-fix.md)
+> **Source task**: [`.docs/tasks/completed/004-idle-detection-fix.md`](../../tasks/completed/004-idle-detection-fix.md)
 > **Generated**: 2026-04-14
+> **Skipped**: 2026-04-14
 
 This task fixes shell-script idle detection in `monitor.sh` + `conductor.conf`. There is no HTTP API or web UI — tests exercise shell behavior directly (fixture replay) and live tmux dispatch. Test sections below are adapted to that reality: "Behavioral Tests" replace API tests, "Integration Tests" cover live dispatch.
 

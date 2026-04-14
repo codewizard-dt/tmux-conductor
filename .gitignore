@@ -214,5 +214,6 @@ deep-research-report.md
 
 # Conductor
 logs/*.log
+logs/state/
 *.bak
 tmp/

@@ -27,13 +27,15 @@ tmux-conductor is a vendor-agnostic system for orchestrating multiple AI coding 
 | `teardown.sh` | Graceful shutdown: sends `/exit` to each agent, waits, kills session |
 | `agent_exec.sh` | Host-side container exec wrapper (compose/docker modes) |
 | `scaffold.sh` | Generates `conductor-compose.yml` + `.devcontainer/devcontainer.json` for a target project |
+| `hooks/claude-hook.sh` | Claude Code hook script — writes `working`/`done`/`wait` to `$STATE_DIR/<agent>.state` for reliable idle detection |
 
 ### Key Design Decisions
 
 - `send-keys -l` (literal mode) for dispatch — preserves special characters in prompts
 - `Enter` is always a separate `send-keys` argument, never embedded in the string
 - `sed -i.bak` + cleanup for BSD/GNU sed compatibility (macOS ships BSD sed)
-- Idle detection uses configurable regex (`IDLE_PATTERN`) against last 5 lines of `capture-pane -p`
+- Idle detection primary signal is the per-agent state file written by `hooks/claude-hook.sh` at `$STATE_DIR/<agent>.state` (`working` / `done` / `wait`); monitor reads this each poll and treats `done` as idle
+- If the state file is missing or stale (older than `2 × POLL_INTERVAL`), monitor falls back to the `IDLE_PATTERN` regex against the last 5 lines of `capture-pane -p` — this covers Aider, Codex, Claude-without-hooks, and the Esc-interrupt case where no `Stop` hook fires
 - `POLL_INTERVAL` acts as debounce to avoid false positives during agent tool calls
 - Usage monitoring runs before every dispatch; when all agents hit limits, auto-teardown triggers
 - Task queue supports agent-scoped entries via `agentname: command` prefix — `pop_task()` matches scoped lines first, then falls back to unscoped (global) lines
@@ -55,6 +57,7 @@ This repo uses a structured task lifecycle under `.docs/`:
 ## Shell Command Conventions
 
 - Use plain `git log ...` and `git status ...` — never prefix with `git -C <path>`. The repo's allowlist matches `Bash(git log:*)` and `Bash(git status:*)`; adding `-C /abs/path` triggers an approval prompt every time. Rely on the working directory instead.
+- **Temporary files / scratch directories on the host: ALWAYS use `./tmp/` (the repo-local `tmp/` directory). Non-negotiable, mandatory.** Never use `/tmp/`, `$TMPDIR`, `mktemp -d`, or any other system-level temp location for host-side work. `./tmp/` is gitignored, lives next to your work, and keeps fixtures/captures inspectable. **Scope:** this rule applies only to commands run on the host (your dev shell, sub-agents acting on the host, scripts executed from the project root). Inside a dev container or any generated container-init script, follow normal Unix conventions — `/tmp` there is the container's ephemeral filesystem and is the right choice.
 
 ## MCP Tool Rules
 

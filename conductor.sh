@@ -58,7 +58,8 @@ IFS=: read -r name workdir launch_cmd <<< "${AGENTS[0]}"
 tmux new-session -d -s "$SESSION_NAME" -c "$workdir" -n "$name"
 
 cmd="$(build_launch_cmd "$launch_cmd")"
-tmux send-keys -t "$SESSION_NAME:$name" "$cmd" Enter
+env_prefix="CONDUCTOR_AGENT_NAME='$name' CONDUCTOR_STATE_DIR='$STATE_DIR'"
+tmux send-keys -t "$SESSION_NAME:$name" "$env_prefix $cmd" Enter
 
 echo "Spawned: $name ($cmd) in $workdir"
 
@@ -68,7 +69,8 @@ for (( i=1; i<${#AGENTS[@]}; i++ )); do
   tmux new-window -t "$SESSION_NAME" -n "$name" -c "$workdir"
 
   cmd="$(build_launch_cmd "$launch_cmd")"
-  tmux send-keys -t "$SESSION_NAME:$name" "$cmd" Enter
+  env_prefix="CONDUCTOR_AGENT_NAME='$name' CONDUCTOR_STATE_DIR='$STATE_DIR'"
+  tmux send-keys -t "$SESSION_NAME:$name" "$env_prefix $cmd" Enter
 
   echo "Spawned: $name ($cmd) in $workdir"
 done

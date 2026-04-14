@@ -30,7 +30,8 @@ IFS=: read -r name workdir launch_cmd <<< "${AGENTS[0]}"
 tmux new-session -d -s "$SESSION_NAME" -c "$workdir"
 
 cmd="$(build_launch_cmd "$launch_cmd")"
-tmux send-keys -t "$SESSION_NAME" "$cmd" Enter
+env_prefix="CONDUCTOR_AGENT_NAME='$name' CONDUCTOR_STATE_DIR='$STATE_DIR'"
+tmux send-keys -t "$SESSION_NAME" "$env_prefix $cmd" Enter
 
 echo "Spawned: $name ($cmd) in $workdir"
 
@@ -40,7 +41,8 @@ for (( i=1; i<${#AGENTS[@]}; i++ )); do
   tmux split-window -t "$SESSION_NAME" -c "$workdir"
 
   cmd="$(build_launch_cmd "$launch_cmd")"
-  tmux send-keys -t "$SESSION_NAME" "$cmd" Enter
+  env_prefix="CONDUCTOR_AGENT_NAME='$name' CONDUCTOR_STATE_DIR='$STATE_DIR'"
+  tmux send-keys -t "$SESSION_NAME" "$env_prefix $cmd" Enter
   tmux select-layout -t "$SESSION_NAME" tiled  # rebalance after each split
 
   echo "Spawned: $name ($cmd) in $workdir"

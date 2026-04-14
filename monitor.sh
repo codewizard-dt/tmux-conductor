@@ -10,6 +10,7 @@ PAUSED_FILE="$LOG_DIR/.paused"
 log() { echo "[$(date +%H:%M:%S)] $*" | tee -a "$LOG_FILE"; }
 debug() { [ "${DEBUG:-0}" != "0" ] && echo "[$(date +%H:%M:%S)] DEBUG: $*" | tee -a "$LOG_FILE" || true; }
 rm -f "$PAUSED_FILE"
+mkdir -p "$STATE_DIR"
 
 # Build list of agent window names
 declare -a AGENT_NAMES=()
@@ -75,22 +76,39 @@ pop_task() {
 
 is_idle() {
   local target="$1"
+  local name="${2:-}"
+  local state_file="${STATE_DIR}/${name}.state"
+
+  # Primary: hook-written state file, if fresh
+  if [ -n "$name" ] && [ -f "$state_file" ]; then
+    local now mtime age max_age state
+    now=$(date +%s)
+    # macOS (BSD stat) vs Linux (GNU stat) compatibility
+    mtime=$(stat -f %m "$state_file" 2>/dev/null || stat -c %Y "$state_file" 2>/dev/null || echo 0)
+    age=$(( now - mtime ))
+    max_age=$(( POLL_INTERVAL * 2 ))
+    if [ "$age" -le "$max_age" ]; then
+      state=$(cat "$state_file" 2>/dev/null || echo "")
+      debug "is_idle: target=$target state-file=$state (age=${age}s)"
+      case "$state" in
+        done) return 0 ;;
+        working|wait) return 1 ;;
+        *) ;;  # unknown contents — fall through to regex
+      esac
+    else
+      debug "is_idle: target=$target state-file stale (age=${age}s > ${max_age}s), falling back to regex"
+    fi
+  fi
+
+  # Fallback: footer regex
   local last_lines
   last_lines=$(tmux capture-pane -t "$target" -p | grep -v '^[[:space:]]*$' | tail -5 || true)
-  local line_count
-  line_count=$(printf '%s\n' "$last_lines" | grep -c . || true)
-  debug "is_idle: target=$target captured $line_count non-empty line(s)"
-  if [ "${DEBUG:-0}" != "0" ]; then
-    # Emit the captured tail lines with a prefix so they're easy to scan
-    printf '%s\n' "$last_lines" | sed 's/^/[DEBUG is_idle>] /' | tee -a "$LOG_FILE" >/dev/null || true
-  fi
   if printf '%s\n' "$last_lines" | grep -qE "$IDLE_PATTERN"; then
-    debug "is_idle: target=$target MATCHED idle pattern"
+    debug "is_idle: target=$target regex MATCHED"
     return 0
-  else
-    debug "is_idle: target=$target no match"
-    return 1
   fi
+  debug "is_idle: target=$target regex no match"
+  return 1
 }
 
 check_usage() {
@@ -149,7 +167,7 @@ while true; do
       continue
     fi
 
-    if is_idle "$target"; then
+    if is_idle "$target" "$name"; then
       log "$name — idle detected"
 
       # Check usage before dispatching
