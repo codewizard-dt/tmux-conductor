@@ -137,7 +137,17 @@ if should_write "$DOCKERFILE"; then
 FROM ${IMAGE}
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      curl ca-certificates git sudo nodejs npm python3 python3-venv rsync jq vim \
+      curl ca-certificates git sudo nodejs npm python3 python3-venv rsync jq vim software-properties-common \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Chromium for puppeteer-mcp-claude (native arm64/amd64; avoids Puppeteer's
+# broken auto-downloaded x86_64 binary on Apple Silicon). xtradeb PPA ships a
+# snap-free chromium deb for both architectures on Ubuntu 24.04 (noble). The
+# chromium .deb declares its own runtime deps, so apt resolves the GUI libs
+# automatically — no need to enumerate libnss3/libatk*/etc.
+RUN add-apt-repository -y ppa:xtradeb/apps \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends chromium \
     && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user (claude --dangerously-skip-permissions refuses root)
@@ -256,6 +266,11 @@ services:
     environment:
       - CONDUCTOR_STATE_DIR=/conductor-state
       - CONDUCTOR_AGENT_NAME=${AGENT_NAME}
+      - PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+      - PUPPETEER_SKIP_DOWNLOAD=true
+      - PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 EOF
   echo "Created: $COMPOSE_FILE"
 fi
@@ -292,3 +307,14 @@ echo "  5. Verify: docker compose -f conductor-compose.yml exec $SERVICE claude 
 echo ""
 echo "Auth: ~/.conductor_env is loaded as the container's env_file."
 echo "      Token persists across reboots — regenerate only if revoked."
+echo ""
+echo "Host networking:"
+echo "  Reach host services from inside the container at host.docker.internal:<port>."
+echo "  Host dev servers MUST bind to 0.0.0.0 (not 127.0.0.1) to be reachable —"
+echo "  e.g. 'astro dev --host' or 'vite --host 0.0.0.0'."
+echo ""
+echo "Browser automation:"
+echo "  Chromium is installed at /usr/bin/chromium for puppeteer-mcp-claude."
+echo "  Puppeteer will use it automatically via PUPPETEER_EXECUTABLE_PATH."
+echo "  Pass args: ['--no-sandbox','--disable-setuid-sandbox','--disable-dev-shm-usage']"
+echo "  on puppeteer_launch when running as root in the container."

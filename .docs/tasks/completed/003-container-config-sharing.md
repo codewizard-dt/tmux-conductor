@@ -92,3 +92,6 @@ Read-only bind-mount `~/.claude/` and `~/.claude.json` at `/host-claude-config/`
 - [ ] Inside container: `docker compose exec app claude mcp list` — shows host's user-scope MCPs plus `serena` (UAT)
 - [ ] Inside container: `docker compose exec app claude /status` — `Auth token: CLAUDE_CODE_OAUTH_TOKEN`, no onboarding prompt (UAT)
 - [ ] Rebuild (`docker compose up -d --force-recreate`) — init script short-circuits on sentinel (UAT)
+
+---
+**UAT**: [`.docs/uat/skipped/003-container-config-sharing.uat.md`](../../uat/skipped/003-container-config-sharing.uat.md) *(skipped)*

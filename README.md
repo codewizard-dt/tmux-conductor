@@ -168,6 +168,19 @@ docker compose -f conductor-compose.yml restart app
 
 The next start will re-run the init-copy and re-register Serena.
 
+### Host network access
+
+From inside the scaffolded container, host services are reachable at `host.docker.internal:<port>`. The generated `conductor-compose.yml` maps this hostname to the special `host-gateway` value via `extra_hosts`, which makes the setup work identically on Linux, macOS, and Windows. On Docker Desktop (Mac/Windows) `host.docker.internal` resolves without `extra_hosts`, but the entry is included for Linux compatibility where that alias is not provided by default.
+
+Host dev servers must bind to `0.0.0.0` (not `127.0.0.1`) to be reachable from the container — a loopback-only bind is invisible across the bridge. Examples:
+
+```bash
+astro dev --host            # Astro
+vite --host 0.0.0.0         # Vite
+```
+
+Then from inside the container, hit `http://host.docker.internal:4321` (Astro default) or `http://host.docker.internal:5173` (Vite default).
+
 ## Configuration Reference
 
 All settings live in `conductor.conf`:

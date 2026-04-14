@@ -65,3 +65,6 @@ Extend the `tasks.txt` format with an optional `agentname: ` prefix per line. Mo
   - `pop_task "webapp"` returns the webapp-prefixed line (stripped of prefix)
   - `pop_task "otheragent"` returns the unscoped line
   - After all three pops, `tasks.txt` is empty
+
+---
+**UAT**: [`.docs/uat/skipped/002-scoped-task-queue.uat.md`](../../uat/skipped/002-scoped-task-queue.uat.md) *(skipped)*

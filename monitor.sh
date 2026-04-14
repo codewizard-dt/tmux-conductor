@@ -118,7 +118,10 @@ check_usage() {
   # Also disable -e inside the subshell so intermediate non-zero exits
   # (e.g. from a failing pipeline element) don't kill the check prematurely.
   local rc=0
-  ( set +e; eval "$USAGE_CHECK_CMD" ) >/dev/null 2>&1 || rc=$?
+  local output
+  output=$( set +e; eval "$USAGE_CHECK_CMD" 2>&1 )
+  rc=$?
+  log "check_usage output: $output"
   if [ "$rc" -eq 0 ]; then
     debug "check_usage: OK (rc=0)"
     return 0  # usage OK
@@ -180,13 +183,9 @@ while true; do
       # Pop next task or use default command
       if task=$(pop_task "$name"); then
         log "$name — dispatching task: $task"
-        dispatch "$target" "/clear"
-        sleep 2  # let /clear complete
         dispatch "$target" "$task"
       elif [ -n "${TASK_CMD:-}" ]; then
         log "$name — queue empty, sending default: $TASK_CMD"
-        dispatch "$target" "/clear"
-        sleep 2
         dispatch "$target" "$TASK_CMD"
       else
         log "$name — queue empty, no default command. Agent stays idle."
