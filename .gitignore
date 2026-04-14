@@ -215,3 +215,4 @@ deep-research-report.md
 # Conductor
 logs/*.log
 *.bak
+tmp/

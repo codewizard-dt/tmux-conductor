@@ -1,3 +1,0 @@
-jobfinder: /uat-walkthrough 60 -- run all tests yourself and decide on your own if the tests pass
-jobfinder: /uat-walkthrough 62 -- run all tests yourself and decide on your own if the tests pass
-jobfinder: /uat-walkthrough 64 -- run all tests yourself and decide on your own if the tests pass

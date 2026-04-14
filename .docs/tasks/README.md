@@ -6,6 +6,7 @@
 |---|------|-------------|
 | 002 | [Scoped Task Queue](active/002-scoped-task-queue.md) | Add agent-name prefix scoping to task queue so tasks dispatch only to the matching agent |
 | 003 | [Container Config Sharing](active/003-container-config-sharing.md) | Share host Claude config + global MCPs into each conductor container via first-boot init-copy; auto-register Serena MCP |
+| 004 | [Idle Detection Fix](active/004-idle-detection-fix.md) | Replace `capture-pane` idle regex with Claude Code hooks-based state file; keep regex as fallback |
 
 ## Completed Tasks
 
