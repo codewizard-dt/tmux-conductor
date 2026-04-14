@@ -37,7 +37,10 @@ fi
 case "$MODE" in
   compose)
     COMPOSE_FILE="${COMPOSE_FILE:-conductor-compose.yml}"
-    exec docker compose -f "$COMPOSE_FILE" exec -T "$TARGET" "$@"
+    exec docker compose -f "$COMPOSE_FILE" exec \
+      -e ANTHROPIC_API_KEY= \
+      -e ANTHROPIC_AUTH_TOKEN= \
+      "$TARGET" "$@"
     ;;
   docker)
     exec docker exec -i "$TARGET" "$@"

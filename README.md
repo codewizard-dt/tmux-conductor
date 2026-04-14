@@ -111,7 +111,9 @@ To run agents inside Docker containers instead of directly on the host:
 
 This generates:
 - `conductor-compose.yml` — Docker Compose file with a long-running container
+- `.devcontainer/Dockerfile` — image definition with `nodejs`, `npm`, `uv`, and `python3` preinstalled so common MCP server commands (Node- or Python-based) run inside the container without extra setup
 - `.devcontainer/devcontainer.json` — VS Code Dev Container configuration
+- `.devcontainer/init-claude-config.sh` — first-boot entrypoint that seeds the container's Claude config from the host (see "Shared configuration & MCPs" below)
 
 Options:
 ```bash
@@ -142,6 +144,29 @@ COMPOSE_SERVICE="app"
 ```
 
 The conductor will automatically wrap agent launch commands with `agent_exec.sh` to exec into the container.
+
+### Shared configuration & MCPs
+
+Each scaffolded container bind-mounts your host's `~/.claude/` and `~/.claude.json` read-only at `/host-claude-config/`. On first boot, `init-claude-config.sh` copies them into the conductor user's home and drops a sentinel file (`~/.claude/.conductor-initialized`) so subsequent restarts short-circuit and preserve in-container state.
+
+**Copied from the host:**
+- `~/.claude.json` (user-scope MCP server registrations, settings)
+- `~/.claude/settings.json`, `CLAUDE.md`, `plugins/`, and other static config
+
+**Not copied (container-local or deliberately excluded):**
+- `.credentials.json` — auth comes from `CLAUDE_CODE_OAUTH_TOKEN` in `~/.conductor_env`
+- `sessions/`, `projects/`, `history.jsonl`, `shell-snapshots/`, `telemetry/`, `ide/` — live session state stays per-container
+
+**Serena MCP** is auto-registered at project-local scope inside each container, keyed to `/workspaces/<dirname>`, so semantic code tools work out of the box without touching the host registration.
+
+**Force a reset** of a container's config (e.g. after editing host settings you want re-synced):
+
+```bash
+docker compose -f conductor-compose.yml exec app rm /home/conductor/.claude/.conductor-initialized
+docker compose -f conductor-compose.yml restart app
+```
+
+The next start will re-run the init-copy and re-register Serena.
 
 ## Configuration Reference
 

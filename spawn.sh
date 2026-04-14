@@ -35,7 +35,7 @@ tmux send-keys -t "$SESSION_NAME" "$cmd" Enter
 echo "Spawned: $name ($cmd) in $workdir"
 
 # Split for remaining agents
-for i in $(seq 1 $(( ${#AGENTS[@]} - 1 ))); do
+for (( i=1; i<${#AGENTS[@]}; i++ )); do
   IFS=: read -r name workdir launch_cmd <<< "${AGENTS[$i]}"
   tmux split-window -t "$SESSION_NAME" -c "$workdir"
 
