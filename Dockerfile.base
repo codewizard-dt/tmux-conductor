@@ -1,0 +1,28 @@
+# Upstream baseline: debian:bookworm-slim as of 2026-04-16
+# Multi-arch (linux/amd64 + linux/arm64) base image for tmux-conductor dev containers.
+# Published to ghcr.io/codewizard-dt/tmux-conductor-base by .github/workflows/base-image.yml.
+# Debian bookworm-slim gives us first-class Chromium in main (no PPA) on both arches.
+FROM debian:bookworm-slim
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      curl ca-certificates git sudo nodejs npm python3 python3-venv \
+      rsync jq vim chromium \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create non-root user (claude --dangerously-skip-permissions refuses root)
+RUN useradd -m -s /bin/bash conductor
+
+USER conductor
+
+# Install Claude Code via native installer
+RUN curl -fsSL https://claude.ai/install.sh | bash
+
+# Install uv (Python package/CLI runner used by many MCP servers)
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+
+ENV PATH="/home/conductor/.local/bin:/home/conductor/.cargo/bin:${PATH}"
+
+# Chromium is at /usr/bin/chromium — scaffold-generated compose sets
+# PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium at runtime.

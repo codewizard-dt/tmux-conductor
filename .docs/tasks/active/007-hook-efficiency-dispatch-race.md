@@ -68,9 +68,9 @@ Five areas in one task. (1) Each Claude Code lifecycle event gets its own script
 
 ### 5. Add Notification subtype parsing to on-notification.sh  <!-- agent: general-purpose -->
 
-- [ ] Edit `hooks/on-notification.sh` — restructure stdin handling:
+- [x] Edit `hooks/on-notification.sh` — restructure stdin handling: <!-- Completed: 2026-04-16 -->
   - Replace `cat >/dev/null 2>&1 || true` with `PAYLOAD=$(cat 2>/dev/null || true)` to capture the JSON payload instead of draining it
-- [ ] Replace the blanket `printf 'wait\n'` with subtype-aware handling. The JSON payload's `notification_type` field identifies the subtype (confirmed via Claude Code hooks reference at code.claude.com/docs/en/hooks):
+- [x] Replace the blanket `printf 'wait\n'` with subtype-aware handling. The JSON payload's `notification_type` field identifies the subtype (confirmed via Claude Code hooks reference at code.claude.com/docs/en/hooks): <!-- Completed: 2026-04-16 -->
   ```bash
   notif_type=$(printf '%s' "$PAYLOAD" | jq -r '.notification_type // empty' 2>/dev/null || true)
   case "$notif_type" in
@@ -90,21 +90,21 @@ Five areas in one task. (1) Each Claude Code lifecycle event gets its own script
   - `elicitation_dialog` → `wait`: agent is paused for MCP user input, monitor treats as busy
   - `auth_success` → no-op: informational, agent state unchanged
   - Unknown → info-log to `$STATE_DIR/hook.log` with full payload, leave state unchanged
-- [ ] Update the header comment to document the subtype routing
-- [ ] `bash -n hooks/on-notification.sh` — must pass
+- [x] Update the header comment to document the subtype routing <!-- Completed: 2026-04-16 -->
+- [x] `bash -n hooks/on-notification.sh` — must pass <!-- Completed: 2026-04-16 -->
 
 ### 6. Update documentation  <!-- agent: general-purpose -->
 
 - [x] `CLAUDE.md` "Core Scripts" table — replaced `hooks/claude-hook.sh` row with per-event script entries + `install-hooks.sh`
 - [x] `CLAUDE.md` "Key Design Decisions" — updated idle detection bullet with four state values, per-event scripts, `install-hooks.sh`
 - [x] `README.md` script table and "How It Works" section — updated to per-event scripts and `dispatching` state
-- [ ] `CLAUDE.md` "Key Design Decisions" — add Notification subtype parsing details: `notification_type` JSON field, `idle_prompt` → `done`, `permission_prompt` / `elicitation_dialog` → `wait`, `auth_success` → no-op, unknown → info-logged to `$STATE_DIR/hook.log`
-- [ ] `README.md` "How idle detection works" paragraph — add one sentence on Notification subtype routing and info-logging for unmapped types
+- [x] `CLAUDE.md` "Key Design Decisions" — add Notification subtype parsing details: `notification_type` JSON field, `idle_prompt` → `done`, `permission_prompt` / `elicitation_dialog` → `wait`, `auth_success` → no-op, unknown → info-logged to `$STATE_DIR/hook.log` <!-- Completed: 2026-04-16 -->
+- [x] `README.md` "How idle detection works" paragraph — add one sentence on Notification subtype routing and info-logging for unmapped types <!-- Completed: 2026-04-16 -->
 
 ### 7. Verification  <!-- agent: general-purpose -->
 
-- [ ] `bash -n hooks/on-prompt-submit.sh hooks/on-stop.sh hooks/on-stop-failure.sh hooks/on-notification.sh hooks/install-hooks.sh scaffold.sh monitor.sh` — all pass
-- [ ] Smoke-test all events locally (use `./tmp/` per CLAUDE.md):
+- [x] `bash -n hooks/on-prompt-submit.sh hooks/on-stop.sh hooks/on-stop-failure.sh hooks/on-notification.sh hooks/install-hooks.sh scaffold.sh monitor.sh` — all pass <!-- Completed: 2026-04-16 -->
+- [x] Smoke-test all events locally (use `./tmp/` per CLAUDE.md): <!-- Completed: 2026-04-16 -->
   ```bash
   mkdir -p ./tmp/hook-test
   # Basic events
@@ -136,7 +136,7 @@ Five areas in one task. (1) Each Claude Code lifecycle event gets its own script
   - `Notification(auth_success) -> wait` (unchanged from previous — no-op)
   - `Notification(unknown_test_type) -> wait` (unchanged from previous — no-op)
   - `hook.log` contains one line with `Notification type=unknown_test_type (no state mapping)`
-- [ ] Re-scaffold a test project and verify:
+- [x] Re-scaffold a test project and verify: <!-- Completed: 2026-04-16 -->
   ```bash
   rm -rf ./tmp/scaffold-test && mkdir -p ./tmp/scaffold-test
   bash scaffold.sh ./tmp/scaffold-test --force
@@ -144,7 +144,7 @@ Five areas in one task. (1) Each Claude Code lifecycle event gets its own script
   - `init-claude-config.sh` calls `/conductor-hooks/install-hooks.sh`, contains no inline jq hook-merge
   - `conductor-compose.yml` mounts hooks volume at `/conductor-hooks:ro`
   - `rm -rf ./tmp/scaffold-test`
-- [ ] `git diff --stat` scope sanity-check: only `hooks/` scripts, `monitor.sh`, `scaffold.sh`, `CLAUDE.md`, `README.md`, this task file — no stray edits
+- [x] `git diff --stat` scope sanity-check: only `hooks/` scripts, `monitor.sh`, `scaffold.sh`, `CLAUDE.md`, `README.md`, this task file — no stray edits <!-- Completed: 2026-04-16 -->
 
 ### 8. End-to-end verification  <!-- agent: general-purpose -->
 

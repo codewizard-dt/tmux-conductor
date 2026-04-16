@@ -111,7 +111,7 @@ To run agents inside Docker containers instead of directly on the host:
 
 This generates:
 - `conductor-compose.yml` — Docker Compose file with a long-running container
-- `.devcontainer/Dockerfile` — image definition with `nodejs`, `npm`, `uv`, and `python3` preinstalled so common MCP server commands (Node- or Python-based) run inside the container without extra setup
+- `.devcontainer/Dockerfile` — minimal two-layer image built on `ghcr.io/codewizard-dt/tmux-conductor-base:latest` (Chromium, Claude Code CLI, uv, nodejs, npm, python3 preinstalled); first-build completes in ~15–30s instead of ~4 min
 - `.devcontainer/devcontainer.json` — VS Code Dev Container configuration
 - `.devcontainer/init-claude-config.sh` — first-boot entrypoint that seeds the container's Claude config from the host (see "Shared configuration & MCPs" below)
 
@@ -144,6 +144,18 @@ COMPOSE_SERVICE="app"
 ```
 
 The conductor will automatically wrap agent launch commands with `agent_exec.sh` to exec into the container.
+
+### Base image
+
+The default scaffolded Dockerfile extends `ghcr.io/codewizard-dt/tmux-conductor-base:latest`, which bundles:
+- Chromium (from Debian main — no PPA, native on amd64 and arm64)
+- Claude Code CLI (`~/.local/bin/claude`)
+- uv (`~/.cargo/bin/uv`)
+- System packages: curl, git, nodejs, npm, python3, rsync, jq, vim
+
+This cuts per-project first-build from ~4 min to ~15–30s. The base image is rebuilt weekly (Mondays ~06:17 UTC) via `.github/workflows/base-image.yml` to pick up Chromium and apt security updates.
+
+Override at scaffold time with `./scaffold.sh /path/to/project --image <other>`. Forks can republish the base under their own GHCR namespace and update the default `IMAGE` in `scaffold.sh`.
 
 ### Shared configuration & MCPs
 
@@ -216,7 +228,7 @@ All settings live in `conductor.conf`:
 | `hooks/on-prompt-submit.sh` | Claude Code hook — writes `working` to agent state on UserPromptSubmit |
 | `hooks/on-stop.sh` | Claude Code hook — writes `done` to agent state on Stop |
 | `hooks/on-stop-failure.sh` | Claude Code hook — writes `done` to agent state on StopFailure |
-| `hooks/on-notification.sh` | Claude Code hook — writes `wait` to agent state on Notification |
+| `hooks/on-notification.sh` | Claude Code hook — routes Notification subtypes: `idle_prompt`→`done`, `permission_prompt`/`elicitation_dialog`→`wait`, `auth_success`→no-op, unknown→info-logged |
 | `hooks/install-hooks.sh` | Registers per-event hooks into `~/.claude/settings.json` |
 
 ## How It Works
@@ -253,6 +265,6 @@ conductor.sh / spawn.sh
 Claude Code → hook → $STATE_DIR/<agent>.state → monitor.sh
 ```
 
-For Claude Code agents, per-event hook scripts in `hooks/` are wired into Claude's lifecycle events: `on-prompt-submit.sh` writes `working` on `UserPromptSubmit`, `on-stop.sh` writes `done` on `Stop`, `on-stop-failure.sh` writes `done` on `StopFailure` (API error), and `on-notification.sh` writes `wait` on `Notification` (treated as busy). `hooks/install-hooks.sh` registers these into `~/.claude/settings.json` — called automatically by the container's init script. The monitor reads `$STATE_DIR/<agent>.state` each poll and considers an agent idle only when it contains `done`. The `CONDUCTOR_AGENT_NAME` environment variable tells the hooks which file to write; `scaffold.sh` bakes this in per container (default: target directory basename, overridable via `--agent-name`). If the state file is missing or older than `2 × POLL_INTERVAL`, the monitor falls back to matching `IDLE_PATTERN` against the pane's `capture-pane` output — this covers Aider/Codex (no hook), any Claude instance running without the hook, and the Esc-interrupt case where no `Stop` event fires.
+For Claude Code agents, per-event hook scripts in `hooks/` are wired into Claude's lifecycle events: `on-prompt-submit.sh` writes `working` on `UserPromptSubmit`, `on-stop.sh` writes `done` on `Stop`, `on-stop-failure.sh` writes `done` on `StopFailure` (API error), and `on-notification.sh` routes `Notification` subtypes: `idle_prompt` maps to `done` (preventing a trailing Notification from overwriting Stop's `done`), `permission_prompt` and `elicitation_dialog` map to `wait` (treated as busy), `auth_success` is a no-op, and unknown types are info-logged to `$STATE_DIR/hook.log` with the full payload. `hooks/install-hooks.sh` registers these into `~/.claude/settings.json` — called automatically by the container's init script. The monitor reads `$STATE_DIR/<agent>.state` each poll and considers an agent idle only when it contains `done`. The `CONDUCTOR_AGENT_NAME` environment variable tells the hooks which file to write; `scaffold.sh` bakes this in per container (default: target directory basename, overridable via `--agent-name`). If the state file is missing or older than `2 × POLL_INTERVAL`, the monitor falls back to matching `IDLE_PATTERN` against the pane's `capture-pane` output — this covers Aider/Codex (no hook), any Claude instance running without the hook, and the Esc-interrupt case where no `Stop` event fires.
 
 A fourth state value, `dispatching`, is written by the monitor itself immediately before it sends a new task to an agent. This closes a race window: after `dispatch.sh` sends the task but before the agent's `UserPromptSubmit` hook fires and writes `working`, the state file still holds `done` — without `dispatching`, the next poll would see `done` and incorrectly double-dispatch. Writing `dispatching` pre-emptively marks the agent as busy so the monitor skips it until the hook takes over with `working`.

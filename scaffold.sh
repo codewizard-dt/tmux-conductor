@@ -10,7 +10,7 @@
 set -euo pipefail
 
 # ── Defaults ──────────────────────────────────────────────────────────
-IMAGE="ubuntu:24.04"
+IMAGE="ghcr.io/codewizard-dt/tmux-conductor-base:latest"
 SERVICE="app"
 FORCE=false
 TARGET=""
@@ -27,7 +27,7 @@ usage() {
 Usage: scaffold.sh <target-project-path> [OPTIONS]
 
 Options:
-  --image <base-image>     Base Docker image (default: ubuntu:24.04)
+  --image <base-image>     Base Docker image (default: ghcr.io/codewizard-dt/tmux-conductor-base:latest)
   --service <service-name> Service name in compose file (default: app)
   --agent-name <name>      Conductor agent name (default: target directory basename).
                            Baked into the generated compose as CONDUCTOR_AGENT_NAME
@@ -136,33 +136,16 @@ if should_write "$DOCKERFILE"; then
   cat > "$DOCKERFILE" <<'DOCKERFILE'
 FROM ${IMAGE}
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-      curl ca-certificates git sudo nodejs npm python3 python3-venv rsync jq vim software-properties-common \
-    && rm -rf /var/lib/apt/lists/*
-
-# Install Chromium for puppeteer-mcp-claude (native arm64/amd64; avoids Puppeteer's
-# broken auto-downloaded x86_64 binary on Apple Silicon). xtradeb PPA ships a
-# snap-free chromium deb for both architectures on Ubuntu 24.04 (noble). The
-# chromium .deb declares its own runtime deps, so apt resolves the GUI libs
-# automatically — no need to enumerate libnss3/libatk*/etc.
-RUN add-apt-repository -y ppa:xtradeb/apps \
-    && apt-get update \
-    && apt-get install -y --no-install-recommends chromium \
-    && rm -rf /var/lib/apt/lists/*
-
-# Create non-root user (claude --dangerously-skip-permissions refuses root)
-RUN useradd -m -s /bin/bash conductor
-
-# Install Claude Code via native installer (not npm — avoids migration warning)
-USER conductor
-RUN curl -fsSL https://claude.ai/install.sh | bash
-
-# Install uv (Python package/CLI runner used by many MCP servers)
-RUN curl -LsSf https://astral.sh/uv/install.sh | sh
-ENV PATH="/home/conductor/.local/bin:/home/conductor/.cargo/bin:${PATH}"
+# The base image (ghcr.io/codewizard-dt/tmux-conductor-base) already provides:
+#   - apt packages: curl ca-certificates git sudo nodejs npm python3 python3-venv rsync jq vim chromium
+#   - non-root `conductor` user
+#   - Claude Code CLI (~/.local/bin/claude)
+#   - uv (~/.cargo/bin/uv)
+# See https://github.com/codewizard-dt/tmux-conductor/blob/main/Dockerfile.base
 
 # Copy init script that seeds ~/.claude config from host copy (or generates defaults)
 COPY --chown=conductor:conductor init-claude-config.sh /home/conductor/init-claude-config.sh
+USER conductor
 RUN chmod +x /home/conductor/init-claude-config.sh
 DOCKERFILE
   # Re-expand IMAGE into the heredoc
@@ -289,6 +272,7 @@ echo "  Hooks mount: $CONDUCTOR_REPO/hooks -> /conductor-hooks (ro)"
 echo "  State dir:   $CONDUCTOR_STATE_DIR_DEFAULT -> /conductor-state"
 echo ""
 echo "Next steps:"
+echo "  Base image: $IMAGE"
 echo "  1. Generate a token (once, valid 1 year):  claude setup-token"
 echo "  2. Save it:  echo 'CLAUDE_CODE_OAUTH_TOKEN=<token>' >> ~/.conductor_env"
 echo "  3. cd $TARGET"
@@ -304,7 +288,7 @@ echo "  Host dev servers MUST bind to 0.0.0.0 (not 127.0.0.1) to be reachable �
 echo "  e.g. 'astro dev --host' or 'vite --host 0.0.0.0'."
 echo ""
 echo "Browser automation:"
-echo "  Chromium is installed at /usr/bin/chromium for puppeteer-mcp-claude."
-echo "  Puppeteer will use it automatically via PUPPETEER_EXECUTABLE_PATH."
-echo "  Pass args: ['--no-sandbox','--disable-setuid-sandbox','--disable-dev-shm-usage']"
+echo "  Chromium is pre-installed at /usr/bin/chromium in the base image."
+echo "  Puppeteer uses it automatically via PUPPETEER_EXECUTABLE_PATH."
+echo '  Pass args: ["--no-sandbox","--disable-setuid-sandbox","--disable-dev-shm-usage"]'
 echo "  on puppeteer_launch when running as root in the container."

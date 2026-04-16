@@ -79,3 +79,7 @@ Modify the scaffolded `.devcontainer/Dockerfile` to register the `ppa:xtradeb/ap
   - Build succeeded in ~259s (chromium install step ~215s). First attempt hit a transient Docker Desktop containerd snapshotter bug (`failed to prepare extraction snapshot ... parent snapshot does not exist`) during the export/unpack phase — unrelated to the Dockerfile, resolved by retrying.
   - `docker compose run --rm app /usr/bin/chromium --version` → `Chromium 145.0.7632.75 built on Ubuntu 24.04.4 LTS` ✓
 - [x] Clean up: `docker compose down --rmi local -v` + `rm -rf ./tmp/scaffold-test-006`
+
+---
+
+**UAT**: [`.docs/uat/skipped/006-chromium-in-dev-container.uat.md`](../../uat/skipped/006-chromium-in-dev-container.uat.md) — Skipped: superseded by task 008 (base image)
