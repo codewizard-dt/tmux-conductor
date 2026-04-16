@@ -27,14 +27,18 @@ tmux-conductor is a vendor-agnostic system for orchestrating multiple AI coding 
 | `teardown.sh` | Graceful shutdown: sends `/exit` to each agent, waits, kills session |
 | `agent_exec.sh` | Host-side container exec wrapper (compose/docker modes) |
 | `scaffold.sh` | Generates `conductor-compose.yml` + `.devcontainer/devcontainer.json` for a target project |
-| `hooks/claude-hook.sh` | Claude Code hook script — writes `working`/`done`/`wait` to `$STATE_DIR/<agent>.state` for reliable idle detection |
+| `hooks/on-prompt-submit.sh` | Claude Code hook — writes `working` to `$STATE_DIR/<agent>.state` on UserPromptSubmit |
+| `hooks/on-stop.sh` | Claude Code hook — writes `done` to `$STATE_DIR/<agent>.state` on Stop |
+| `hooks/on-stop-failure.sh` | Claude Code hook — writes `done` to `$STATE_DIR/<agent>.state` on StopFailure (API error) |
+| `hooks/on-notification.sh` | Claude Code hook — writes `wait` to `$STATE_DIR/<agent>.state` on Notification |
+| `hooks/install-hooks.sh` | Registers per-event hooks into `~/.claude/settings.json` via jq merge |
 
 ### Key Design Decisions
 
 - `send-keys -l` (literal mode) for dispatch — preserves special characters in prompts
 - `Enter` is always a separate `send-keys` argument, never embedded in the string
 - `sed -i.bak` + cleanup for BSD/GNU sed compatibility (macOS ships BSD sed)
-- Idle detection primary signal is the per-agent state file written by `hooks/claude-hook.sh` at `$STATE_DIR/<agent>.state` (`working` / `done` / `wait`); monitor reads this each poll and treats `done` as idle
+- Idle detection primary signal is the per-agent state file at `$STATE_DIR/<agent>.state`. Four values: `working` (hook-written on UserPromptSubmit), `wait` (hook-written on Notification), `done` (hook-written on Stop and StopFailure), and `dispatching` (monitor-written immediately before sending a task to prevent the gap between dispatch and the agent's first `working` write from being misread as idle). Monitor treats only `done` as idle. Each Claude Code lifecycle event has its own script in `hooks/` (on-prompt-submit.sh, on-stop.sh, on-stop-failure.sh, on-notification.sh); `hooks/install-hooks.sh` registers them into `~/.claude/settings.json`.
 - If the state file is missing or stale (older than `2 × POLL_INTERVAL`), monitor falls back to the `IDLE_PATTERN` regex against the last 5 lines of `capture-pane -p` — this covers Aider, Codex, Claude-without-hooks, and the Esc-interrupt case where no `Stop` hook fires
 - `POLL_INTERVAL` acts as debounce to avoid false positives during agent tool calls
 - Usage monitoring runs before every dispatch; when all agents hit limits, auto-teardown triggers

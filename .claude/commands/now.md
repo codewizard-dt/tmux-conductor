@@ -30,3 +30,5 @@ $ARGUMENTS
 
 1) Absolute maximum of 3 sub-processes at a time
 2) **ALWAYS** terminate processes when done** (dev servers, type checkers, long-running commands)
+3) **Every sub-agent prompt MUST include this MCP mandate:**
+   > "Use MCP Serena for all code exploration and editing, and for all file/directory exploration of any type. Standard `Read`/`Edit`/`Write` are permitted for markdown and config files only. Never use `bash` `ls`/`cat`/`find`/`grep`/`sed`. See `.docs/guides/mcp-tools.md` for the full tool reference."

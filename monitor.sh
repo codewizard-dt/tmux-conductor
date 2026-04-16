@@ -90,9 +90,10 @@ is_idle() {
     if [ "$age" -le "$max_age" ]; then
       state=$(cat "$state_file" 2>/dev/null || echo "")
       debug "is_idle: target=$target state-file=$state (age=${age}s)"
+      # 'dispatching' is written by monitor.sh itself immediately after send-keys to close the race between dispatch and the UserPromptSubmit hook fire. Hook overwrites it to 'working' within milliseconds under normal conditions.
       case "$state" in
         done) return 0 ;;
-        working|wait) return 1 ;;
+        working|wait|dispatching) return 1 ;;
         *) ;;  # unknown contents — fall through to regex
       esac
     else
@@ -129,6 +130,14 @@ check_usage() {
     debug "check_usage: limit hit (rc=$rc)"
     return 1  # limit hit
   fi
+}
+
+mark_dispatching() {
+  local name="$1"
+  [ -n "$name" ] || return 0
+  local state_file="${STATE_DIR}/${name}.state"
+  printf 'dispatching\n' > "$state_file" 2>/dev/null || true
+  debug "mark_dispatching: wrote 'dispatching' to $state_file"
 }
 
 dispatch() {
@@ -183,9 +192,11 @@ while true; do
       # Pop next task or use default command
       if task=$(pop_task "$name"); then
         log "$name — dispatching task: $task"
+        mark_dispatching "$name"
         dispatch "$target" "$task"
       elif [ -n "${TASK_CMD:-}" ]; then
         log "$name — queue empty, sending default: $TASK_CMD"
+        mark_dispatching "$name"
         dispatch "$target" "$TASK_CMD"
       else
         log "$name — queue empty, no default command. Agent stays idle."

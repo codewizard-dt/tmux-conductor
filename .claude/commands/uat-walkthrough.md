@@ -459,6 +459,10 @@ When the user selects **"Fix now"**, delegate the fix to a `general-purpose` sub
 ```
 Fix a UAT test failure.
 
+**MANDATORY**: Use MCP Serena for all code exploration and editing.
+Do NOT use Read, Edit, Grep, or Glob on code files.
+See `.docs/guides/mcp-tools.md` for the full tool reference.
+
 UAT File: <path>
 Test: <UAT-ID> — <Test Name>
 Failure: <user's description of what went wrong>
@@ -469,7 +473,7 @@ Test details:
 Instructions:
 1. Use MCP Serena to find the relevant code for this test
 2. Identify the root cause of the failure
-3. Implement the fix
+3. Implement the fix using Serena's symbolic or file/line editing tools
 4. Run any available quality checks (linter, typecheck, tests)
 5. Report what was changed and why
 ```
@@ -492,10 +496,12 @@ For **UI/layout tests** (`UAT-UI-*` or tests with `Page:` / `Components:` metada
 
 **Subagent prompt addition for UI tests**:
 ```
-This is a UI/layout test. Use Puppeteer MCP tools to diagnose:
+This is a UI/layout test. Use MCP Serena for all code exploration and editing
+(Do NOT use Read, Edit, Grep, or Glob on code files — see `.docs/guides/mcp-tools.md`).
+Use Puppeteer MCP tools to diagnose:
 - Navigate to the page and screenshot the current (broken) state
 - Inspect the DOM with puppeteer_evaluate to identify layout/style issues
-- After implementing the fix, screenshot the new state
+- After implementing the fix (using Serena), screenshot the new state
 - Report what you changed and include before/after screenshots
 - IMPORTANT: Do NOT mark the test as passing. Do NOT judge whether the fix is correct.
   The user will verify the fix manually after you report back.

@@ -5,7 +5,7 @@
 | # | Task | Description |
 |---|------|-------------|
 | 006 | [Chromium in Dev Container](active/006-chromium-in-dev-container.md) | Install native arm64/amd64 Chromium in scaffolded Dockerfile via xtradeb PPA + point Puppeteer at `/usr/bin/chromium` so puppeteer-mcp-claude works on Apple Silicon |
-| 007 | [Hook Efficiency + Dispatch Race Fix](active/007-hook-efficiency-dispatch-race.md) | Stop duplicate `/tackle` dispatches by having monitor stamp a `dispatching` state the moment it sends keys; drop the redundant `PreToolUse` hook |
+| 007 | [Hook Efficiency, Dispatch Race Fix, and Per-Event Hook Centralization](active/007-hook-efficiency-dispatch-race.md) | Split claude-hook.sh into per-event scripts with install-hooks.sh, fix dispatch race with `dispatching` state, add StopFailure + Notification subtype handling |
 | 008 | [Publish Base Image](active/008-publish-base-image.md) | Build + publish multi-arch `ghcr.io/codewizard-dt/tmux-conductor-base` with Chromium + Claude Code + uv preinstalled; update scaffold.sh to consume it (cuts per-project first-build from ~4min to ~15s) |
 
 ## Completed Tasks
