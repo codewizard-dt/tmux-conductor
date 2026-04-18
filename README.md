@@ -29,7 +29,7 @@ AGENTS=(
 )
 ```
 
-For Claude Code agents, idle detection is driven by a lifecycle hook that writes `working`/`done`/`wait` to `$STATE_DIR/<agent>.state` — no prompt regex tuning needed. For other CLIs (Codex, Aider) or when the hook is unavailable, the monitor falls back to `IDLE_PATTERN`. Defaults:
+For Claude Code agents, idle detection is driven by lifecycle hooks that write `idle`/`busy` to `$STATE_DIR/<agent>.state` — no prompt regex tuning needed. For other CLIs (Codex, Aider) or when the hooks are unavailable, the monitor falls back to `IDLE_PATTERN`. Defaults:
 - Claude Code: `"^>"` (fallback only)
 - Codex: `"^codex>"`
 - Aider: `"^aider>"`
@@ -204,7 +204,7 @@ All settings live in `conductor.conf`:
 | `CLEAR_CMD` | `/clear` | Command to clear agent context |
 | `TASK_CMD` | `/tackle` | Default command when queue is empty |
 | `IDLE_PATTERN` | `^>` | Fallback regex matched against last 5 lines of pane output when the hook state file is absent or stale |
-| `STATE_DIR` | `./logs/state` | Directory where per-event hook scripts write per-agent `<agent>.state` files (`working` / `done` / `wait`) |
+| `STATE_DIR` | `./logs/state` | Directory where per-event hook scripts write per-agent `<agent>.state` files (`idle` / `busy`) |
 | `POLL_INTERVAL` | `15` | Seconds between idle-detection polls; state files older than `2 × POLL_INTERVAL` are treated as stale |
 | `USAGE_CHECK_CMD` | *(Claude example)* | Command that exits 0 (OK) or 1 (limit hit) |
 | `TASK_QUEUE` | `./tasks.txt` | Path to task queue file (one task per line, optional `name: ` prefix for agent scoping) |
@@ -225,11 +225,11 @@ All settings live in `conductor.conf`:
 | `teardown.sh` | Graceful shutdown |
 | `agent_exec.sh` | Container exec wrapper (compose/docker modes) |
 | `scaffold.sh` | Generate compose + devcontainer files for a target project |
-| `hooks/on-prompt-submit.sh` | Claude Code hook — writes `working` to agent state on UserPromptSubmit |
-| `hooks/on-stop.sh` | Claude Code hook — writes `done` to agent state on Stop |
-| `hooks/on-stop-failure.sh` | Claude Code hook — writes `done` to agent state on StopFailure |
-| `hooks/on-notification.sh` | Claude Code hook — routes Notification subtypes: `idle_prompt`→`done`, `permission_prompt`/`elicitation_dialog`→`wait`, `auth_success`→no-op, unknown→info-logged |
-| `hooks/install-hooks.sh` | Registers per-event hooks into `~/.claude/settings.json` |
+| `hooks/on-session-start.sh` | Claude Code hook — writes `idle` to agent state on SessionStart (matcher `startup|resume|clear`) |
+| `hooks/on-prompt-submit.sh` | Claude Code hook — writes `busy` to agent state on UserPromptSubmit |
+| `hooks/on-stop.sh` | Claude Code hook — writes `idle` to agent state on Stop |
+| `hooks/on-stop-failure.sh` | Claude Code hook — writes `idle` to agent state on StopFailure |
+| `hooks/install-hooks.sh` | Copies per-event hooks into `~/.claude/hooks/tmux-conductor/` and merge-registers them in `~/.claude/settings.json` (dedup-by-command, preserves foreign hook entries) |
 
 ## How It Works
 
@@ -265,6 +265,6 @@ conductor.sh / spawn.sh
 Claude Code → hook → $STATE_DIR/<agent>.state → monitor.sh
 ```
 
-For Claude Code agents, per-event hook scripts in `hooks/` are wired into Claude's lifecycle events: `on-prompt-submit.sh` writes `working` on `UserPromptSubmit`, `on-stop.sh` writes `done` on `Stop`, `on-stop-failure.sh` writes `done` on `StopFailure` (API error), and `on-notification.sh` routes `Notification` subtypes: `idle_prompt` maps to `done` (preventing a trailing Notification from overwriting Stop's `done`), `permission_prompt` and `elicitation_dialog` map to `wait` (treated as busy), `auth_success` is a no-op, and unknown types are info-logged to `$STATE_DIR/hook.log` with the full payload. `hooks/install-hooks.sh` registers these into `~/.claude/settings.json` — called automatically by the container's init script. The monitor reads `$STATE_DIR/<agent>.state` each poll and considers an agent idle only when it contains `done`. The `CONDUCTOR_AGENT_NAME` environment variable tells the hooks which file to write; `scaffold.sh` bakes this in per container (default: target directory basename, overridable via `--agent-name`). If the state file is missing or older than `2 × POLL_INTERVAL`, the monitor falls back to matching `IDLE_PATTERN` against the pane's `capture-pane` output — this covers Aider/Codex (no hook), any Claude instance running without the hook, and the Esc-interrupt case where no `Stop` event fires.
+For Claude Code agents, per-event hook scripts in `hooks/` are wired into Claude's lifecycle events: `on-session-start.sh` writes `idle` on `SessionStart` (matcher `startup|resume|clear`), `on-prompt-submit.sh` writes `busy` on `UserPromptSubmit`, `on-stop.sh` writes `idle` on `Stop`, and `on-stop-failure.sh` writes `idle` on `StopFailure` (API error). `hooks/install-hooks.sh` copies the scripts into `~/.claude/hooks/tmux-conductor/` and merge-registers them in `~/.claude/settings.json` with dedup-by-command so any pre-existing foreign hook entries survive — called automatically by the container's init script. The monitor reads `$STATE_DIR/<agent>.state` each poll and considers an agent idle only when it contains `idle`. The `CONDUCTOR_AGENT_NAME` environment variable tells the hooks which file to write; `scaffold.sh` bakes this in per container (default: target directory basename, overridable via `--agent-name`). If the state file is missing or older than `2 × POLL_INTERVAL`, or contains any value other than `idle`/`busy`, the monitor falls back to matching `IDLE_PATTERN` against the pane's `capture-pane` output — this covers Aider/Codex (no hook), any Claude instance running without the hook, and the Esc-interrupt case where no `Stop` event fires.
 
-A fourth state value, `dispatching`, is written by the monitor itself immediately before it sends a new task to an agent. This closes a race window: after `dispatch.sh` sends the task but before the agent's `UserPromptSubmit` hook fires and writes `working`, the state file still holds `done` — without `dispatching`, the next poll would see `done` and incorrectly double-dispatch. Writing `dispatching` pre-emptively marks the agent as busy so the monitor skips it until the hook takes over with `working`.
+Monitor also writes `busy` itself (via `mark_busy`) immediately before sending a new task to an agent. This closes a race window: after `dispatch.sh` sends the task but before the agent's `UserPromptSubmit` hook fires and writes `busy`, the state file still holds `idle` — without this pre-emptive write, the next poll would see `idle` and incorrectly double-dispatch. The hook overwrites the same `busy` value within milliseconds under normal conditions.

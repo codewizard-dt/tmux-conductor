@@ -90,10 +90,10 @@ is_idle() {
     if [ "$age" -le "$max_age" ]; then
       state=$(cat "$state_file" 2>/dev/null || echo "")
       debug "is_idle: target=$target state-file=$state (age=${age}s)"
-      # 'dispatching' is written by monitor.sh itself immediately after send-keys to close the race between dispatch and the UserPromptSubmit hook fire. Hook overwrites it to 'working' within milliseconds under normal conditions.
+      # 'busy' is written by monitor.sh itself (mark_busy) immediately after send-keys to close the race between dispatch and the UserPromptSubmit hook fire. The hook overwrites it to 'busy' (same value) within milliseconds under normal conditions, so the placeholder is indistinguishable from the hook-written value.
       case "$state" in
-        done) return 0 ;;
-        working|wait|dispatching) return 1 ;;
+        idle) return 0 ;;
+        busy) return 1 ;;
         *) ;;  # unknown contents — fall through to regex
       esac
     else
@@ -132,12 +132,12 @@ check_usage() {
   fi
 }
 
-mark_dispatching() {
+mark_busy() {
   local name="$1"
   [ -n "$name" ] || return 0
   local state_file="${STATE_DIR}/${name}.state"
-  printf 'dispatching\n' > "$state_file" 2>/dev/null || true
-  debug "mark_dispatching: wrote 'dispatching' to $state_file"
+  printf 'busy\n' > "$state_file" 2>/dev/null || true
+  debug "mark_busy: wrote 'busy' to $state_file"
 }
 
 dispatch() {
@@ -192,11 +192,11 @@ while true; do
       # Pop next task or use default command
       if task=$(pop_task "$name"); then
         log "$name — dispatching task: $task"
-        mark_dispatching "$name"
+        mark_busy "$name"
         dispatch "$target" "$task"
       elif [ -n "${TASK_CMD:-}" ]; then
         log "$name — queue empty, sending default: $TASK_CMD"
-        mark_dispatching "$name"
+        mark_busy "$name"
         dispatch "$target" "$TASK_CMD"
       else
         log "$name — queue empty, no default command. Agent stays idle."

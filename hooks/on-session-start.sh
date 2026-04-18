@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
-# on-prompt-submit.sh — Claude Code hook for UserPromptSubmit event
-#
-# Writes "busy" to $CONDUCTOR_STATE_DIR/<agent>.state so monitor.sh
-# knows the agent has started processing a prompt.
+# on-session-start.sh — Claude Code hook for SessionStart event.
+# Writes "idle" to $CONDUCTOR_STATE_DIR/<agent>.state so monitor.sh
+# starts in the idle state on startup/resume/clear.
 
 set -u
 
@@ -21,6 +20,6 @@ cat >/dev/null 2>&1 || true
 [ -n "$AGENT_NAME" ] || exit 0
 mkdir -p "$STATE_DIR" 2>/dev/null || exit 0
 
-printf 'busy\n' > "$STATE_DIR/${AGENT_NAME}.state"
+printf 'idle\n' > "$STATE_DIR/${AGENT_NAME}.state"
 
 exit 0

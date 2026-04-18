@@ -198,7 +198,10 @@ cd "/workspaces/${DIRNAME}"
 claude mcp add serena -- uvx --from git+https://github.com/oraios/serena serena start-mcp-server --context claude-code --project /workspaces/${DIRNAME} 2>&1 || echo "Serena already registered, skipping"
 
 # Register conductor per-event hooks into ~/.claude/settings.json.
-# install-hooks.sh handles settings file creation, jq merge, PreToolUse cleanup, and atomic write.
+# install-hooks.sh copies scripts into ~/.claude/hooks/tmux-conductor/ and merges hook
+# entries into settings.json with dedup-by-command (preserves foreign hook entries).
+# The /conductor-hooks bind-mount is only needed at init time as the copy source;
+# runtime hook execution reads from ~/.claude/hooks/tmux-conductor/.
 # Idempotency: the sentinel file \$HOME/.claude/.conductor-initialized (touched below) short-circuits
 # re-runs of this whole script, so install-hooks.sh runs exactly once per container lifetime — safe.
 /conductor-hooks/install-hooks.sh

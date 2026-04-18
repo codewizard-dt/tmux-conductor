@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # on-stop-failure.sh — Claude Code hook for StopFailure event
 #
-# Writes "done" to $CONDUCTOR_STATE_DIR/<agent>.state so monitor.sh
+# Writes "idle" to $CONDUCTOR_STATE_DIR/<agent>.state so monitor.sh
 # knows the agent is idle after an API error ended the turn.
 
 set -u
@@ -21,6 +21,6 @@ cat >/dev/null 2>&1 || true
 [ -n "$AGENT_NAME" ] || exit 0
 mkdir -p "$STATE_DIR" 2>/dev/null || exit 0
 
-printf 'done\n' > "$STATE_DIR/${AGENT_NAME}.state"
+printf 'idle\n' > "$STATE_DIR/${AGENT_NAME}.state"
 
 exit 0
