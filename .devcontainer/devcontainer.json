@@ -1,7 +1,0 @@
-{
-  "name": "conductor-agent",
-  "dockerComposeFile": "../conductor-compose.yml",
-  "service": "app",
-  "workspaceFolder": "/workspaces/tmux-conductor",
-  "customizations": { "vscode": { "extensions": [] } }
-}

@@ -221,13 +221,14 @@ claude mcp add serena -- uvx --from git+https://github.com/oraios/serena serena 
 # Register conductor per-event hooks into ~/.claude/settings.json.
 # Hook command prefixes were rewritten to the container's \$HOME above, so foreign
 # hooks (e.g. LSP enforcement) keep working alongside tmux-conductor's dedup-merged entries.
-# install-hooks.sh copies scripts into ~/.claude/hooks/tmux-conductor/ and merges hook
-# entries into settings.json with dedup-by-command (preserves foreign hook entries).
-# The /conductor-hooks bind-mount is only needed at init time as the copy source;
-# runtime hook execution reads from ~/.claude/hooks/tmux-conductor/.
+# install-hooks.sh (at the repo root) copies the Node.js hooks + hooks/lib/write-state.js
+# into ~/.claude/hooks/tmux-conductor/ and merges hook entries into settings.json with
+# dedup-by-command (preserves foreign hook entries). The /conductor-repo bind-mount is
+# only needed at init time as the copy source; runtime hook execution reads from
+# ~/.claude/hooks/tmux-conductor/.
 # Idempotency: the sentinel file \$HOME/.claude/.conductor-initialized (touched below) short-circuits
 # re-runs of this whole script, so install-hooks.sh runs exactly once per container lifetime — safe.
-/conductor-hooks/install-hooks.sh
+/conductor-repo/install-hooks.sh
 
 # Drop sentinel so subsequent container restarts skip this work
 touch "\$HOME/.claude/.conductor-initialized"
@@ -257,7 +258,7 @@ services:
       - .:/workspaces/${DIRNAME}:cached
       - \${HOME}/.claude:/host-claude-config/.claude:ro
       - \${HOME}/.claude.json:/host-claude-config/.claude.json:ro
-      - ${CONDUCTOR_REPO}/hooks:/conductor-hooks:ro
+      - ${CONDUCTOR_REPO}:/conductor-repo:ro
       - ${CONDUCTOR_STATE_DIR_DEFAULT}:/conductor-state
     working_dir: /workspaces/${DIRNAME}
     env_file:
@@ -294,7 +295,7 @@ echo "Scaffold complete for: $TARGET"
 echo "  Image:       $IMAGE"
 echo "  Service:     $SERVICE"
 echo "  Agent name:  $AGENT_NAME"
-echo "  Hooks mount: $CONDUCTOR_REPO/hooks -> /conductor-hooks (ro)"
+echo "  Repo mount:  $CONDUCTOR_REPO -> /conductor-repo (ro)"
 echo "  State dir:   $CONDUCTOR_STATE_DIR_DEFAULT -> /conductor-state"
 echo ""
 echo "Next steps:"

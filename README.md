@@ -225,11 +225,12 @@ All settings live in `conductor.conf`:
 | `teardown.sh` | Graceful shutdown |
 | `agent_exec.sh` | Container exec wrapper (compose/docker modes) |
 | `scaffold.sh` | Generate compose + devcontainer files for a target project |
-| `hooks/on-session-start.sh` | Claude Code hook — writes `idle` to agent state on SessionStart (matcher `startup|resume|clear`) |
-| `hooks/on-prompt-submit.sh` | Claude Code hook — writes `busy` to agent state on UserPromptSubmit |
-| `hooks/on-stop.sh` | Claude Code hook — writes `idle` to agent state on Stop |
-| `hooks/on-stop-failure.sh` | Claude Code hook — writes `idle` to agent state on StopFailure |
-| `hooks/install-hooks.sh` | Copies per-event hooks into `~/.claude/hooks/tmux-conductor/` and merge-registers them in `~/.claude/settings.json` (dedup-by-command, preserves foreign hook entries) |
+| `hooks/on-session-start.js` | Claude Code hook (Node.js) — writes `idle` to agent state on SessionStart (matcher `startup|resume|clear`) |
+| `hooks/on-prompt-submit.js` | Claude Code hook (Node.js) — writes `busy` to agent state on UserPromptSubmit |
+| `hooks/on-stop.js` | Claude Code hook (Node.js) — writes `idle` to agent state on Stop |
+| `hooks/on-stop-failure.js` | Claude Code hook (Node.js) — writes `idle` to agent state on StopFailure |
+| `hooks/lib/write-state.js` | Shared stdlib-only helper — resolves agent name, drains stdin, writes `$STATE_DIR/<agent>.state` |
+| `install-hooks.sh` (repo root) | Copies JS hooks plus `hooks/lib/write-state.js` into `~/.claude/hooks/tmux-conductor/` and merge-registers them in `~/.claude/settings.json` (dedup-by-command, preserves foreign hook entries) |
 
 ## How It Works
 
@@ -265,6 +266,6 @@ conductor.sh / spawn.sh
 Claude Code → hook → $STATE_DIR/<agent>.state → monitor.sh
 ```
 
-For Claude Code agents, per-event hook scripts in `hooks/` are wired into Claude's lifecycle events: `on-session-start.sh` writes `idle` on `SessionStart` (matcher `startup|resume|clear`), `on-prompt-submit.sh` writes `busy` on `UserPromptSubmit`, `on-stop.sh` writes `idle` on `Stop`, and `on-stop-failure.sh` writes `idle` on `StopFailure` (API error). `hooks/install-hooks.sh` copies the scripts into `~/.claude/hooks/tmux-conductor/` and merge-registers them in `~/.claude/settings.json` with dedup-by-command so any pre-existing foreign hook entries survive — called automatically by the container's init script. The monitor reads `$STATE_DIR/<agent>.state` each poll and considers an agent idle only when it contains `idle`. The `CONDUCTOR_AGENT_NAME` environment variable tells the hooks which file to write; `scaffold.sh` bakes this in per container (default: target directory basename, overridable via `--agent-name`). If the state file is missing or older than `2 × POLL_INTERVAL`, or contains any value other than `idle`/`busy`, the monitor falls back to matching `IDLE_PATTERN` against the pane's `capture-pane` output — this covers Aider/Codex (no hook), any Claude instance running without the hook, and the Esc-interrupt case where no `Stop` event fires.
+For Claude Code agents, per-event Node.js hook scripts in `hooks/` are wired into Claude's lifecycle events: `on-session-start.js` writes `idle` on `SessionStart` (matcher `startup|resume|clear`), `on-prompt-submit.js` writes `busy` on `UserPromptSubmit`, `on-stop.js` writes `idle` on `Stop`, and `on-stop-failure.js` writes `idle` on `StopFailure` (API error); they share stdlib-only logic via `hooks/lib/write-state.js`. `install-hooks.sh` at the repo root copies the JS hooks plus the shared lib into `~/.claude/hooks/tmux-conductor/` and merge-registers them in `~/.claude/settings.json` with dedup-by-command so any pre-existing foreign hook entries survive — called automatically by the container's init script. The monitor reads `$STATE_DIR/<agent>.state` each poll and considers an agent idle only when it contains `idle`. The `CONDUCTOR_AGENT_NAME` environment variable tells the hooks which file to write; `scaffold.sh` bakes this in per container (default: target directory basename, overridable via `--agent-name`). If the state file is missing or older than `2 × POLL_INTERVAL`, or contains any value other than `idle`/`busy`, the monitor falls back to matching `IDLE_PATTERN` against the pane's `capture-pane` output — this covers Aider/Codex (no hook), any Claude instance running without the hook, and the Esc-interrupt case where no `Stop` event fires.
 
 Monitor also writes `busy` itself (via `mark_busy`) immediately before sending a new task to an agent. This closes a race window: after `dispatch.sh` sends the task but before the agent's `UserPromptSubmit` hook fires and writes `busy`, the state file still holds `idle` — without this pre-emptive write, the next poll would see `idle` and incorrectly double-dispatch. The hook overwrites the same `busy` value within milliseconds under normal conditions.
