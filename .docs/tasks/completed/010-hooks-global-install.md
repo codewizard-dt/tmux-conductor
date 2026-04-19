@@ -85,3 +85,70 @@ Replace the current destructive `jq .hooks.X = [...]` assignment with a merge-an
 - [x] Stale repo-path cleanup: seed a settings file with an entry whose command is `/Users/fake/tmux-conductor/hooks/on-stop.sh`; run install-hooks.sh; confirm that entry is removed and replaced by the `$INSTALL_DIR/on-stop.sh` entry
 - [x] Verify the four scripts exist and are executable under `$INSTALL_DIR` after a successful run (`ls -l`)
 - [x] Manual host install against real `~/.claude/settings.json`: confirm that any pre-existing non-conductor hook entries in `SessionStart`/`UserPromptSubmit`/`Stop`/`StopFailure` survive untouched (back up first with `cp ~/.claude/settings.json ~/.claude/settings.json.bak`)
+
+### 6. Rewrite host hook-command path prefixes in rsynced settings.json  <!-- agent: general-purpose -->
+
+Bug discovered post-implementation: rsync in `init-claude-config.sh` seeds the container's `~/.claude/settings.json` from the host copy, which contains hook `command` strings pointing at host filesystem paths (e.g. `/Users/davidtaylor/.claude/hooks/tmux-conductor/on-session-start.sh`). Those paths don't exist inside the container, so Claude Code emits `hook error ... not found` on every `SessionStart` / `UserPromptSubmit`.
+
+Fix: after rsync, rewrite every hook `command` so that the prefix before `.claude/` is replaced with the container's `$HOME` (`/home/conductor`). This keeps foreign hooks (e.g. `claude-code-lsp-enforcement-kit`, also installed under `~/.claude/hooks/`) working inside the container, and leaves `install-hooks.sh`'s dedup-merge to handle tmux-conductor's own entries normally. Do **not** delete the `hooks` object.
+
+- [ ] In `scaffold.sh`'s `init-claude-config.sh` heredoc, between the `.hasCompletedOnboarding` jq line (around `scaffold.sh:194`) and the `/conductor-hooks/install-hooks.sh` call (around `scaffold.sh:207`), add a jq pass that rewrites host path prefixes in hook commands. The generated script should produce this literal (note `\$HOME`, `\$` escaping to defer expansion into the generated script):
+  ```bash
+  # Rewrite host path prefixes in hook commands: anything before "/.claude/" is replaced
+  # with the container's \$HOME so foreign hooks (e.g. LSP enforcement kit) installed
+  # under ~/.claude/hooks/ still resolve inside the container. install-hooks.sh will
+  # separately dedup-merge tmux-conductor's own entries below.
+  if [[ -f "\$HOME/.claude/settings.json" ]]; then
+    jq --arg home "\$HOME" '
+      if .hooks then
+        .hooks |= with_entries(
+          .value |= map(
+            .hooks |= map(
+              if (.command // "") | test("/\\\\.claude/") then
+                .command |= sub("^.*/\\\\.claude/"; \$home + "/.claude/")
+              else . end
+            )
+          )
+        )
+      else . end
+    ' "\$HOME/.claude/settings.json" > /tmp/settings-rehomed.json \\
+      && mv /tmp/settings-rehomed.json "\$HOME/.claude/settings.json"
+  fi
+  ```
+  Double-backslashes in `test("/\\\\.claude/")` / `sub("^.*/\\\\.claude/"; ...)` are because the heredoc is non-quoted (`<<EOF`), so `\\` in the source becomes `\` in the generated script, which jq then sees as the single literal `\.` regex escape.
+
+- [ ] Apply the same fix to this repo's own `.devcontainer/init-claude-config.sh` (it's a copy of the scaffold template, not a heredoc). Insert an unescaped version between the existing `.hasCompletedOnboarding` jq call (line 35) and the `/conductor-hooks/install-hooks.sh` call (line 45):
+  ```bash
+  if [[ -f "$HOME/.claude/settings.json" ]]; then
+    jq --arg home "$HOME" '
+      if .hooks then
+        .hooks |= with_entries(
+          .value |= map(
+            .hooks |= map(
+              if (.command // "") | test("/\\.claude/") then
+                .command |= sub("^.*/\\.claude/"; $home + "/.claude/")
+              else . end
+            )
+          )
+        )
+      else . end
+    ' "$HOME/.claude/settings.json" > /tmp/settings-rehomed.json \
+      && mv /tmp/settings-rehomed.json "$HOME/.claude/settings.json"
+  fi
+  ```
+
+- [ ] Update the comment block above the `install-hooks.sh` call in both files to note that hook command prefixes are rewritten to the container's `$HOME` first, so foreign hooks (e.g. LSP enforcement) keep working alongside tmux-conductor's dedup-merged entries.
+
+- [ ] Verification sub-step: on a scratch settings file seeded with `{"hooks":{"SessionStart":[{"matcher":"startup","hooks":[{"type":"command","command":"/Users/fake/.claude/hooks/foreign/hook.sh"}]}]}}`, run the jq pass manually with `HOME=/home/conductor`; confirm the resulting command is `/home/conductor/.claude/hooks/foreign/hook.sh` and the foreign entry is not dropped.
+
+### 7. Verify end-to-end in a fresh container  <!-- manual: user will run these steps -->
+
+User will test this step manually — do not attempt automated execution.
+
+- [ ] Remove the init sentinel (`rm -f ~/.claude/.conductor-initialized` inside the container, or rebuild from scratch) and re-run `docker compose -f conductor-compose.yml up -d --build --force-recreate` for a scaffolded project.
+- [ ] Launch `claude` inside the container, submit a prompt; confirm no `SessionStart` / `UserPromptSubmit` / `Stop` hook errors appear in the TUI.
+- [ ] Inspect the container's `~/.claude/settings.json`: every entry under `.hooks.SessionStart[*].hooks[*].command`, `.hooks.UserPromptSubmit[*].hooks[*].command`, `.hooks.Stop[*].hooks[*].command`, `.hooks.StopFailure[*].hooks[*].command` must start with `/home/conductor/.claude/hooks/tmux-conductor/`. No `/Users/...` paths may remain.
+- [ ] Repeat on this repo's own devcontainer (`.devcontainer/init-claude-config.sh`) to confirm the duplicated fix works there too.
+
+---
+**UAT**: [`.docs/uat/skipped/010-hooks-global-install.uat.md`](../../uat/skipped/010-hooks-global-install.uat.md) *(skipped)*
