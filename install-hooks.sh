@@ -81,6 +81,18 @@ mkdir -p "$INSTALL_DIR/lib"
 cp "$HOOK_DIR/lib/write-state.js" "$INSTALL_DIR/lib/write-state.js"
 
 # ---------------------------------------------------------------------------
+# Ensure every hook script under ~/.claude/hooks/ is executable
+# ---------------------------------------------------------------------------
+# Foreign hooks (e.g. serena-bash-grep-block.js) dropped in by other tools or
+# rsynced from a host may lack +x, which makes Claude Code fail the hook with
+# "Permission denied". We own the hooks directory at install time, so fix the
+# whole tree — not just the files we copied.
+HOOKS_ROOT="$(dirname "$INSTALL_DIR")"
+if [ -d "$HOOKS_ROOT" ]; then
+  find "$HOOKS_ROOT" -type f \( -name '*.js' -o -name '*.sh' \) -exec chmod +x {} +
+fi
+
+# ---------------------------------------------------------------------------
 # Ensure the settings directory and file exist
 # ---------------------------------------------------------------------------
 # jq requires valid JSON input, so on a fresh machine we seed an empty object.
