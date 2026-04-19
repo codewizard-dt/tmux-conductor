@@ -61,7 +61,9 @@ def register($event; $new_cmd):
     }];
 
 # Pipeline: register each of the four events in turn.
-register_with_matcher("SessionStart"; "startup|resume|clear"; $install_dir + "/on-session-start.js")
-| register("UserPromptSubmit"; $install_dir + "/on-prompt-submit.js")
-| register("Stop"; $install_dir + "/on-stop.js")
-| register("StopFailure"; $install_dir + "/on-stop-failure.js")
+# $install_dir_cmd uses ~ so registered commands are portable across users/machines.
+# $install_dir (absolute) is used only for the stale-entry startswith check above.
+register_with_matcher("SessionStart"; "startup|resume|clear"; $install_dir_cmd + "/on-session-start.js")
+| register("UserPromptSubmit"; $install_dir_cmd + "/on-prompt-submit.js")
+| register("Stop"; $install_dir_cmd + "/on-stop.js")
+| register("StopFailure"; $install_dir_cmd + "/on-stop-failure.js")

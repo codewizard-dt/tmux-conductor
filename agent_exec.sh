@@ -42,12 +42,14 @@ case "$MODE" in
       -e ANTHROPIC_AUTH_TOKEN= \
       -e CONDUCTOR_AGENT_NAME \
       -e CONDUCTOR_STATE_DIR=/conductor-state \
+      -e CONDUCTOR_LOG_DIR=/conductor-logs \
       "$TARGET" "$@"
     ;;
   docker)
     exec docker exec -i \
       -e CONDUCTOR_AGENT_NAME \
       -e CONDUCTOR_STATE_DIR=/conductor-state \
+      -e CONDUCTOR_LOG_DIR=/conductor-logs \
       "$TARGET" "$@"
     ;;
   *)

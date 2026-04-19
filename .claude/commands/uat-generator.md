@@ -269,7 +269,19 @@ When generating tests, ensure:
    - **Use single quotes around the URL and `-d` payload** so the shell doesn't try to interpolate `$` or backticks. If the payload itself contains a literal single quote, switch the outer quoting to double quotes and escape as needed — but prefer payloads without embedded single quotes.
    - **Inline the payload on `-d`** with valid JSON. Do not use heredocs, temp files, or `@file.json` references — the test must run from a fresh shell with no setup.
    - **Hardcode realistic example values.** Do not use shell variables (`$TOKEN`, `$ID`) unless the test explicitly documents how to obtain them in a Prerequisites step. If a test depends on an ID created by an earlier test, write the example with a clear placeholder like `<id-from-UAT-API-001>` and instruct the operator to substitute it.
-   - **Auth tokens / cookies**: if the endpoint requires auth, either (a) include a `-H 'Authorization: Bearer <token>'` placeholder with a Prerequisites step explaining how to obtain the token, or (b) use `-b cookies.txt` only if a prior test in the file populates that cookie jar. Never assume an undocumented auth state.
+   - **Auth tokens / cookies**: if the endpoint requires auth, either (a) include a `-H "Authorization: Bearer $UAT_AUTH_TOKEN"` reference (double quotes so the shell expands the env var) and mark the test with the Auth Metadata fields below, or (b) use `-b cookies.txt` only if a prior test in the file populates that cookie jar. Never assume an undocumented auth state. Never write a literal token into the file.
+
+   **Auth Metadata** (required for every auth-gated test):
+
+   - Every auth-gated test must include metadata fields immediately under its header:
+     ```
+     Auth-Required: true
+     Auth-Role: user   # or "guest"
+     ```
+   - These signal `/uat-auto` Step 2.5 to invoke `/uat-auth` before running the test, which populates `$UAT_AUTH_TOKEN` in the test environment.
+   - The Prerequisites section of the generated UAT file must include: `- Auth handled automatically by /uat-auth (invoked by /uat-auto on demand)`
+
+   **No literal credentials**: Never write literal credentials (email, password, token) into a generated UAT file. Use `$UAT_AUTH_TOKEN` for bearer tokens and omit password fields entirely — signup/login is `/uat-auth`'s responsibility.
    - **No line continuations** (`\` at end of line) unless the command genuinely exceeds ~200 chars. Long single-line commands are easier to copy-paste than multi-line ones.
    - **The command must run successfully against a freshly-started dev server with documented prerequisites met.** If you cannot construct such a command, you do not understand the contract well enough yet — return to Step 2.3.
 
@@ -426,7 +438,7 @@ Given task `.docs/tasks/active/5-positions.md`, the generated UAT at `.docs/uat/
   1. Run the curl command below as-is
 - **Command**:
   ```bash
-  curl -sS -X POST 'http://localhost:8000/api/v1/positions' -H 'Content-Type: application/json' -H 'Authorization: Bearer <token>' -d '{"symbol":"BTC/USD","size":0.5,"entry_price":50000}'
+  curl -sS -X POST 'http://localhost:8000/api/v1/positions' -H 'Content-Type: application/json' -H "Authorization: Bearer $UAT_AUTH_TOKEN" -d '{"symbol":"BTC/USD","size":0.5,"entry_price":50000}'
   ```
 - **Expected Result**: `201 Created` with `{"id":"<uuid>","symbol":"BTC/USD","size":0.5,"entry_price":50000,"current_price":<number>,"pnl":<number>,"created_at":"<iso>","updated_at":"<iso>"}`
 - [ ] Pass
@@ -438,7 +450,7 @@ Given task `.docs/tasks/active/5-positions.md`, the generated UAT at `.docs/uat/
   1. Run the curl command below as-is
 - **Command**:
   ```bash
-  curl -sS -X GET 'http://localhost:8000/api/v1/positions' -H 'Authorization: Bearer <token>'
+  curl -sS -X GET 'http://localhost:8000/api/v1/positions' -H "Authorization: Bearer $UAT_AUTH_TOKEN"
   ```
 - **Expected Result**: `200 OK` with array of position objects, each containing `id`, `symbol`, `size`, `entry_price`, `current_price`, `pnl`. Array includes the position created in UAT-API-001.
 - [ ] Pass

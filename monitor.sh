@@ -6,6 +6,16 @@ source "$SCRIPT_DIR/conductor.conf"
 
 LOG_FILE="$LOG_DIR/monitor-$(date +%Y%m%d-%H%M%S).log"
 PAUSED_FILE="$LOG_DIR/.paused"
+DISPATCH_LOG="$LOG_DIR/dispatch.jsonl"
+
+# Globals set by is_idle() to expose detection context
+LAST_DETECTION=""
+LAST_STATE_VALUE=""
+LAST_STATE_AGE=""
+
+# Globals set by pop_task() to expose queue metadata
+LAST_QUEUE_KIND=""
+LAST_QUEUE_REMAINING=""
 
 log() { echo "[$(date +%H:%M:%S)] $*" | tee -a "$LOG_FILE"; }
 debug() { [ "${DEBUG:-0}" != "0" ] && echo "[$(date +%H:%M:%S)] DEBUG: $*" | tee -a "$LOG_FILE" || true; }
@@ -21,6 +31,8 @@ done
 
 pop_task() {
   local agent_name="$1"
+  LAST_QUEUE_KIND=""
+  LAST_QUEUE_REMAINING=""
   debug "pop_task: checking queue for agent '$agent_name' (queue=$TASK_QUEUE)"
   if [ ! -f "$TASK_QUEUE" ]; then
     debug "pop_task: queue file does not exist"
@@ -68,9 +80,16 @@ pop_task() {
   fi
 
   debug "pop_task: matched $match_kind line $match_line -> '$match_cmd'"
+  LAST_QUEUE_KIND="$match_kind"
   echo "$match_cmd"
   sed -i.bak "${match_line}d" "$TASK_QUEUE" && rm -f "${TASK_QUEUE}.bak"
   debug "pop_task: removed line $match_line from queue"
+  # Count remaining lines after removal
+  if [ -f "$TASK_QUEUE" ]; then
+    LAST_QUEUE_REMAINING=$(wc -l < "$TASK_QUEUE" | tr -d ' ')
+  else
+    LAST_QUEUE_REMAINING=0
+  fi
   return 0
 }
 
@@ -78,6 +97,11 @@ is_idle() {
   local target="$1"
   local name="${2:-}"
   local state_file="${STATE_DIR}/${name}.state"
+
+  # Reset detection globals
+  LAST_DETECTION=""
+  LAST_STATE_VALUE=""
+  LAST_STATE_AGE=""
 
   # Primary: hook-written state file, if fresh
   if [ -n "$name" ] && [ -f "$state_file" ]; then
@@ -92,9 +116,22 @@ is_idle() {
       debug "is_idle: target=$target state-file=$state (age=${age}s)"
       # 'busy' is written by monitor.sh itself (mark_busy) immediately after send-keys to close the race between dispatch and the UserPromptSubmit hook fire. The hook overwrites it to 'busy' (same value) within milliseconds under normal conditions, so the placeholder is indistinguishable from the hook-written value.
       case "$state" in
-        idle) return 0 ;;
-        busy) return 1 ;;
-        *) ;;  # unknown contents — fall through to regex
+        idle)
+          LAST_DETECTION="state-file"
+          LAST_STATE_VALUE="idle"
+          LAST_STATE_AGE="$age"
+          return 0
+          ;;
+        busy)
+          LAST_DETECTION="state-file"
+          LAST_STATE_VALUE="busy"
+          LAST_STATE_AGE="$age"
+          return 1
+          ;;
+        *)
+          # unknown contents — record raw value, fall through to regex
+          LAST_STATE_VALUE="$state"
+          ;;
       esac
     else
       debug "is_idle: target=$target state-file stale (age=${age}s > ${max_age}s), falling back to regex"
@@ -102,6 +139,7 @@ is_idle() {
   fi
 
   # Fallback: footer regex
+  LAST_DETECTION="regex"
   local last_lines
   last_lines=$(tmux capture-pane -t "$target" -p | grep -v '^[[:space:]]*$' | tail -5 || true)
   if printf '%s\n' "$last_lines" | grep -qE "$IDLE_PATTERN"; then
@@ -147,6 +185,63 @@ dispatch() {
   "$SCRIPT_DIR/dispatch.sh" "$target" "$cmd" 2>&1 | tee -a "$LOG_FILE"
 }
 
+# Capture last 10 non-blank lines of a pane as a JSON array of strings
+pane_tail_json() {
+  local target="$1"
+  local lines
+  lines=$(tmux capture-pane -t "$target" -p 2>/dev/null | grep -v '^[[:space:]]*$' | tail -10 || true)
+  python3 -c "
+import sys, json
+lines = sys.stdin.read().splitlines()
+print(json.dumps(lines))
+" <<< "$lines"
+}
+
+# Append one JSONL record to $DISPATCH_LOG
+# Usage: emit_dispatch_jsonl <agent> <command> <queue_kind> <queue_remaining> <target>
+emit_dispatch_jsonl() {
+  local agent="$1"
+  local command="$2"
+  local queue_kind="$3"
+  local queue_remaining="$4"
+  local target="$5"
+
+  local ts state_val state_age_json queue_remaining_json pane_tail
+  ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+
+  # state_age_s: null if empty, else integer
+  if [ -n "$LAST_STATE_AGE" ]; then
+    state_age_json="$LAST_STATE_AGE"
+  else
+    state_age_json="null"
+  fi
+
+  # queue_remaining: null if empty, else integer
+  if [ -n "$queue_remaining" ]; then
+    queue_remaining_json="$queue_remaining"
+  else
+    queue_remaining_json="null"
+  fi
+
+  pane_tail=$(pane_tail_json "$target" 2>/dev/null || echo "[]")
+
+  python3 -c "
+import sys, json
+data = {
+    'ts': sys.argv[1],
+    'agent': sys.argv[2],
+    'command': sys.argv[3],
+    'state': sys.argv[4] if sys.argv[4] else None,
+    'state_age_s': int(sys.argv[5]) if sys.argv[5] != 'null' else None,
+    'detection': sys.argv[6] if sys.argv[6] else None,
+    'queue': sys.argv[7],
+    'queue_remaining': int(sys.argv[8]) if sys.argv[8] != 'null' else None,
+    'pane_tail': json.loads(sys.argv[9]),
+}
+print(json.dumps(data, separators=(',', ':')))
+" "$ts" "$agent" "$command" "${LAST_STATE_VALUE:-}" "$state_age_json" "${LAST_DETECTION:-}" "$queue_kind" "$queue_remaining_json" "$pane_tail" >> "$DISPATCH_LOG" 2>/dev/null || true
+}
+
 log "Monitor started. Watching ${#AGENT_NAMES[@]} agents. Poll interval: ${POLL_INTERVAL}s"
 log "Idle pattern: $IDLE_PATTERN"
 log "Usage check: $USAGE_CHECK_CMD"
@@ -180,7 +275,7 @@ while true; do
     fi
 
     if is_idle "$target" "$name"; then
-      log "$name — idle detected"
+      log "$name — idle detected (detection=$LAST_DETECTION state=${LAST_STATE_VALUE:-n/a} age=${LAST_STATE_AGE:-n/a}s)"
 
       # Check usage before dispatching
       if ! check_usage; then
@@ -191,15 +286,18 @@ while true; do
 
       # Pop next task or use default command
       if task=$(pop_task "$name"); then
-        log "$name — dispatching task: $task"
+        log "$name — dispatching task [queue=$LAST_QUEUE_KIND remaining=$LAST_QUEUE_REMAINING detection=$LAST_DETECTION]: $task"
+        emit_dispatch_jsonl "$name" "$task" "$LAST_QUEUE_KIND" "$LAST_QUEUE_REMAINING" "$target"
         mark_busy "$name"
         dispatch "$target" "$task"
       elif [ -n "${TASK_CMD:-}" ]; then
-        log "$name — queue empty, sending default: $TASK_CMD"
+        log "$name — dispatching default [queue=default detection=$LAST_DETECTION]: $TASK_CMD"
+        emit_dispatch_jsonl "$name" "$TASK_CMD" "default" "" "$target"
         mark_busy "$name"
         dispatch "$target" "$TASK_CMD"
       else
         log "$name — queue empty, no default command. Agent stays idle."
+        emit_dispatch_jsonl "$name" "" "none" "" "$target"
       fi
     else
       all_idle=false

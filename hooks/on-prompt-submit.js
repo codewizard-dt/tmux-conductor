@@ -1,2 +1,2 @@
 #!/usr/bin/env node
-require('./lib/write-state').writeState('busy');
+require('./lib/write-state').writeState('busy', 'prompt-submit');

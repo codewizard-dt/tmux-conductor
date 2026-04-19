@@ -20,6 +20,7 @@ AGENT_NAME=""
 # so the generated compose file bakes absolute paths for hook + state mounts.
 CONDUCTOR_REPO="$(cd "$(dirname "$0")" && pwd)"
 CONDUCTOR_STATE_DIR_DEFAULT="${CONDUCTOR_REPO}/logs/state"
+CONDUCTOR_LOG_DIR_DEFAULT="${CONDUCTOR_REPO}/logs"
 
 # ── Usage ─────────────────────────────────────────────────────────────
 usage() {
@@ -241,9 +242,10 @@ fi
 
 # ── Generate conductor-compose.yml ────────────────────────────────────
 if should_write "$COMPOSE_FILE"; then
-  # Ensure the state dir exists on the host before compose tries to bind-mount it
-  # (otherwise Docker creates it as root-owned).
+  # Ensure the state and log dirs exist on the host before compose tries to bind-mount them
+  # (otherwise Docker creates them as root-owned).
   mkdir -p "${CONDUCTOR_STATE_DIR_DEFAULT}"
+  mkdir -p "${CONDUCTOR_LOG_DIR_DEFAULT}"
 
   cat > "$COMPOSE_FILE" <<EOF
 services:
@@ -260,11 +262,13 @@ services:
       - \${HOME}/.claude.json:/host-claude-config/.claude.json:ro
       - ${CONDUCTOR_REPO}:/conductor-repo:ro
       - ${CONDUCTOR_STATE_DIR_DEFAULT}:/conductor-state
+      - ${CONDUCTOR_LOG_DIR_DEFAULT}:/conductor-logs
     working_dir: /workspaces/${DIRNAME}
     env_file:
       - \${HOME}/.conductor_env
     environment:
       - CONDUCTOR_STATE_DIR=/conductor-state
+      - CONDUCTOR_LOG_DIR=/conductor-logs
       - CONDUCTOR_AGENT_NAME=${AGENT_NAME}
       - PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
       - PUPPETEER_SKIP_DOWNLOAD=true
@@ -297,6 +301,7 @@ echo "  Service:     $SERVICE"
 echo "  Agent name:  $AGENT_NAME"
 echo "  Repo mount:  $CONDUCTOR_REPO -> /conductor-repo (ro)"
 echo "  State dir:   $CONDUCTOR_STATE_DIR_DEFAULT -> /conductor-state"
+echo "  Log dir:     $CONDUCTOR_LOG_DIR_DEFAULT -> /conductor-logs"
 echo ""
 echo "Next steps:"
 echo "  Base image: $IMAGE"

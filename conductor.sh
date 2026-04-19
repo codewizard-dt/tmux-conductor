@@ -5,6 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/conductor.conf"
 
 mkdir -p "$LOG_DIR"
+export CONDUCTOR_LOG_DIR="$LOG_DIR"
 
 echo "=== tmux Conductor ==="
 echo "Session:  $SESSION_NAME"

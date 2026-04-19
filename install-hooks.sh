@@ -119,7 +119,8 @@ mkdir -p "$(dirname "$SETTINGS_FILE")"
 # if jq errors out, the original settings.json is left intact.
 JQ_PROGRAM="$(cd "$(dirname "$0")" && pwd)/hooks/register-hooks.jq"
 TMP_FILE="$(mktemp)"
-jq --arg install_dir "$INSTALL_DIR" -f "$JQ_PROGRAM" "$SETTINGS_FILE" > "$TMP_FILE"
+INSTALL_DIR_CMD="${INSTALL_DIR/#$HOME/\~}"
+jq --arg install_dir "$INSTALL_DIR" --arg install_dir_cmd "$INSTALL_DIR_CMD" -f "$JQ_PROGRAM" "$SETTINGS_FILE" > "$TMP_FILE"
 
 # Atomic swap — only reached if jq exited 0 (set -e above).
 mv "$TMP_FILE" "$SETTINGS_FILE"

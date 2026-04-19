@@ -32,6 +32,8 @@ tmux-conductor is a vendor-agnostic system for orchestrating multiple AI coding 
 | `hooks/on-stop.js` | Claude Code hook (Node.js) — writes `idle` to `$STATE_DIR/<agent>.state` on Stop |
 | `hooks/on-stop-failure.js` | Claude Code hook (Node.js) — writes `idle` to `$STATE_DIR/<agent>.state` on StopFailure (API error) |
 | `install-hooks.sh` (repo root) | Copies JS hook scripts plus `hooks/lib/write-state.js` into `~/.claude/hooks/tmux-conductor/` and merge-registers them in `~/.claude/settings.json` with dedup-by-command (preserves foreign hook entries; also prunes stale `.sh` registrations from prior installs) |
+| `$LOG_DIR/dispatch.jsonl` | Verbose dispatch log (host). One JSONL record per dispatch: `ts`, `agent`, `command`, `state`, `state_age_s`, `detection`, `queue`, `queue_remaining`, `pane_tail` |
+| `$CONDUCTOR_LOG_DIR/hooks.jsonl` | Hook transition log (container). One JSONL record per hook event: `ts`, `agent`, `event`, `prev_state`, `new_state` |
 
 ### Key Design Decisions
 
@@ -44,6 +46,7 @@ tmux-conductor is a vendor-agnostic system for orchestrating multiple AI coding 
 - Usage monitoring runs before every dispatch; when all agents hit limits, auto-teardown triggers
 - Task queue supports agent-scoped entries via `agentname: command` prefix — `pop_task()` matches scoped lines first, then falls back to unscoped (global) lines
 - Base image `ghcr.io/codewizard-dt/tmux-conductor-base` is rebuilt weekly (`.github/workflows/base-image.yml`) from `debian:bookworm-slim` with Chromium, Claude Code CLI, and uv preinstalled — every scaffolded project inherits fresh deps without paying the ~4 min install cost per project. Override with `scaffold.sh --image <other>`.
+- Verbose dispatch logging is enabled by default. On the host, `monitor.sh` appends one JSONL record to `$LOG_DIR/dispatch.jsonl` for every dispatch (fields: `ts`, `agent`, `command`, `state`, `state_age_s`, `detection`, `queue`, `queue_remaining`, `pane_tail`). Inside a container, the hook scripts (`on-stop.js`, etc.) append one JSONL record to `$CONDUCTOR_LOG_DIR/hooks.jsonl` for every state transition (fields: `ts`, `agent`, `event`, `prev_state`, `new_state`). Both paths are configurable: `LOG_DIR` in `conductor.conf` (host) and `CONDUCTOR_LOG_DIR` env var (container, set in `conductor-compose.yml` or the devcontainer env).
 
 ## Prerequisites
 

@@ -152,5 +152,3 @@ Suggest concrete next steps:
 3) **Use Serena for code**: Do NOT use Read, Grep, or Glob on code files
 4) **Maximum 3 sub-processes at a time** if delegating research steps
 5) **ALWAYS terminate processes when done**
-6) **Every delegated sub-agent prompt MUST include this MCP mandate:**
-   > "Use MCP Serena for all code exploration and editing, and for all file/directory exploration of any type. Standard `Read`/`Edit`/`Write` are permitted for markdown and config files only. Never use `bash` `ls`/`cat`/`find`/`grep`/`sed`. See `.docs/guides/mcp-tools.md` for the full tool reference."

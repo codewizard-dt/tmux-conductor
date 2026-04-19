@@ -22,16 +22,27 @@ Parse `$ARGUMENTS` to locate the task file:
 
 1. **If a file path is provided** (e.g., `.docs/tasks/active/3-user-auth.md`):
    - Confirm the file exists (use Serena `find_file` or `list_dir`)
-   - If the file does not exist, STOP and report the error
+   - If the file does not exist, fall through to case 4
 
 2. **If a number-slug is provided** (e.g., `3-user-auth`):
    - Search `.docs/tasks/active/` for `<number-slug>.md`
-   - If not found, STOP and report the error
+   - If not found, fall through to case 4
 
 3. **If only a description or number is provided** (e.g., `user auth` or `3`):
    - Search `.docs/tasks/active/` for a matching task file
    - If ambiguous, list matches and ask the user to clarify
-   - If no match found, STOP and report the error
+   - If no match found, fall through to case 4
+
+4. **If `$ARGUMENTS` is empty OR the input above did not resolve to a task file** — auto-pick the most important active task:
+   - Use `mcp__serena__list_dir` on `.docs/tasks/active/` to enumerate all `*.md` task files (exclude `README.md`)
+   - If no active tasks exist, STOP and report "No active tasks to tackle"
+   - Read each candidate task file (use `Read` — these are markdown) to assess its `## Objective`, overall checkbox progress, and any blocking/failure markers
+   - Pick the next task using this priority order (highest first):
+     1. **In-progress tasks** — any task with at least one `[x]` checkbox but not all complete (continue existing work before starting new)
+     2. **Unblock-able tasks** — tasks with `[BLOCKED: ...]` or `[FAILED: ...]` markers whose blocker is plausibly resolvable now (skip if the blocker is clearly still outstanding)
+     3. **Lowest-numbered fully-pending task** — as the stable tiebreaker, the task with the lowest `<NNN>` prefix whose checkboxes are all `[ ]`
+   - Before beginning, announce the auto-pick to the user in one line: `No matching task — tackling \`<NNN>-<slug>.md\` (<reason>, <X>/<Y> steps complete)`. Do not prompt for confirmation; proceed.
+   - If `$ARGUMENTS` was non-empty but unresolved, prefix the announcement with `Input \`<arguments>\` did not match — ` so the user sees why auto-pick fired.
 
 Use the resolved file path as the outline for all subsequent steps.
 
