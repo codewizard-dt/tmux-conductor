@@ -22,7 +22,7 @@
   1. Run the command below from the repo root
 - **Command**:
   ```bash
-  bash -n monitor.sh conductor.sh scaffold.sh agent_exec.sh && node --check hooks/lib/write-state.js hooks/on-session-start.js hooks/on-prompt-submit.js hooks/on-stop.js hooks/on-stop-failure.js && echo "All syntax checks passed"
+  bash -n scripts/monitor.sh scripts/conductor.sh scripts/scaffold.sh scripts/agent_exec.sh && node --check hooks/lib/write-state.js hooks/on-session-start.js hooks/on-prompt-submit.js hooks/on-stop.js hooks/on-stop-failure.js && echo "All syntax checks passed"
   ```
 - **Expected Result**: Prints `All syntax checks passed` with no errors or warnings
 - [x] Pass <!-- 2026-04-19 -->
@@ -33,7 +33,7 @@
   1. Run the command below
 - **Command**:
   ```bash
-  grep -n 'LAST_DETECTION=\|LAST_STATE_VALUE=\|LAST_STATE_AGE=\|LAST_QUEUE_KIND=\|LAST_QUEUE_REMAINING=\|DISPATCH_LOG=' monitor.sh
+  grep -n 'LAST_DETECTION=\|LAST_STATE_VALUE=\|LAST_STATE_AGE=\|LAST_QUEUE_KIND=\|LAST_QUEUE_REMAINING=\|DISPATCH_LOG=' scripts/monitor.sh
   ```
 - **Expected Result**: At least 6 matching lines — one initialisation per variable. `DISPATCH_LOG` must reference `$LOG_DIR/dispatch.jsonl`
 - [x] Pass <!-- 2026-04-19 -->
@@ -44,7 +44,7 @@
   1. Run the command below
 - **Command**:
   ```bash
-  grep -n 'detection=\$LAST_DETECTION' monitor.sh
+  grep -n 'detection=\$LAST_DETECTION' scripts/monitor.sh
   ```
 - **Expected Result**: Exactly 3 matching lines — one for idle-detected, one for task-dispatch, one for default-dispatch
 - [x] Pass <!-- 2026-04-19 -->
@@ -55,7 +55,7 @@
   1. Run the command below to print line numbers of both symbols
 - **Command**:
   ```bash
-  grep -n 'emit_dispatch_jsonl\|mark_busy' monitor.sh
+  grep -n 'emit_dispatch_jsonl\|mark_busy' scripts/monitor.sh
   ```
 - **Expected Result**: For every pair of consecutive `emit_dispatch_jsonl` / `mark_busy` lines, the `emit_dispatch_jsonl` line number is lower (comes first)
 - [x] Pass <!-- 2026-04-19 -->
@@ -66,7 +66,7 @@
   1. Run the command below
 - **Command**:
   ```bash
-  grep -n 'export CONDUCTOR_LOG_DIR' conductor.sh
+  grep -n 'export CONDUCTOR_LOG_DIR' scripts/conductor.sh
   ```
 - **Expected Result**: At least one line matching `export CONDUCTOR_LOG_DIR="$LOG_DIR"` (or similar assignment)
 - [x] Pass <!-- 2026-04-19 -->
@@ -77,7 +77,7 @@
   1. Run the command below
 - **Command**:
   ```bash
-  grep -n 'CONDUCTOR_LOG_DIR' scaffold.sh
+  grep -n 'CONDUCTOR_LOG_DIR' scripts/scaffold.sh
   ```
 - **Expected Result**: At least two matching lines — one for the environment variable (`CONDUCTOR_LOG_DIR=/conductor-logs`) and one for the volume bind or default path variable
 - [x] Pass <!-- 2026-04-19 -->
@@ -88,7 +88,7 @@
   1. Run the command below
 - **Command**:
   ```bash
-  grep -n 'CONDUCTOR_LOG_DIR' agent_exec.sh
+  grep -n 'CONDUCTOR_LOG_DIR' scripts/agent_exec.sh
   ```
 - **Expected Result**: Two or more matching lines — one per exec branch (compose and docker)
 - [x] Pass <!-- 2026-04-19 -->
@@ -179,7 +179,7 @@ These tests require a live tmux session. The full integration verification is ma
 ### UAT-INT-001: dispatch.jsonl written with all required fields
 - **Description**: After dispatching a task via monitor.sh, `$LOG_DIR/dispatch.jsonl` must contain a valid JSON record with all nine fields
 - **Steps**:
-  1. Start a conductor session: `./conductor.sh`
+  1. Start a conductor session: `./scripts/conductor.sh`
   2. Wait for the agent to reach idle state (state file contains `idle`)
   3. Add a global task to the queue file (e.g. `echo 'echo hello' >> tasks.txt`)
   4. Wait for monitor to dispatch the task (one poll cycle)
@@ -219,7 +219,7 @@ These tests require a live tmux session. The full integration verification is ma
 ### UAT-INT-004: Tear down cleanly and verify no stray processes
 - **Description**: After the session, teardown should complete without orphaned processes
 - **Steps**:
-  1. Run teardown: `./teardown.sh`
+  1. Run teardown: `./scripts/teardown.sh`
   2. Verify the tmux session is gone
   3. Verify log files persist and are readable
 - **Command**:

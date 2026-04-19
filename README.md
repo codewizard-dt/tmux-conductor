@@ -52,7 +52,7 @@ When the queue is empty, agents receive `TASK_CMD` (default: `/tackle`) instead.
 ### 4. Launch the conductor
 
 ```bash
-./conductor.sh
+./scripts/conductor.sh
 ```
 
 This will:
@@ -64,7 +64,7 @@ This will:
 If you prefer all agents in a single window with split panes:
 
 ```bash
-./spawn.sh
+./scripts/spawn.sh
 ```
 
 ### 5. Monitor and interact
@@ -79,10 +79,10 @@ Once running, the monitor automatically:
 
 ```bash
 # Send a command to a specific agent
-./dispatch.sh conductor:backend "Review the error handling in auth.py"
+./scripts/dispatch.sh conductor:backend "Review the error handling in auth.py"
 
 # Send a command to all agents
-./broadcast.sh "/clear"
+./scripts/broadcast.sh "/clear"
 
 # Pause the monitor (create a flag file)
 touch .paused
@@ -94,7 +94,7 @@ rm .paused
 ### 6. Shut down
 
 ```bash
-./teardown.sh
+./scripts/teardown.sh
 ```
 
 This sends `/exit` to each agent, waits 10 seconds for graceful shutdown, then kills the tmux session.
@@ -106,7 +106,7 @@ To run agents inside Docker containers instead of directly on the host:
 ### 1. Scaffold the target project
 
 ```bash
-./scaffold.sh /path/to/your/project
+./scripts/scaffold.sh /path/to/your/project
 ```
 
 This generates:
@@ -117,7 +117,7 @@ This generates:
 
 Options:
 ```bash
-./scaffold.sh /path/to/project --image node:20 --service myapp --force
+./scripts/scaffold.sh /path/to/project --image node:20 --service myapp --force
 ```
 
 ### 2. Start the container
@@ -140,7 +140,7 @@ COMPOSE_SERVICE="app"
 ### 4. Launch normally
 
 ```bash
-./conductor.sh
+./scripts/conductor.sh
 ```
 
 The conductor will automatically wrap agent launch commands with `agent_exec.sh` to exec into the container.
@@ -155,7 +155,7 @@ The default scaffolded Dockerfile extends `ghcr.io/codewizard-dt/tmux-conductor-
 
 This cuts per-project first-build from ~4 min to ~15–30s. The base image is rebuilt weekly (Mondays ~06:17 UTC) via `.github/workflows/base-image.yml` to pick up Chromium and apt security updates.
 
-Override at scaffold time with `./scaffold.sh /path/to/project --image <other>`. Forks can republish the base under their own GHCR namespace and update the default `IMAGE` in `scaffold.sh`.
+Override at scaffold time with `./scripts/scaffold.sh /path/to/project --image <other>`. Forks can republish the base under their own GHCR namespace and update the default `IMAGE` in `scripts/scaffold.sh`.
 
 ### Shared configuration & MCPs
 
@@ -217,14 +217,14 @@ All settings live in `conductor.conf`:
 
 | Script | Purpose |
 |--------|---------|
-| `conductor.sh` | Entry point — creates tmux session with separate windows per agent |
-| `spawn.sh` | Alternative entry point — split-pane layout in a single window |
-| `dispatch.sh` | Send a command to a specific agent pane |
-| `monitor.sh` | Main loop — idle detection, usage checks, task dispatch |
-| `broadcast.sh` | Send a command to all agent panes |
-| `teardown.sh` | Graceful shutdown |
-| `agent_exec.sh` | Container exec wrapper (compose/docker modes) |
-| `scaffold.sh` | Generate compose + devcontainer files for a target project |
+| `scripts/conductor.sh` | Entry point — creates tmux session with separate windows per agent |
+| `scripts/spawn.sh` | Alternative entry point — split-pane layout in a single window |
+| `scripts/dispatch.sh` | Send a command to a specific agent pane |
+| `scripts/monitor.sh` | Main loop — idle detection, usage checks, task dispatch |
+| `scripts/broadcast.sh` | Send a command to all agent panes |
+| `scripts/teardown.sh` | Graceful shutdown |
+| `scripts/agent_exec.sh` | Container exec wrapper (compose/docker modes) |
+| `scripts/scaffold.sh` | Generate compose + devcontainer files for a target project |
 | `hooks/on-session-start.js` | Claude Code hook (Node.js) — writes `idle` to agent state on SessionStart (matcher `startup|resume|clear`) |
 | `hooks/on-prompt-submit.js` | Claude Code hook (Node.js) — writes `busy` to agent state on UserPromptSubmit |
 | `hooks/on-stop.js` | Claude Code hook (Node.js) — writes `idle` to agent state on Stop |
@@ -235,7 +235,7 @@ All settings live in `conductor.conf`:
 ## How It Works
 
 ```
-conductor.sh / spawn.sh
+scripts/conductor.sh / scripts/spawn.sh
         |
         v
   ┌─────────────────────────────────┐
@@ -253,12 +253,12 @@ conductor.sh / spawn.sh
    └──────────┘    └──────────┘
 ```
 
-1. **Spawn**: `conductor.sh` creates a tmux session with one window per agent, plus a monitor window
-2. **Poll**: `monitor.sh` checks each agent's pane output every `POLL_INTERVAL` seconds
+1. **Spawn**: `scripts/conductor.sh` creates a tmux session with one window per agent, plus a monitor window
+2. **Poll**: `scripts/monitor.sh` checks each agent's pane output every `POLL_INTERVAL` seconds
 3. **Detect**: When an agent's last 5 lines match `IDLE_PATTERN`, it's considered idle
-4. **Dispatch**: The monitor pops the next task from `tasks.txt` and sends it via `dispatch.sh`
+4. **Dispatch**: The monitor pops the next task from `tasks.txt` and sends it via `scripts/dispatch.sh`
 5. **Repeat**: The cycle continues until the queue is empty and all agents are idle
-6. **Teardown**: Auto-triggers when all agents hit usage limits, or run `./teardown.sh` manually
+6. **Teardown**: Auto-triggers when all agents hit usage limits, or run `./scripts/teardown.sh` manually
 
 ## How idle detection works
 

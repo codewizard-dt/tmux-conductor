@@ -22,7 +22,7 @@
   1. From repo root, run the command below.
 - **Command**:
   ```bash
-  bash -n scaffold.sh
+  bash -n scripts/scaffold.sh
   ```
 - **Expected Result**: Exit code `0`, no output. Any parse error means the heredoc or `echo` block is malformed.
 - [ ] Pass
@@ -33,7 +33,7 @@
   1. From repo root, create the test dir and run the scaffold, then inspect the generated compose file.
 - **Command**:
   ```bash
-  mkdir -p ./tmp/scaffold-test && ./scaffold.sh ./tmp/scaffold-test && grep -A1 'extra_hosts:' ./tmp/scaffold-test/conductor-compose.yml
+  mkdir -p ./tmp/scaffold-test && ./scripts/scaffold.sh ./tmp/scaffold-test && grep -A1 'extra_hosts:' ./tmp/scaffold-test/conductor-compose.yml
   ```
 - **Expected Result**: `scaffold.sh` reports `Scaffold complete for: ./tmp/scaffold-test`. The `grep` output shows:
   ```
@@ -60,7 +60,7 @@
   1. Re-run the scaffold against the same test dir and filter for the new note.
 - **Command**:
   ```bash
-  ./scaffold.sh ./tmp/scaffold-test | grep -A3 'Host networking:'
+  ./scripts/scaffold.sh ./tmp/scaffold-test | grep -A3 'Host networking:'
   ```
 - **Expected Result**: Output contains exactly these lines (after the `Host networking:` header):
   ```

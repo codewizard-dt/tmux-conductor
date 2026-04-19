@@ -2,7 +2,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/conductor.conf"
+source "$SCRIPT_DIR/../conductor.conf"
 
 LOG_FILE="$LOG_DIR/monitor-$(date +%Y%m%d-%H%M%S).log"
 PAUSED_FILE="$LOG_DIR/.paused"

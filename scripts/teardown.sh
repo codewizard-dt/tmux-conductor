@@ -4,7 +4,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/conductor.conf"
+source "$SCRIPT_DIR/../conductor.conf"
 
 echo "=== tmux Conductor — Teardown ==="
 echo "Session: $SESSION_NAME"

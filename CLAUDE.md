@@ -17,6 +17,8 @@ tmux-conductor is a vendor-agnostic system for orchestrating multiple AI coding 
 
 ### Core Scripts
 
+All scripts below live in `scripts/` except `install-hooks.sh` (repo root).
+
 | Script | Purpose |
 |--------|---------|
 | `conductor.sh` | Entry point: creates tmux session, spawns agent windows, starts monitor |
@@ -27,6 +29,7 @@ tmux-conductor is a vendor-agnostic system for orchestrating multiple AI coding 
 | `teardown.sh` | Graceful shutdown: sends `/exit` to each agent, waits, kills session |
 | `agent_exec.sh` | Host-side container exec wrapper (compose/docker modes) |
 | `scaffold.sh` | Generates `conductor-compose.yml` + `.devcontainer/devcontainer.json` for a target project; defaults to `ghcr.io/codewizard-dt/tmux-conductor-base:latest` (override with `--image`) |
+| `scripts/add-task.sh` | Appends a scoped task entry to `tasks.txt` using the caller's CWD name as agent name |
 | `hooks/on-session-start.js` | Claude Code hook (Node.js) — writes `idle` to `$STATE_DIR/<agent>.state` on SessionStart (matcher `startup|resume|clear`) |
 | `hooks/on-prompt-submit.js` | Claude Code hook (Node.js) — writes `busy` to `$STATE_DIR/<agent>.state` on UserPromptSubmit |
 | `hooks/on-stop.js` | Claude Code hook (Node.js) — writes `idle` to `$STATE_DIR/<agent>.state` on Stop |

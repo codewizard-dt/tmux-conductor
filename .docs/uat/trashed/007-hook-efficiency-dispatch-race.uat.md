@@ -23,7 +23,7 @@
   1. Run the command below from the repo root.
 - **Command**:
   ```bash
-  bash -n hooks/on-prompt-submit.sh hooks/on-stop.sh hooks/on-stop-failure.sh hooks/on-notification.sh hooks/install-hooks.sh monitor.sh scaffold.sh && echo ALL_PASS
+  bash -n hooks/on-prompt-submit.sh hooks/on-stop.sh hooks/on-stop-failure.sh hooks/on-notification.sh hooks/install-hooks.sh scripts/monitor.sh scripts/scaffold.sh && echo ALL_PASS
   ```
 - **Expected Result**: Output is exactly `ALL_PASS` with exit code 0. Any parse error names the offending script.
 - [ ] Pass
@@ -232,7 +232,7 @@
   2. Grep the init script for the install-hooks.sh invocation.
 - **Command (step 1 — scaffold)**:
   ```bash
-  mkdir -p ./tmp/uat-007-scaffold && bash scaffold.sh ./tmp/uat-007-scaffold --force > /dev/null && echo SCAFFOLD_OK
+  mkdir -p ./tmp/uat-007-scaffold && bash scripts/scaffold.sh ./tmp/uat-007-scaffold --force > /dev/null && echo SCAFFOLD_OK
   ```
 - **Expected Result**: `SCAFFOLD_OK`
 - [ ] Pass
