@@ -1,6 +1,6 @@
 # UAT: Refactor Hooks to Node.js
 
-> **Source task**: [`.docs/tasks/active/011-hooks-to-js.md`](../../tasks/active/011-hooks-to-js.md)
+> **Source task**: [`.docs/tasks/completed/011-hooks-to-js.md`](../../tasks/completed/011-hooks-to-js.md)
 > **Generated**: 2026-04-18
 
 Task 011 ports the four Claude Code per-event hooks from Bash to Node.js, extracts shared logic into `hooks/lib/write-state.js`, relocates the installer to the repo root, and archives the old Bash hooks under `hooks/.bash-backup/`. This UAT exercises the installer, the shared helper, and each per-event hook in isolation. No API or UI surface exists for this task — all tests are CLI/filesystem.

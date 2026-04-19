@@ -33,6 +33,7 @@ pop_task() {
   local agent_name="$1"
   LAST_QUEUE_KIND=""
   LAST_QUEUE_REMAINING=""
+  POPPED_TASK=""
   debug "pop_task: checking queue for agent '$agent_name' (queue=$TASK_QUEUE)"
   if [ ! -f "$TASK_QUEUE" ]; then
     debug "pop_task: queue file does not exist"
@@ -81,7 +82,7 @@ pop_task() {
 
   debug "pop_task: matched $match_kind line $match_line -> '$match_cmd'"
   LAST_QUEUE_KIND="$match_kind"
-  echo "$match_cmd"
+  POPPED_TASK="$match_cmd"
   sed -i.bak "${match_line}d" "$TASK_QUEUE" && rm -f "${TASK_QUEUE}.bak"
   debug "pop_task: removed line $match_line from queue"
   # Count remaining lines after removal
@@ -103,39 +104,46 @@ is_idle() {
   LAST_STATE_VALUE=""
   LAST_STATE_AGE=""
 
-  # Primary: hook-written state file, if fresh
+  # Primary: hook-written state file
   if [ -n "$name" ] && [ -f "$state_file" ]; then
-    local now mtime age max_age state
+    local now mtime age state
     now=$(date +%s)
     # macOS (BSD stat) vs Linux (GNU stat) compatibility
     mtime=$(stat -f %m "$state_file" 2>/dev/null || stat -c %Y "$state_file" 2>/dev/null || echo 0)
     age=$(( now - mtime ))
-    max_age=$(( POLL_INTERVAL * 2 ))
-    if [ "$age" -le "$max_age" ]; then
-      state=$(cat "$state_file" 2>/dev/null || echo "")
-      debug "is_idle: target=$target state-file=$state (age=${age}s)"
-      # 'busy' is written by monitor.sh itself (mark_busy) immediately after send-keys to close the race between dispatch and the UserPromptSubmit hook fire. The hook overwrites it to 'busy' (same value) within milliseconds under normal conditions, so the placeholder is indistinguishable from the hook-written value.
-      case "$state" in
-        idle)
+    # Strip carriage returns in case of CRLF line endings from Node.js on some platforms
+    state=$(tr -d '\r' < "$state_file" 2>/dev/null | head -1 | tr -d '\n' || echo "")
+    debug "is_idle: target=$target state-file='$state' (age=${age}s)"
+
+    case "$state" in
+      busy)
+        # Always trust busy — not subject to max_age.
+        # on-stop.js clears this when the agent finishes; a long-running task must
+        # never be re-dispatched just because the state file is "stale".
+        LAST_DETECTION="state-file"
+        LAST_STATE_VALUE="busy"
+        LAST_STATE_AGE="$age"
+        return 1
+        ;;
+      idle)
+        # Only trust idle when fresh; a stale idle could mean the agent crashed
+        # after going idle without a Stop hook firing.
+        local max_age
+        max_age=$(( POLL_INTERVAL * 2 ))
+        if [ "$age" -le "$max_age" ]; then
           LAST_DETECTION="state-file"
           LAST_STATE_VALUE="idle"
           LAST_STATE_AGE="$age"
           return 0
-          ;;
-        busy)
-          LAST_DETECTION="state-file"
-          LAST_STATE_VALUE="busy"
-          LAST_STATE_AGE="$age"
-          return 1
-          ;;
-        *)
-          # unknown contents — record raw value, fall through to regex
-          LAST_STATE_VALUE="$state"
-          ;;
-      esac
-    else
-      debug "is_idle: target=$target state-file stale (age=${age}s > ${max_age}s), falling back to regex"
-    fi
+        else
+          debug "is_idle: target=$target state-file stale (age=${age}s > ${max_age}s), falling back to regex"
+        fi
+        ;;
+      *)
+        # unknown contents — record raw value, fall through to regex
+        LAST_STATE_VALUE="$state"
+        ;;
+    esac
   fi
 
   # Fallback: footer regex
@@ -285,7 +293,8 @@ while true; do
       all_usage_hit=false
 
       # Pop next task or use default command
-      if task=$(pop_task "$name"); then
+      if pop_task "$name"; then
+        task="$POPPED_TASK"
         log "$name — dispatching task [queue=$LAST_QUEUE_KIND remaining=$LAST_QUEUE_REMAINING detection=$LAST_DETECTION]: $task"
         emit_dispatch_jsonl "$name" "$task" "$LAST_QUEUE_KIND" "$LAST_QUEUE_REMAINING" "$target"
         mark_busy "$name"

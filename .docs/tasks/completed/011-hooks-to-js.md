@@ -103,4 +103,4 @@ Each hook is a tiny state-writer; factor the shared "resolve agent name + drain 
 - [x] Clean up `tmp/` after verification
 
 ---
-**UAT**: [`.docs/uat/pending/011-hooks-to-js.uat.md`](../../uat/pending/011-hooks-to-js.uat.md)
+**UAT**: [`.docs/uat/skipped/011-hooks-to-js.uat.md`](../../uat/skipped/011-hooks-to-js.uat.md) *(skipped)*
