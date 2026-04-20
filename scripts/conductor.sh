@@ -2,6 +2,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+cd "$REPO_ROOT"
 source "$SCRIPT_DIR/../conductor.conf"
 
 mkdir -p "$LOG_DIR"
@@ -77,7 +79,7 @@ for (( i=1; i<${#AGENTS[@]}; i++ )); do
 done
 
 # Create conductor/monitor window
-tmux new-window -t "$SESSION_NAME" -n "monitor" -c "$SCRIPT_DIR"
+tmux new-window -t "$SESSION_NAME" -n "monitor" -c "$REPO_ROOT"
 tmux send-keys -t "$SESSION_NAME:monitor" "$SCRIPT_DIR/monitor.sh" Enter
 
 echo ""

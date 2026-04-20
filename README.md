@@ -215,6 +215,8 @@ All settings live in `conductor.conf`:
 
 ## Scripts
 
+See [`scripts/README.md`](scripts/README.md) for per-script usage details and architecture flowcharts.
+
 | Script | Purpose |
 |--------|---------|
 | `scripts/conductor.sh` | Entry point — creates tmux session with separate windows per agent |
@@ -225,6 +227,7 @@ All settings live in `conductor.conf`:
 | `scripts/teardown.sh` | Graceful shutdown |
 | `scripts/agent_exec.sh` | Container exec wrapper (compose/docker modes) |
 | `scripts/scaffold.sh` | Generate compose + devcontainer files for a target project |
+| `scripts/add-task.sh` | Enqueue a scoped task into `tasks.txt` from the target project's cwd |
 | `hooks/on-session-start.js` | Claude Code hook (Node.js) — writes `idle` to agent state on SessionStart (matcher `startup|resume|clear`) |
 | `hooks/on-prompt-submit.js` | Claude Code hook (Node.js) — writes `busy` to agent state on UserPromptSubmit |
 | `hooks/on-stop.js` | Claude Code hook (Node.js) — writes `idle` to agent state on Stop |

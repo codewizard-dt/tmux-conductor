@@ -17,6 +17,8 @@ tmux-conductor is a vendor-agnostic system for orchestrating multiple AI coding 
 
 ### Core Scripts
 
+See [`scripts/README.md`](scripts/README.md) for per-script usage details and an architecture flowchart.
+
 All scripts below live in `scripts/` except `install-hooks.sh` (repo root).
 
 | Script | Purpose |
