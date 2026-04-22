@@ -47,8 +47,14 @@ Parse `$ARGUMENTS` to locate the UAT file (same resolver as `/uat-walkthrough`):
 1. **File path** (e.g. `.docs/uat/pending/3-user-auth.uat.md`) — use directly
 2. **Number-slug** (e.g. `3-user-auth`) — search `.docs/uat/pending/`, fall back to `.docs/uat/completed/`
 3. **Number or description** (e.g. `3`, `user auth`) — search `.docs/uat/pending/` for a match. If ambiguous, **STOP** and report the ambiguity in the completion summary (do not prompt)
+4. **If `$ARGUMENTS` is empty OR the input above did not resolve to a UAT file** — auto-pick from pending:
+   - Use `mcp__serena__list_dir` on `.docs/uat/pending/` to enumerate all `*.uat.md` files
+   - If none exist, **STOP** and exit: "No pending UAT files found"
+   - Pick the lowest-numbered file (by the `<NNN>` prefix) as the stable default
+   - Announce the auto-pick in one line before proceeding: `No matching UAT file — running \`<filename>\`` (if `$ARGUMENTS` was non-empty but unresolved, prefix with `Input \`<arguments>\` did not match — `)
+   - Do **not** prompt for confirmation; proceed immediately
 
-If the file does not exist, is empty, or is not in `.docs/uat/pending/`, **STOP** and exit with an explanatory summary.
+If the resolved file does not exist, is empty, or is not in `.docs/uat/pending/`, **STOP** and exit with an explanatory summary.
 
 Parse the file:
 - **Test sections**: `### UAT-*` headings (e.g. `UAT-API-001:`, `UAT-UI-002:`)

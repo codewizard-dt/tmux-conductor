@@ -23,8 +23,8 @@ All scripts below live in `scripts/` except `install-hooks.sh` (repo root).
 
 | Script | Purpose |
 |--------|---------|
-| `conductor.sh` | Entry point: creates tmux session, spawns agent windows, starts monitor |
-| `spawn.sh` | Alternative: split-pane layout instead of separate windows |
+| `conductor.sh` | Entry point: creates tmux session, spawns agent windows, starts monitor. Also spawns one tmux window per `BG_PROCESSES` entry (host-side, no container wrapping) |
+| `spawn.sh` | Alternative: split-pane layout instead of separate windows. Also splits a pane per `BG_PROCESSES` entry (host-side, no container wrapping) |
 | `dispatch.sh` | Sends a command to a specific agent pane via `send-keys -l` + separate `Enter` |
 | `monitor.sh` | Main loop: polls for idle agents, checks usage limits, pops tasks from queue |
 | `broadcast.sh` | Sends a command to all agent panes |
@@ -47,6 +47,7 @@ All scripts below live in `scripts/` except `install-hooks.sh` (repo root).
 - `sed -i.bak` + cleanup for BSD/GNU sed compatibility (macOS ships BSD sed)
 - Idle detection primary signal is the per-agent state file at `$STATE_DIR/<agent>.state`. Two values: `idle` (hook-written by `on-session-start.js` on startup/resume/clear, `on-stop.js` on Stop, and `on-stop-failure.js` on StopFailure) and `busy` (hook-written by `on-prompt-submit.js` on UserPromptSubmit, and monitor-written by `mark_busy` immediately before dispatch to close the race between send-keys and the agent's first UserPromptSubmit hook fire). Monitor treats `idle` as idle and `busy` as working; any other contents fall through to the regex fallback. Each Claude Code lifecycle event has its own Node.js script in `hooks/` (on-session-start.js, on-prompt-submit.js, on-stop.js, on-stop-failure.js), sharing stdlib-only logic via `hooks/lib/write-state.js` (resolves agent name, drains stdin, writes the state file). `install-hooks.sh` at the repo root copies the JS hooks plus `hooks/lib/write-state.js` to `~/.claude/hooks/tmux-conductor/` and merges the registrations into `~/.claude/settings.json` with dedup-by-command so foreign hook entries survive.
 - If the state file is missing or stale (older than `2 × POLL_INTERVAL`), monitor falls back to the `IDLE_PATTERN` regex against the last 5 lines of `capture-pane -p` — this covers Aider, Codex, Claude-without-hooks, and the Esc-interrupt case where no `Stop` hook fires
+- `BG_PROCESSES` entries are host-side windows spawned alongside agents but are not monitored for idle, never receive queue dispatches, and are terminated via `C-c` during teardown. Parsed with the same `name:workdir:cmd` format as `AGENTS` but without `agent_exec.sh` wrapping or `CONDUCTOR_AGENT_NAME` env.
 - `POLL_INTERVAL` acts as debounce to avoid false positives during agent tool calls
 - Usage monitoring runs before every dispatch; when all agents hit limits, auto-teardown triggers
 - Task queue supports agent-scoped entries via `agentname: command` prefix — `pop_task()` matches scoped lines first, then falls back to unscoped (global) lines

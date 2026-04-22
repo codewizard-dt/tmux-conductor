@@ -29,6 +29,16 @@ for entry in "${AGENTS[@]}"; do
   AGENT_NAMES+=("$name")
 done
 
+# Build list of background-process window names (parallel to AGENT_NAMES)
+declare -a BG_NAMES=()
+if [ -n "${BG_PROCESSES+x}" ] && [ "${#BG_PROCESSES[@]}" -gt 0 ]; then
+  for entry in "${BG_PROCESSES[@]}"; do
+    [ -z "$entry" ] && continue
+    IFS=: read -r bg_name _ _ <<< "$entry"
+    BG_NAMES+=("$bg_name")
+  done
+fi
+
 pop_task() {
   local agent_name="$1"
   LAST_QUEUE_KIND=""
@@ -292,25 +302,28 @@ while true; do
       fi
       all_usage_hit=false
 
-      # Pop next task or use default command
+      # Pop next task — if queue is empty, agent stays idle (no fallback)
       if pop_task "$name"; then
         task="$POPPED_TASK"
         log "$name — dispatching task [queue=$LAST_QUEUE_KIND remaining=$LAST_QUEUE_REMAINING detection=$LAST_DETECTION]: $task"
         emit_dispatch_jsonl "$name" "$task" "$LAST_QUEUE_KIND" "$LAST_QUEUE_REMAINING" "$target"
         mark_busy "$name"
         dispatch "$target" "$task"
-      elif [ -n "${TASK_CMD:-}" ]; then
-        log "$name — dispatching default [queue=default detection=$LAST_DETECTION]: $TASK_CMD"
-        emit_dispatch_jsonl "$name" "$TASK_CMD" "default" "" "$target"
-        mark_busy "$name"
-        dispatch "$target" "$TASK_CMD"
       else
-        log "$name — queue empty, no default command. Agent stays idle."
+        log "$name — queue empty, no task. Agent stays idle."
         emit_dispatch_jsonl "$name" "" "none" "" "$target"
       fi
     else
       all_idle=false
       all_usage_hit=false
+    fi
+  done
+
+  # Liveness check for bg processes — warn only, do not affect shutdown decision
+  for bg_name in "${BG_NAMES[@]}"; do
+    bg_target="$SESSION_NAME:$bg_name"
+    if ! tmux has-session -t "$bg_target" 2>/dev/null; then
+      log "WARN: bg '$bg_name' — window not found"
     fi
   done
 

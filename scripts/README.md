@@ -19,6 +19,7 @@ flowchart TD
   Spawn["spawn.sh<br/>(alt: split-pane layout)"]
   AgentExec["agent_exec.sh<br/>(container exec wrapper)"]
   Pane["agent pane"]:::ext
+  BgPane["bg process window<br/>(host-side, no wrap)"]:::ext
   Monitor["monitor.sh"]:::ext
 
   User -->|"one-time per project"| Scaffold
@@ -30,6 +31,8 @@ flowchart TD
   AgentExec --> Pane
   Conductor --> Pane
   Spawn --> Pane
+  Conductor -->|"per BG_PROCESSES entry"| BgPane
+  Spawn -->|"per BG_PROCESSES entry"| BgPane
   Conductor -->|"launches monitor window"| Monitor
 
   classDef own fill:#e8f4ff,stroke:#3b82f6,color:#0b3a7a
@@ -98,7 +101,9 @@ flowchart TD
 
 ## conductor.sh
 
-Entry point for a conductor session. Creates the tmux session named `$SESSION_NAME`, spawns one window per entry in `AGENTS`, and launches the `monitor` window running `monitor.sh`. Reads `SESSION_NAME`, `AGENTS`, `EXEC_MODE`, `STATE_DIR`, and `LOG_DIR` from `../conductor.conf`. When `EXEC_MODE=container`, performs a pre-flight check for `~/.conductor_env` and routes each agent launch through `agent_exec.sh`.
+Entry point for a conductor session. Creates the tmux session named `$SESSION_NAME`, spawns one window per entry in `AGENTS`, and launches the `monitor` window running `monitor.sh`. Reads `SESSION_NAME`, `AGENTS`, `BG_PROCESSES`, `EXEC_MODE`, `STATE_DIR`, and `LOG_DIR` from `../conductor.conf`. When `EXEC_MODE=container`, performs a pre-flight check for `~/.conductor_env` and routes each agent launch through `agent_exec.sh`.
+
+Each entry in `BG_PROCESSES` also gets its own tmux window, created after the agent windows and before the monitor window. Bg processes run on the **host** (no `agent_exec.sh` wrapping, no `CONDUCTOR_AGENT_NAME` env prefix) so things like `pnpm dev` execute in the same shell environment as the user's dev workflow.
 
 Usage:
 ```
@@ -107,7 +112,7 @@ scripts/conductor.sh
 
 ## spawn.sh
 
-Split-pane alternative to `conductor.sh`. Reads the same configuration but lays agents out within a single window using `tmux split-window` + `select-layout tiled` instead of separate windows. Useful when you want all agent panes on one screen at a glance.
+Split-pane alternative to `conductor.sh`. Reads the same configuration but lays agents out within a single window using `tmux split-window` + `select-layout tiled` instead of separate windows. Useful when you want all agent panes on one screen at a glance. Also splits one pane per `BG_PROCESSES` entry (host-side, no container wrap) at the end of the agent splits.
 
 Usage:
 ```
@@ -116,7 +121,9 @@ scripts/spawn.sh
 
 ## monitor.sh
 
-The main polling loop. Every `POLL_INTERVAL` seconds it checks each agent with `is_idle` — primarily by reading `$STATE_DIR/<agent>.state` (written by the Node.js hooks), falling back to the `IDLE_PATTERN` regex against `capture-pane` output when the state file is missing or stale. On idle, it calls `pop_task` against `TASK_QUEUE` (scoped lines first, then global) and hands the command to `dispatch.sh`. Appends a JSONL record per dispatch to `$LOG_DIR/dispatch.jsonl` and inline logs to `$LOG_DIR/monitor-*.log`. When every agent is idle AND `USAGE_CHECK_CMD` fails for every agent, it auto-invokes `teardown.sh`.
+The main polling loop. Every `POLL_INTERVAL` seconds it checks each agent with `is_idle` — primarily by reading `$STATE_DIR/<agent>.state` (written by the Node.js hooks), falling back to the `IDLE_PATTERN` regex against `capture-pane` output when the state file is missing or stale. On idle, it calls `pop_task` against `TASK_QUEUE` (scoped lines first, then global) and hands the command to `dispatch.sh`. When the queue is empty for a given agent, the agent simply stays idle — there is no default-command fallback. Appends a JSONL record per dispatch to `$LOG_DIR/dispatch.jsonl` and inline logs to `$LOG_DIR/monitor-*.log`. When every agent is idle AND `USAGE_CHECK_CMD` fails for every agent, it auto-invokes `teardown.sh`.
+
+Each poll also runs a liveness check over `BG_PROCESSES` window names: if `tmux has-session -t "$SESSION_NAME:$bg_name"` fails, monitor logs `WARN: bg '<name>' — window not found`. Bg processes are never dispatched to and never affect the `all_idle`/`all_usage_hit` shutdown decision.
 
 Usage:
 ```
@@ -143,7 +150,7 @@ scripts/broadcast.sh <command>
 
 ## teardown.sh
 
-Graceful shutdown. Sends `/exit` to each agent via `dispatch.sh`, sleeps ~10 seconds to let agents flush, then runs `tmux kill-session` on `$SESSION_NAME`. Takes no arguments.
+Graceful shutdown. Sends `/exit` to each agent via `dispatch.sh`, then sends `C-c` (`tmux send-keys ... C-c`) to every `BG_PROCESSES` window so dev servers / watchers get a chance to clean up, sleeps ~10 seconds to let both agents and bg processes flush, then runs `tmux kill-session` on `$SESSION_NAME`. Takes no arguments.
 
 Usage:
 ```

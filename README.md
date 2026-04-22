@@ -47,7 +47,7 @@ Add unit tests for the payment service
 - **Scoped tasks** (`backend: ...`) are only dispatched to the named agent
 - **Unscoped tasks** (no prefix) go to any idle agent
 
-When the queue is empty, agents receive `TASK_CMD` (default: `/tackle`) instead.
+When the queue is empty, agents stay idle — no default command is dispatched.
 
 ### 4. Launch the conductor
 
@@ -201,8 +201,8 @@ All settings live in `conductor.conf`:
 |----------|---------|-------------|
 | `SESSION_NAME` | `conductor` | tmux session name |
 | `AGENTS` | *(example entries)* | Array of `name:working_dir:launch_cmd` |
+| `BG_PROCESSES` | *(empty)* | Array of `name:working_dir:launch_cmd` for host-side auxiliary processes (dev servers, watchers). Spawned in their own tmux window alongside agents; not idle-monitored, never receive queue dispatches; terminated via `C-c` on teardown |
 | `CLEAR_CMD` | `/clear` | Command to clear agent context |
-| `TASK_CMD` | `/tackle` | Default command when queue is empty |
 | `IDLE_PATTERN` | `^>` | Fallback regex matched against last 5 lines of pane output when the hook state file is absent or stale |
 | `STATE_DIR` | `./logs/state` | Directory where per-event hook scripts write per-agent `<agent>.state` files (`idle` / `busy`) |
 | `POLL_INTERVAL` | `15` | Seconds between idle-detection polls; state files older than `2 × POLL_INTERVAL` are treated as stale |

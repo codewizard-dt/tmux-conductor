@@ -25,7 +25,7 @@ Quick workflow to refresh understanding of the codebase via Serena memories.
 
 ## Step 1: Discover & Read Memories
 
-1. `mcp__serena__list_memorjies` → list all available memories (use `topic` parameter to filter by area, e.g. `topic="api"`)
+1. `mcp__serena__list_memories` → list all available memories (use `topic` parameter to filter by area, e.g. `topic="api"`)
 2. `mcp__serena__read_memory` → read each relevant memory to rebuild context
 3. Note any memories that appear stale or reference code that may have changed
 

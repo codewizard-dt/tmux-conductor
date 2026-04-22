@@ -17,6 +17,14 @@ for entry in "${AGENTS[@]}"; do
   "$SCRIPT_DIR/dispatch.sh" "$SESSION_NAME:$name" "/exit" || true
 done
 
+# Send C-c to each bg-process window (ignore errors — window may already be gone)
+for entry in "${BG_PROCESSES[@]:-}"; do
+  [ -z "$entry" ] && continue
+  IFS=: read -r name _workdir _launch_cmd <<< "$entry"
+  echo "[$(date +%H:%M:%S)] Sending C-c to bg '$name'..."
+  tmux send-keys -t "$SESSION_NAME:$name" C-c 2>/dev/null || true
+done
+
 echo ""
 echo "[$(date +%H:%M:%S)] Waiting 10 seconds for graceful exit..."
 sleep 10

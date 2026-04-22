@@ -48,8 +48,23 @@ for (( i=1; i<${#AGENTS[@]}; i++ )); do
   echo "Spawned: $name ($cmd) in $workdir"
 done
 
+# Split for background processes (host-side, no container wrap)
+if [ "${#BG_PROCESSES[@]}" -gt 0 ]; then
+  for entry in "${BG_PROCESSES[@]}"; do
+    IFS=: read -r name workdir launch_cmd <<< "$entry"
+    tmux split-window -t "$SESSION_NAME" -c "$workdir"
+    tmux send-keys -t "$SESSION_NAME" "$launch_cmd" Enter
+    tmux select-layout -t "$SESSION_NAME" tiled
+    echo "Spawned bg: $name ($launch_cmd) in $workdir"
+  done
+fi
+
 echo ""
-echo "All ${#AGENTS[@]} agents launched in split-pane layout."
+if [ "${#BG_PROCESSES[@]}" -gt 0 ]; then
+  echo "All ${#AGENTS[@]} agents + ${#BG_PROCESSES[@]} bg processes launched in split-pane layout."
+else
+  echo "All ${#AGENTS[@]} agents launched in split-pane layout."
+fi
 echo ""
 
 # Attach (or print instructions if already in tmux)

@@ -12,6 +12,7 @@ export CONDUCTOR_LOG_DIR="$LOG_DIR"
 echo "=== tmux Conductor ==="
 echo "Session:  $SESSION_NAME"
 echo "Agents:   ${#AGENTS[@]}"
+echo "BG procs: ${#BG_PROCESSES[@]}"
 echo "Queue:    $TASK_QUEUE ($(wc -l < "$TASK_QUEUE" 2>/dev/null || echo 0) tasks)"
 echo ""
 
@@ -77,6 +78,16 @@ for (( i=1; i<${#AGENTS[@]}; i++ )); do
 
   echo "Spawned: $name ($cmd) in $workdir"
 done
+
+# Spawn background processes as additional windows (host-side, no container wrap)
+if [ "${#BG_PROCESSES[@]}" -gt 0 ]; then
+  for entry in "${BG_PROCESSES[@]}"; do
+    IFS=: read -r name workdir launch_cmd <<< "$entry"
+    tmux new-window -t "$SESSION_NAME" -n "$name" -c "$workdir"
+    tmux send-keys -t "$SESSION_NAME:$name" "$launch_cmd" Enter
+    echo "Spawned bg: $name ($launch_cmd) in $workdir"
+  done
+fi
 
 # Create conductor/monitor window
 tmux new-window -t "$SESSION_NAME" -n "monitor" -c "$REPO_ROOT"

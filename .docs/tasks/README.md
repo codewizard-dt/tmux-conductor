@@ -7,6 +7,7 @@
 | 008 | [Publish Base Image](active/008-publish-base-image.md) | Build + publish multi-arch `ghcr.io/codewizard-dt/tmux-conductor-base` with Chromium + Claude Code + uv preinstalled; update scaffold.sh to consume it (cuts per-project first-build from ~4min to ~15s) |
 | 013 | [Scripts Folder + add-task](active/013-scripts-folder-and-add-task.md) | Move 8 orchestration scripts to scripts/, update all references, add add-task.sh utility |
 | 014 | [Scripts README + Flowchart](active/014-scripts-readme-flowchart.md) | scripts/README.md documenting each of the nine scripts, with a combined mermaid flowchart of script relationships and task lifecycle |
+| 015 | [BG Processes + Remove TASK_CMD](active/015-bg-processes-and-remove-task-cmd.md) | Add `BG_PROCESSES=()` for host-side dev servers/watchers in their own tmux windows (no container wrap, no idle poll, C-c on teardown); drop `TASK_CMD` so all dispatches are explicit |
 
 ## Completed Tasks
 
