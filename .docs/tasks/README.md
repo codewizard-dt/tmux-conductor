@@ -8,7 +8,6 @@
 | # | Task | Description |
 |---|------|-------------|
 | 008 | [Publish Base Image](active/008-publish-base-image.md) | Build + publish multi-arch `ghcr.io/codewizard-dt/tmux-conductor-base` with Chromium + Claude Code + uv preinstalled; update scaffold.sh to consume it (cuts per-project first-build from ~4min to ~15s) |
-| 035 | [Move server to backend](035-move-server-to-backend.md) | Move `scripts/dashboard/server/` → `backend/` at repo root and update all references (Makefile, docker-compose files, CLAUDE.md, README.md, scripts/README.md) |
 | 037 | [Create root .env](037-create-root-env.md) | Create root `.env` and `.env.example` consolidating PORT, UI_PORT, CORS_ORIGIN, PUBLIC_API_URL |
 | 038 | [Backend load root env](038-backend-load-root-env.md) | Fix dotenv loading in `backend/index.js` to read from repo root; add dotenv to package.json deps |
 | 039 | [Frontend root env](039-frontend-root-env.md) | Configure Astro/Vite `envDir` to read `.env` from repo root instead of `frontend/` |

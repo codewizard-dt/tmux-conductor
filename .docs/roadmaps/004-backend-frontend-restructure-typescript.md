@@ -18,7 +18,7 @@ The dashboard's server and UI sub-packages are promoted from `scripts/dashboard/
 
 > Move both sub-packages to the repo root and patch every path reference that breaks.
 
-- [ ] [TASK-035: Move `scripts/dashboard/server/` → `backend/`](../tasks/035-move-server-to-backend.md)
+- [x] [TASK-035: Move `scripts/dashboard/server/` → `backend/`](../tasks/completed/035-move-server-to-backend.md)
 - [x] [TASK-036: Move `scripts/dashboard/ui/` → `frontend/`](../tasks/completed/036-move-ui-to-frontend.md)
 
 ## Phase 2: Env
