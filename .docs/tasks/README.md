@@ -1,6 +1,6 @@
 # Tasks
 
-**Last task:** [043-frontend-tsconfig-strict](043-frontend-tsconfig-strict.md)
+**Last task:** [043-frontend-tsconfig-strict](completed/043-frontend-tsconfig-strict.md)
 **Next task number:** 044
 
 ## Active Tasks
@@ -8,13 +8,10 @@
 | # | Task | Description |
 |---|------|-------------|
 | 008 | [Publish Base Image](active/008-publish-base-image.md) | Build + publish multi-arch `ghcr.io/codewizard-dt/tmux-conductor-base` with Chromium + Claude Code + uv preinstalled; update scaffold.sh to consume it (cuts per-project first-build from ~4min to ~15s) |
-| 037 | [Create root .env](037-create-root-env.md) | Create root `.env` and `.env.example` consolidating PORT, UI_PORT, CORS_ORIGIN, PUBLIC_API_URL |
 | 038 | [Backend load root env](038-backend-load-root-env.md) | Fix dotenv loading in `backend/index.js` to read from repo root; add dotenv to package.json deps |
 | 039 | [Frontend root env](039-frontend-root-env.md) | Configure Astro/Vite `envDir` to read `.env` from repo root instead of `frontend/` |
 | 040 | [Backend convert to TypeScript](040-backend-convert-to-typescript.md) | Rename index.js, config.js, state.js to .ts and add TypeScript type annotations throughout |
-| 041 | [Backend tsconfig](041-backend-tsconfig.md) | Add `backend/tsconfig.json` with NodeNext/NodeNext module resolution and full strict flags |
 | 042 | [Backend ESLint](042-backend-eslint.md) | Add `backend/eslint.config.mjs` with `strictTypeChecked` preset |
-| 043 | [Frontend tsconfig strict](043-frontend-tsconfig-strict.md) | Layer additional strict flags onto `frontend/tsconfig.json` extending the Astro strict base |
 
 ## Completed Tasks
 

@@ -59,4 +59,4 @@ Replace with:
 - [ ] `cd frontend && npx tsc --noEmit` exits 0
 
 ---
-**UAT**: pending
+**UAT**: [`.docs/uat/043-frontend-tsconfig-strict.uat.md`](../uat/043-frontend-tsconfig-strict.uat.md)

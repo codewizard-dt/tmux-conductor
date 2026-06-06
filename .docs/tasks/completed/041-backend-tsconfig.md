@@ -45,11 +45,11 @@ Create file `backend/tsconfig.json`:
 }
 ```
 
-- [ ] Write `backend/tsconfig.json` with the content above
+- [x] Write `backend/tsconfig.json` with the content above
 
 ### 2. Verify `tsconfig.json` is valid  <!-- agent: general-purpose -->
 
-- [ ] Run `cd backend && npx tsc --noEmit 2>&1 | head -20` to check for parse errors in the config
+- [x] Run `cd backend && npx tsc --noEmit 2>&1 | head -20` to check for parse errors in the config
   - Config parse errors appear as `error TS5023` or `error TS6046` — fix any flagged options
   - Type errors in source files are expected at this stage if task 040 is not yet complete; only config errors are a blocker here
 
@@ -57,8 +57,8 @@ Create file `backend/tsconfig.json`:
 
 File: `backend/.gitignore` (create if it does not exist)
 
-- [ ] Ensure `dist/` is listed in `backend/.gitignore`
-- [ ] Ensure `node_modules/` is listed
+- [x] Ensure `dist/` is listed in `backend/.gitignore`
+- [x] Ensure `node_modules/` is listed
 
 ---
-**UAT**: pending
+**UAT**: [`.docs/uat/041-backend-tsconfig.uat.md`](../uat/041-backend-tsconfig.uat.md)

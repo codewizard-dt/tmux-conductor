@@ -26,7 +26,7 @@ CORS_ORIGIN=http://localhost:4321
 PUBLIC_API_URL=http://localhost:8788/api
 ```
 
-- [ ] Write `.env` at repo root with the four vars above
+- [x] Write `.env` at repo root with the four vars above
 
 ### 2. Create root `.env.example`  <!-- agent: general-purpose -->
 
@@ -45,25 +45,25 @@ CORS_ORIGIN=http://localhost:4321
 PUBLIC_API_URL=http://localhost:8788/api
 ```
 
-- [ ] Write `.env.example` at repo root
+- [x] Write `.env.example` at repo root
 
 ### 3. Verify `.gitignore` covers root `.env`  <!-- agent: general-purpose -->
 
-- [ ] Read `.gitignore` and confirm `.env` is listed (not `.env.example`)
-- [ ] If `.env` is not listed, add it
+- [x] Read `.gitignore` and confirm `.env` is listed (not `.env.example`)
+- [x] If `.env` is not listed, add it
 
 ### 4. Remove per-package `.env` files  <!-- agent: general-purpose -->
 
-- [ ] Delete `backend/.env` (its vars are now in root `.env`)
-- [ ] Delete `frontend/.env` (its vars are now in root `.env`)
-- [ ] Keep `frontend/.env.example` if it documents Astro-specific vars; otherwise delete it too (root `.env.example` supersedes it)
+- [x] Delete `backend/.env` (its vars are now in root `.env`)
+- [x] Delete `frontend/.env` (its vars are now in root `.env`)
+- [x] Keep `frontend/.env.example` if it documents Astro-specific vars; otherwise delete it too (root `.env.example` supersedes it)
 
 ### 5. Verification  <!-- agent: general-purpose -->
 
-- [ ] Root `.env` exists with all four vars
-- [ ] Root `.env.example` exists with comments
-- [ ] `.gitignore` lists `.env` at or near root scope
-- [ ] `backend/.env` and `frontend/.env` no longer exist
+- [x] Root `.env` exists with all four vars
+- [x] Root `.env.example` exists with comments
+- [x] `.gitignore` lists `.env` at or near root scope
+- [x] `backend/.env` and `frontend/.env` no longer exist
 
 ---
-**UAT**: pending
+**UAT**: [`.docs/uat/037-create-root-env.uat.md`](../uat/037-create-root-env.uat.md)

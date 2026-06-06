@@ -4,7 +4,7 @@
 
 - **Status**: active
 - **Created**: 2026-06-06
-- **Last updated**: 2026-06-06
+- **Last updated**: 2026-06-06 (UAT 041, 043 completed)
 - **Owner**: David Taylor
 - **Linked PRD**: —
 - **Linked ADRs**: —
@@ -25,7 +25,7 @@ The dashboard's server and UI sub-packages are promoted from `scripts/dashboard/
 
 > Consolidate env into a single root `.env`; both apps read from there.
 
-- [ ] [TASK-037: Create root `.env` and `.env.example`](../tasks/037-create-root-env.md)
+- [x] [TASK-037: Create root `.env` and `.env.example`](../tasks/completed/037-create-root-env.md)
 - [ ] [TASK-038: Update backend to load `.env` from repo root](../tasks/038-backend-load-root-env.md)
 - [ ] [TASK-039: Update frontend to read `.env` from repo root](../tasks/039-frontend-root-env.md)
 
@@ -34,9 +34,9 @@ The dashboard's server and UI sub-packages are promoted from `scripts/dashboard/
 > Convert backend to TypeScript and apply strict configs + ESLint to both apps.
 
 - [ ] [TASK-040: Convert backend JS source files to TypeScript](../tasks/040-backend-convert-to-typescript.md)
-- [ ] [TASK-041: Add `backend/tsconfig.json` with strict NodeNext config](../tasks/041-backend-tsconfig.md)
+- [x] [TASK-041: Add `backend/tsconfig.json` with strict NodeNext config](../tasks/completed/041-backend-tsconfig.md)
 - [ ] [TASK-042: Add ESLint flat config with `strictTypeChecked` to backend](../tasks/042-backend-eslint.md)
-- [ ] [TASK-043: Update `frontend/tsconfig.json` with full strict flags](../tasks/043-frontend-tsconfig-strict.md)
+- [x] [TASK-043: Update `frontend/tsconfig.json` with full strict flags](../tasks/completed/043-frontend-tsconfig-strict.md)
 - [ ] Add ESLint flat config (`eslint.config.mjs`) with `strictTypeChecked` + React plugin to frontend
 
 ## Phase 4: Typecheck CI
