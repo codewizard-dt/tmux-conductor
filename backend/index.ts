@@ -2,7 +2,7 @@ import { spawnSync, execSync } from 'child_process';
 import { existsSync } from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
-import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
+import Fastify, { type FastifyReply } from 'fastify';
 import fastifyCors from '@fastify/cors';
 import fastifyStatic from '@fastify/static';
 import { readConductorConf, appendAgentToConf, DEFAULT_CONF_PATH } from './config.js';
@@ -42,7 +42,7 @@ function broadcastSSE(eventName: string, data: unknown): void {
 
 // ── API routes (/api prefix) ─────────────────────────────────────────────────
 
-await fastify.register(async (api) => {
+await fastify.register((api) => {
 
   api.get('/healthz', async (_req, reply) => {
     reply.send({ ok: true });
@@ -81,7 +81,7 @@ await fastify.register(async (api) => {
 
   api.post<{ Params: { agent: string }; Body: { task?: string } }>('/queue/:agent', async (req, reply) => {
     const { agent } = req.params;
-    const { task } = req.body ?? {};
+    const { task } = req.body;
     if (!task || typeof task !== 'string' || task.trim() === '') {
       return reply.status(400).send({ error: 'task is required and must be a non-empty string' });
     }
@@ -95,7 +95,7 @@ await fastify.register(async (api) => {
 
   api.put<{ Params: { agent: string }; Body: { order?: unknown } }>('/queue/:agent/reorder', async (req, reply) => {
     const { agent } = req.params;
-    const { order } = req.body ?? {};
+    const { order } = req.body;
     const conf = readConductorConf();
     const lines = readQueue(conf.taskQueue);
     const { indices } = getAgentLines(lines, agent);
@@ -106,7 +106,7 @@ await fastify.register(async (api) => {
       !order.every((i) => Number.isInteger(i) && i >= 0 && i < indices.length)
     ) {
       return reply.status(400).send({
-        error: `order must be an array of ${indices.length} valid indices (0–${indices.length - 1})`,
+        error: `order must be an array of ${String(indices.length)} valid indices (0–${String(indices.length - 1)})`,
       });
     }
 
@@ -131,7 +131,7 @@ await fastify.register(async (api) => {
     const { indices } = getAgentLines(lines, agent);
 
     if (isNaN(idx) || idx < 0 || idx >= indices.length) {
-      return reply.status(404).send({ error: `index ${idx} out of range (agent has ${indices.length} tasks)` });
+      return reply.status(404).send({ error: `index ${String(idx)} out of range (agent has ${String(indices.length)} tasks)` });
     }
 
     const globalIdx = indices[idx];
@@ -149,7 +149,7 @@ await fastify.register(async (api) => {
       name,
       workdir,
       launchCmd = 'claude --dangerously-skip-permissions',
-    } = req.body ?? {};
+    } = req.body;
 
     if (!name || typeof name !== 'string' || !/^[a-z0-9_-]+$/.test(name)) {
       return reply.status(400).send({
@@ -288,10 +288,10 @@ const port = parseInt(process.env['PORT'] || '8788', 10);
 try {
   const host = process.env['HOST'] ?? '127.0.0.1';
   await fastify.listen({ port, host });
-  console.log(`Dashboard server listening on http://${host}:${port}`);
+  console.log(`Dashboard server listening on http://${host}:${String(port)}`);
 
   const pollInterval = setInterval(pollAndDiff, 2000);
-  process.on('SIGTERM', () => clearInterval(pollInterval));
+  process.on('SIGTERM', () => { clearInterval(pollInterval); });
 } catch (err) {
   fastify.log.error(err);
   process.exit(1);

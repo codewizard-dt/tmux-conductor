@@ -1,7 +1,7 @@
 # Tasks
 
-**Last task:** [043-frontend-tsconfig-strict](completed/043-frontend-tsconfig-strict.md)
-**Next task number:** 044
+**Last task:** [046-typecheck-skill](046-typecheck-skill.md)
+**Next task number:** 047
 
 ## Active Tasks
 
@@ -9,6 +9,9 @@
 |---|------|-------------|
 | 008 | [Publish Base Image](active/008-publish-base-image.md) | Build + publish multi-arch `ghcr.io/codewizard-dt/tmux-conductor-base` with Chromium + Claude Code + uv preinstalled; update scaffold.sh to consume it (cuts per-project first-build from ~4min to ~15s) |
 | 042 | [Backend ESLint](042-backend-eslint.md) | Add `backend/eslint.config.mjs` with `strictTypeChecked` preset |
+| 044 | [Frontend ESLint](044-frontend-eslint.md) | Add `frontend/eslint.config.mjs` with `strictTypeChecked` + React plugin |
+| 045 | [Makefile Typecheck Targets](045-makefile-typecheck-targets.md) | Add `make typecheck`, `make typecheck-backend`, `make typecheck-frontend` to root Makefile |
+| 046 | [Typecheck Skill](046-typecheck-skill.md) | Write `.claude/skills/typecheck/SKILL.md` documenting the make typecheck targets |
 
 ## Completed Tasks
 

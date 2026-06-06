@@ -107,7 +107,7 @@ export function readConductorConf(confPath: string = DEFAULT_CONF_PATH): Conduct
 
   cache = { sessionName, taskQueue, stateDir, agents };
   cacheTime = now;
-  return cache as ConductorConf;
+  return cache;
 }
 
 /**
