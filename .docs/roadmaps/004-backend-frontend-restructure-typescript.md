@@ -4,7 +4,7 @@
 
 - **Status**: active
 - **Created**: 2026-06-06
-- **Last updated**: 2026-06-06 (UAT 038, 039, 040, 041, 043 completed; TASK-044 added; TASK-045, TASK-046 added)
+- **Last updated**: 2026-06-06 (UAT 038, 039, 040, 041, 042, 043 completed; TASK-044 added; TASK-045, TASK-046 added)
 - **Owner**: David Taylor
 - **Linked PRD**: —
 - **Linked ADRs**: —
@@ -35,7 +35,7 @@ The dashboard's server and UI sub-packages are promoted from `scripts/dashboard/
 
 - [x] [TASK-040: Convert backend JS source files to TypeScript](../tasks/completed/040-backend-convert-to-typescript.md)
 - [x] [TASK-041: Add `backend/tsconfig.json` with strict NodeNext config](../tasks/completed/041-backend-tsconfig.md)
-- [ ] [TASK-042: Add ESLint flat config with `strictTypeChecked` to backend](../tasks/042-backend-eslint.md)
+- [x] [TASK-042: Add ESLint flat config with `strictTypeChecked` to backend](../tasks/completed/042-backend-eslint.md)
 - [x] [TASK-043: Update `frontend/tsconfig.json` with full strict flags](../tasks/completed/043-frontend-tsconfig-strict.md)
 - [ ] [TASK-044: Add ESLint flat config with `strictTypeChecked` + React plugin to frontend](../tasks/044-frontend-eslint.md)
 

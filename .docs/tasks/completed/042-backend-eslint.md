@@ -88,4 +88,4 @@ File: `backend/package.json`
 - [ ] `backend/eslint.config.mjs` exists
 
 ---
-**UAT**: pending
+**UAT**: [`.docs/uat/completed/042-backend-eslint.uat.md`](../uat/completed/042-backend-eslint.uat.md)
