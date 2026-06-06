@@ -55,7 +55,7 @@ Replace the current destructive `jq .hooks.X = [...]` assignment with a merge-an
 
 ### 2. Verify dev-container scaffolding still wires hooks  <!-- agent: general-purpose -->
 
-- [x] Confirm `scaffold.sh` still mounts `${CONDUCTOR_REPO}/hooks` → `/conductor-hooks:ro` in the generated `conductor-compose.yml` (no change needed — read to confirm at `scaffold.sh:234`)
+- [x] Confirm `scaffold.sh` still mounts `${CONDUCTOR_REPO}/hooks` → `/conductor-hooks:ro` in the generated `devcontainer-compose.yml` (no change needed — read to confirm at `scaffold.sh:234`)
 - [x] Confirm `init-claude-config.sh` template still invokes `/conductor-hooks/install-hooks.sh` during first-boot init (no change needed — read to confirm at `scaffold.sh:204`)
 - [x] Add a short comment to the `init-claude-config.sh` heredoc in `scaffold.sh` noting that install-hooks.sh now copies scripts into `~/.claude/hooks/tmux-conductor/` and the `/conductor-hooks` mount is only needed at init time, not at runtime
 - [x] No change to the bind-mount itself — keep `/conductor-hooks:ro` so re-running `init-claude-config.sh` (or manual re-install) can pick up updated hook scripts without image rebuild
@@ -145,7 +145,7 @@ Fix: after rsync, rewrite every hook `command` so that the prefix before `.claud
 
 User will test this step manually — do not attempt automated execution.
 
-- [ ] Remove the init sentinel (`rm -f ~/.claude/.conductor-initialized` inside the container, or rebuild from scratch) and re-run `docker compose -f conductor-compose.yml up -d --build --force-recreate` for a scaffolded project.
+- [ ] Remove the init sentinel (`rm -f ~/.claude/.conductor-initialized` inside the container, or rebuild from scratch) and re-run `docker compose -f devcontainer-compose.yml up -d --build --force-recreate` for a scaffolded project.
 - [ ] Launch `claude` inside the container, submit a prompt; confirm no `SessionStart` / `UserPromptSubmit` / `Stop` hook errors appear in the TUI.
 - [ ] Inspect the container's `~/.claude/settings.json`: every entry under `.hooks.SessionStart[*].hooks[*].command`, `.hooks.UserPromptSubmit[*].hooks[*].command`, `.hooks.Stop[*].hooks[*].command`, `.hooks.StopFailure[*].hooks[*].command` must start with `/home/conductor/.claude/hooks/tmux-conductor/`. No `/Users/...` paths may remain.
 - [ ] Repeat on this repo's own devcontainer (`.devcontainer/init-claude-config.sh`) to confirm the duplicated fix works there too.

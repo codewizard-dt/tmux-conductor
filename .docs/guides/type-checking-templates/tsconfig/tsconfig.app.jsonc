@@ -1,0 +1,45 @@
+// tsconfig.app.jsonc
+// Use for: Vite + React browser app code
+// This is ONE of THREE files in the Vite three-file split (root / app / node).
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.app.tsbuildinfo",
+
+    // --- Language ---
+    "target": "ES2022",                       // Safe floor for all evergreen browsers
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "useDefineForClassFields": true,
+
+    // --- Modules ---
+    // bundler = correct for Vite; understands package.json `exports`, .ts imports
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,       // Allow `.ts` and `.tsx` import extensions
+    "verbatimModuleSyntax": true,             // TS 5.0+: enforces `import type` where needed
+    "moduleDetection": "force",               // Treat all files as modules (avoids global-script mode)
+    "resolveJsonModule": true,
+
+    // --- Emit ---
+    // Vite handles the actual emit; TypeScript is a checker only here
+    "noEmit": true,
+
+    // --- JSX ---
+    "jsx": "react-jsx",                       // React 17+ automatic transform; no `import React` needed
+    "types": ["vite/client"],                 // Exposes `import.meta.env`, asset imports, etc.
+
+    // --- Strict type checking ---
+    "strict": true,
+    "noUncheckedIndexedAccess": true,         // array[i] → T|undefined, catches most index bugs
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitOverride": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "exactOptionalPropertyTypes": true,       // Distinguishes `{x?: string}` from `{x: string|undefined}`
+
+    // --- Housekeeping ---
+    "skipLibCheck": true
+  },
+  "include": ["src"]
+}

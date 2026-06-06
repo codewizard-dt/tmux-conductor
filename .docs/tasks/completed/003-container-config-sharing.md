@@ -10,7 +10,7 @@ Read-only bind-mount `~/.claude/` and `~/.claude.json` at `/host-claude-config/`
 
 ## Prerequisites
 
-- [ ] Task 001 (Initial Scaffolding) completed — `scaffold.sh` exists and generates `.devcontainer/Dockerfile` + `conductor-compose.yml`
+- [ ] Task 001 (Initial Scaffolding) completed — `scaffold.sh` exists and generates `.devcontainer/Dockerfile` + `devcontainer-compose.yml`
 - [ ] Host has `~/.claude.json` populated with user-scope `mcpServers` (verify: `jq '.mcpServers | keys' ~/.claude.json`)
 - [ ] Host has `CLAUDE_CODE_OAUTH_TOKEN` set in `~/.conductor_env` (from task 001 auth flow)
 
@@ -59,7 +59,7 @@ Read-only bind-mount `~/.claude/` and `~/.claude.json` at `/host-claude-config/`
   - Keep the existing `env_file: - ${HOME}/.conductor_env`
   - Replace `command: sleep infinity` with `command: ["/home/conductor/init-claude-config.sh", "sleep", "infinity"]` so the init script runs once on container start and then execs the keepalive
   - Keep `stdin_open: true`, `tty: true`, `working_dir: /workspaces/${DIRNAME}`
-  - Acceptance: `docker compose -f conductor-compose.yml config` validates; no syntax errors
+  - Acceptance: `docker compose -f devcontainer-compose.yml config` validates; no syntax errors
 
 ### 4. Update `conductor.sh` preflight  <!-- agent: general-purpose --> <!-- Completed: 2026-04-13 -->
 
@@ -87,7 +87,7 @@ Read-only bind-mount `~/.claude/` and `~/.claude.json` at `/host-claude-config/`
 
 - [x] `bash -n scaffold.sh conductor.sh agent_exec.sh` — all three pass syntax check
 - [x] Dry-run scaffold output inspected during step 2/3 sub-agent runs: Dockerfile COPYs `init-claude-config.sh`, generated init script has the project dirname baked into the Serena `--project` flag, compose mounts `/host-claude-config/.claude{,.json}` read-only and invokes the init script as its `command:`
-- [ ] Build & run the test container: `docker compose -f conductor-compose.yml up -d --build` (user runs — manual, covered by UAT)
+- [ ] Build & run the test container: `docker compose -f devcontainer-compose.yml up -d --build` (user runs — manual, covered by UAT)
 - [ ] Inside container: `docker compose exec app bash -c 'ls -la ~/.claude && cat ~/.claude/.conductor-initialized'` — sentinel exists (UAT)
 - [ ] Inside container: `docker compose exec app claude mcp list` — shows host's user-scope MCPs plus `serena` (UAT)
 - [ ] Inside container: `docker compose exec app claude /status` — `Auth token: CLAUDE_CODE_OAUTH_TOKEN`, no onboarding prompt (UAT)

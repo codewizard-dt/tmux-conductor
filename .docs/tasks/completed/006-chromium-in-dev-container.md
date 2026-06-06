@@ -6,7 +6,7 @@ Install a native arm64/amd64 Chromium in the scaffolded dev container and config
 
 ## Approach
 
-Modify the scaffolded `.devcontainer/Dockerfile` to register the `ppa:xtradeb/apps` PPA and install `chromium` plus its runtime libs (using Ubuntu 24.04's `t64` package names). Modify the generated `conductor-compose.yml` to set `PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium` + `PUPPETEER_SKIP_DOWNLOAD=true` + `PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true` so Puppeteer skips its broken auto-download and uses the system binary. Rollout is scaffold-only — existing projects must re-run `./scaffold.sh --force` + `docker compose build` to pick up the change.
+Modify the scaffolded `.devcontainer/Dockerfile` to register the `ppa:xtradeb/apps` PPA and install `chromium` plus its runtime libs (using Ubuntu 24.04's `t64` package names). Modify the generated `devcontainer-compose.yml` to set `PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium` + `PUPPETEER_SKIP_DOWNLOAD=true` + `PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true` so Puppeteer skips its broken auto-download and uses the system binary. Rollout is scaffold-only — existing projects must re-run `./scaffold.sh --force` + `docker compose build` to pick up the change.
 
 ## Prerequisites
 

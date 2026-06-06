@@ -202,16 +202,16 @@ Ship a `Dockerfile.base` at repo root built from `debian:bookworm-slim` (Chromiu
   ```
 - [x] Inspect generated files: <!-- Completed: 2026-04-16 (all 9 checks passed) -->
   - `./tmp/scaffold-test-008/.devcontainer/Dockerfile` should start with `FROM ghcr.io/codewizard-dt/tmux-conductor-base:latest` and contain NO `apt-get install`, NO `add-apt-repository`, NO `useradd conductor`, NO `claude.ai/install.sh`, NO uv install.
-  - `./tmp/scaffold-test-008/conductor-compose.yml` should still contain all three `PUPPETEER_*` env entries.
+  - `./tmp/scaffold-test-008/devcontainer-compose.yml` should still contain all three `PUPPETEER_*` env entries.
 - [BLOCKED: requires Docker + published base image] Build the container. With a prebaked base image this should complete in ~15–30s (network-bound: pull base + small final layer).
   ```
-  (cd ./tmp/scaffold-test-008 && docker compose -f conductor-compose.yml build)
+  (cd ./tmp/scaffold-test-008 && docker compose -f devcontainer-compose.yml build)
   ```
 - [BLOCKED: requires Docker + Apple Silicon] Runtime checks (arm64 native verification):
   ```
-  (cd ./tmp/scaffold-test-008 && docker compose -f conductor-compose.yml run --rm app /usr/bin/chromium --version)
-  (cd ./tmp/scaffold-test-008 && docker compose -f conductor-compose.yml run --rm app uname -m)
-  (cd ./tmp/scaffold-test-008 && docker compose -f conductor-compose.yml run --rm app claude --version)
+  (cd ./tmp/scaffold-test-008 && docker compose -f devcontainer-compose.yml run --rm app /usr/bin/chromium --version)
+  (cd ./tmp/scaffold-test-008 && docker compose -f devcontainer-compose.yml run --rm app uname -m)
+  (cd ./tmp/scaffold-test-008 && docker compose -f devcontainer-compose.yml run --rm app claude --version)
   ```
   - Expect: `Chromium <version>`, `aarch64` (on Apple Silicon host), and a Claude Code version string.
 - [x] Clean up: <!-- Completed: 2026-04-16 (rm -rf ./tmp/scaffold-test-008 ran as part of scaffold test) -->

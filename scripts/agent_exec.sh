@@ -6,7 +6,7 @@ usage() {
 Usage: agent_exec.sh <mode> <target> -- <cmd...>
 
 Modes:
-  compose   Run via docker compose exec (uses COMPOSE_FILE env or conductor-compose.yml)
+  compose   Run via docker compose exec (uses COMPOSE_FILE env or devcontainer-compose.yml)
   docker    Run via docker exec
 
 Examples:
@@ -36,7 +36,7 @@ fi
 
 case "$MODE" in
   compose)
-    COMPOSE_FILE="${COMPOSE_FILE:-conductor-compose.yml}"
+    COMPOSE_FILE="${COMPOSE_FILE:-devcontainer-compose.yml}"
     exec docker compose -f "$COMPOSE_FILE" exec \
       -e ANTHROPIC_API_KEY= \
       -e ANTHROPIC_AUTH_TOKEN= \

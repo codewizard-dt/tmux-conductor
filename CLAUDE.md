@@ -30,7 +30,7 @@ All scripts below live in `scripts/` except `install-hooks.sh` (repo root).
 | `broadcast.sh` | Sends a command to all agent panes |
 | `teardown.sh` | Graceful shutdown: sends `/exit` to each agent, waits, kills session |
 | `agent_exec.sh` | Host-side container exec wrapper (compose/docker modes) |
-| `scaffold.sh` | Generates `conductor-compose.yml` + `.devcontainer/devcontainer.json` for a target project; defaults to `ghcr.io/codewizard-dt/tmux-conductor-base:latest` (override with `--image`) |
+| `scaffold.sh` | Generates `devcontainer-compose.yml` + `.devcontainer/devcontainer.json` for a target project; defaults to `ghcr.io/codewizard-dt/tmux-conductor-base:latest` (override with `--image`) |
 | `scripts/add-task.sh` | Appends a scoped task entry to `tasks.txt` using the caller's CWD name as agent name |
 | `hooks/on-session-start.js` | Claude Code hook (Node.js) — writes `idle` to `$STATE_DIR/<agent>.state` on SessionStart (matcher `startup|resume|clear`) |
 | `hooks/on-prompt-submit.js` | Claude Code hook (Node.js) — writes `busy` to `$STATE_DIR/<agent>.state` on UserPromptSubmit |
@@ -52,7 +52,7 @@ All scripts below live in `scripts/` except `install-hooks.sh` (repo root).
 - Usage monitoring runs before every dispatch; when all agents hit limits, auto-teardown triggers
 - Task queue supports agent-scoped entries via `agentname: command` prefix — `pop_task()` matches scoped lines first, then falls back to unscoped (global) lines
 - Base image `ghcr.io/codewizard-dt/tmux-conductor-base` is rebuilt weekly (`.github/workflows/base-image.yml`) from `debian:bookworm-slim` with Chromium, Claude Code CLI, and uv preinstalled — every scaffolded project inherits fresh deps without paying the ~4 min install cost per project. Override with `scaffold.sh --image <other>`.
-- Verbose dispatch logging is enabled by default. On the host, `monitor.sh` appends one JSONL record to `$LOG_DIR/dispatch.jsonl` for every dispatch (fields: `ts`, `agent`, `command`, `state`, `state_age_s`, `detection`, `queue`, `queue_remaining`, `pane_tail`). Inside a container, the hook scripts (`on-stop.js`, etc.) append one JSONL record to `$CONDUCTOR_LOG_DIR/hooks.jsonl` for every state transition (fields: `ts`, `agent`, `event`, `prev_state`, `new_state`). Both paths are configurable: `LOG_DIR` in `conductor.conf` (host) and `CONDUCTOR_LOG_DIR` env var (container, set in `conductor-compose.yml` or the devcontainer env).
+- Verbose dispatch logging is enabled by default. On the host, `monitor.sh` appends one JSONL record to `$LOG_DIR/dispatch.jsonl` for every dispatch (fields: `ts`, `agent`, `command`, `state`, `state_age_s`, `detection`, `queue`, `queue_remaining`, `pane_tail`). Inside a container, the hook scripts (`on-stop.js`, etc.) append one JSONL record to `$CONDUCTOR_LOG_DIR/hooks.jsonl` for every state transition (fields: `ts`, `agent`, `event`, `prev_state`, `new_state`). Both paths are configurable: `LOG_DIR` in `conductor.conf` (host) and `CONDUCTOR_LOG_DIR` env var (container, set in `devcontainer-compose.yml` or the devcontainer env).
 
 ## Prerequisites
 

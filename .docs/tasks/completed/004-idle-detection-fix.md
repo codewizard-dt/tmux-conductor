@@ -140,13 +140,13 @@ fallback only.
 
 ### 6. Wire hook config into the container via `scaffold.sh` + `init-claude-config.sh`  <!-- agent: general-purpose --> <!-- Completed: 2026-04-14 -->
 
-- [x] In `scaffold.sh`, extend the generated `conductor-compose.yml` heredoc (currently around line 158) to add two bind-mounts under the service's `volumes:` block:
+- [x] In `scaffold.sh`, extend the generated `devcontainer-compose.yml` heredoc (currently around line 158) to add two bind-mounts under the service's `volumes:` block:
   ```yaml
         - ${CONDUCTOR_REPO}/hooks:/conductor-hooks:ro
         - ${CONDUCTOR_STATE_DIR}:/conductor-state
   ```
   Above the compose heredoc, export defaults so the scaffolded compose file sources them from the conductor's environment at `up` time — or, simpler, bake them with absolute paths derived at scaffold time. Use whichever matches existing project convention; default `CONDUCTOR_REPO` to the absolute path of this repo's root (resolved at scaffold time), default `CONDUCTOR_STATE_DIR` to `${CONDUCTOR_REPO}/logs/state`.
-- [x] In the same `conductor-compose.yml` block, add an `environment:` key (or extend the existing `env_file:`) so each service gets:
+- [x] In the same `devcontainer-compose.yml` block, add an `environment:` key (or extend the existing `env_file:`) so each service gets:
   ```yaml
       environment:
         - CONDUCTOR_STATE_DIR=/conductor-state

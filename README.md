@@ -110,7 +110,7 @@ To run agents inside Docker containers instead of directly on the host:
 ```
 
 This generates:
-- `conductor-compose.yml` — Docker Compose file with a long-running container
+- `devcontainer-compose.yml` — Docker Compose file with a long-running container
 - `.devcontainer/Dockerfile` — minimal two-layer image built on `ghcr.io/codewizard-dt/tmux-conductor-base:latest` (Chromium, Claude Code CLI, uv, nodejs, npm, python3 preinstalled); first-build completes in ~15–30s instead of ~4 min
 - `.devcontainer/devcontainer.json` — VS Code Dev Container configuration
 - `.devcontainer/init-claude-config.sh` — first-boot entrypoint that seeds the container's Claude config from the host (see "Shared configuration & MCPs" below)
@@ -124,7 +124,7 @@ Options:
 
 ```bash
 cd /path/to/your/project
-docker compose -f conductor-compose.yml up -d
+docker compose -f devcontainer-compose.yml up -d
 ```
 
 ### 3. Switch to container mode
@@ -133,7 +133,7 @@ In `conductor.conf`:
 
 ```bash
 EXEC_MODE="container"
-COMPOSE_FILE="conductor-compose.yml"
+COMPOSE_FILE="devcontainer-compose.yml"
 COMPOSE_SERVICE="app"
 ```
 
@@ -174,15 +174,15 @@ Each scaffolded container bind-mounts your host's `~/.claude/` and `~/.claude.js
 **Force a reset** of a container's config (e.g. after editing host settings you want re-synced):
 
 ```bash
-docker compose -f conductor-compose.yml exec app rm /home/conductor/.claude/.conductor-initialized
-docker compose -f conductor-compose.yml restart app
+docker compose -f devcontainer-compose.yml exec app rm /home/conductor/.claude/.conductor-initialized
+docker compose -f devcontainer-compose.yml restart app
 ```
 
 The next start will re-run the init-copy and re-register Serena.
 
 ### Host network access
 
-From inside the scaffolded container, host services are reachable at `host.docker.internal:<port>`. The generated `conductor-compose.yml` maps this hostname to the special `host-gateway` value via `extra_hosts`, which makes the setup work identically on Linux, macOS, and Windows. On Docker Desktop (Mac/Windows) `host.docker.internal` resolves without `extra_hosts`, but the entry is included for Linux compatibility where that alias is not provided by default.
+From inside the scaffolded container, host services are reachable at `host.docker.internal:<port>`. The generated `devcontainer-compose.yml` maps this hostname to the special `host-gateway` value via `extra_hosts`, which makes the setup work identically on Linux, macOS, and Windows. On Docker Desktop (Mac/Windows) `host.docker.internal` resolves without `extra_hosts`, but the entry is included for Linux compatibility where that alias is not provided by default.
 
 Host dev servers must bind to `0.0.0.0` (not `127.0.0.1`) to be reachable from the container — a loopback-only bind is invisible across the bridge. Examples:
 
@@ -210,7 +210,7 @@ All settings live in `conductor.conf`:
 | `TASK_QUEUE` | `./tasks.txt` | Path to task queue file (one task per line, optional `name: ` prefix for agent scoping) |
 | `LOG_DIR` | `./logs` | Directory for log files |
 | `EXEC_MODE` | `local` | `local` or `container` |
-| `COMPOSE_FILE` | `conductor-compose.yml` | Docker Compose file for container mode |
+| `COMPOSE_FILE` | `devcontainer-compose.yml` | Docker Compose file for container mode |
 | `COMPOSE_SERVICE` | `app` | Service name to exec into |
 
 ## Scripts

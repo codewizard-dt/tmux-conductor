@@ -1,6 +1,6 @@
 # Task File Specification
 
-Task files in `active/` are structured outlines designed for execution by `/tackle`.
+Task files in `.docs/tasks/` are structured outlines designed for execution by `/tackle`.
 
 ## Naming Convention
 
@@ -8,7 +8,7 @@ Task files in `active/` are structured outlines designed for execution by `/tack
 <NNN>-<short-description>.md
 ```
 
-- **NNN**: Zero-padded sequential integer (check `active/` and `completed/` to find the next number)
+- **NNN**: Zero-padded sequential integer (check `.docs/tasks/` and `completed/` to find the next number)
 - **short-description**: Lowercase, hyphen-separated slug (2-4 words)
 
 Examples: `001-basic-infrastructure.md`, `004-application-tracker.md`, `008-find-jobs.md`
@@ -68,12 +68,12 @@ Brief summary of the technical approach or key decisions (1-3 sentences).
 ## Lifecycle
 
 ```
-active/  →  completed/
-(/tackle + /uat-walkthrough all pass)
+.docs/tasks/  →  .docs/tasks/completed/
+(/tackle + /uat-walk all pass)
 ```
 
 When a task reaches `completed/`, a UAT link is appended:
 ```markdown
 ---
-**UAT**: [`.docs/uat/completed/NNN-slug.uat.md`](../../uat/completed/NNN-slug.uat.md)
+**UAT**: [`.docs/uat/completed/NNN-slug.uat.md`](../uat/completed/NNN-slug.uat.md)
 ```

@@ -1,0 +1,164 @@
+# pyproject.toml — type checking & linting sections only
+# Replace all MY_PROJECT / my_project placeholders with your package name.
+# Remove sections that don't apply (e.g. FastAPI B008 block for non-FastAPI projects).
+
+# =============================================================================
+# TYPE CHECKING — mypy (primary)
+# =============================================================================
+
+[tool.mypy]
+python_version = "3.12"
+strict = true                    # Enables the full strict flag set:
+                                 #   disallow_untyped_defs, disallow_untyped_calls,
+                                 #   disallow_any_generics, disallow_subclassing_any,
+                                 #   warn_return_any, warn_unused_ignores,
+                                 #   no_implicit_reexport, strict_equality, etc.
+                                 # Never approximate strict mode with manual flags —
+                                 # `strict = true` is one source of truth and auto-
+                                 # benefits from mypy upgrades.
+
+# Plugins — add only what the project uses
+plugins = [
+    "pydantic.mypy",             # Required if using Pydantic models (v1 or v2)
+    # "sqlalchemy.ext.mypy.plugin",  # Required if using SQLAlchemy ORM
+]
+
+# Scope — tell mypy exactly where to look; avoids crawling .venv / build artifacts
+files = ["src", "tests"]
+exclude = '(^|/)(\.(venv|git)|tmp|__pycache__|build|dist|alembic)(/|$)'
+
+# Reporting quality-of-life
+show_error_codes = true          # Show [error-code] in each diagnostic line
+pretty = true                    # Colour + context lines in terminal output
+warn_unreachable = true          # Flag dead code after early returns / raises
+warn_unused_configs = true       # Warn if a per-module override matches nothing
+
+# ---------------------------------------------------------------------------
+# Stub overrides — list every library that doesn't ship py.typed or stubs.
+# RULE: Use ignore_missing_imports (not ignore_errors) to stay blind only to the
+#       missing stub, not to real type errors in your own code.
+# ANTI-PATTERN: ignore_errors = true on whole modules — silences real bugs.
+# ---------------------------------------------------------------------------
+
+# [[tool.mypy.overrides]]
+# module = ["boto3", "boto3.*", "botocore", "botocore.*"]
+# ignore_missing_imports = true
+
+# [[tool.mypy.overrides]]
+# module = ["some_untyped_lib", "some_untyped_lib.*"]
+# ignore_missing_imports = true
+
+# [[tool.mypy.overrides]]
+# # For truly unmaintainable generated / vendor code ONLY:
+# module = ["my_project.generated.*"]
+# ignore_errors = true           # Never use for first-party code
+
+# =============================================================================
+# TYPE CHECKING — basedpyright (companion; covers mypy gaps only)
+# =============================================================================
+# Mypy is the primary type checker. basedpyright runs alongside it ONLY to
+# catch the handful of checks mypy currently lacks:
+#   - TypedDict NotRequired access   (mypy gap: python/mypy#9408)
+#   - Unhashable dict keys
+#   - Unused parameters
+# Keep typeCheckingMode = "off" to avoid double-reporting everything mypy
+# already covers; opt in to specific rules only.
+
+[tool.basedpyright]
+include = ["src"]
+exclude = ["**/__pycache__", ".venv", "tmp", "build", "dist"]
+pythonVersion = "3.12"
+typeCheckingMode = "off"
+reportTypedDictNotRequiredAccess = "error"
+reportUnusedParameter = "error"
+reportUnhashable = "error"
+reportAttributeAccessIssue = "error"
+
+# =============================================================================
+# LINTING & FORMATTING — ruff
+# =============================================================================
+
+[tool.ruff]
+target-version = "py312"         # Minimum Python version for syntax transforms
+line-length = 100                # Consistent across projects; adjust only if team has strong opinions
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes (undefined names, unused imports)
+    "I",    # isort (import ordering)
+    "N",    # pep8-naming (class/function/variable naming conventions)
+    "UP",   # pyupgrade (modernise syntax to target Python version)
+    "B",    # flake8-bugbear (likely bugs and design issues)
+    "C4",   # flake8-comprehensions (simplify list/dict/set comprehensions)
+    "SIM",  # flake8-simplify (simplifiable if/return/with patterns)
+    "RUF",  # ruff-native rules (opinionated, fast, no external dep)
+    # "C90",  # mccabe complexity — add for complex control-flow codebases
+]
+ignore = [
+    # Add project-specific silences here with a comment justifying each one.
+    # Example: "N802",  # Allow lowercase function names in test fixtures
+]
+
+[tool.ruff.lint.mccabe]
+# Only relevant if "C90" is in select above.
+# 10 is the default; raise to 15 only for agent loops / multi-provider routing
+# and document the reason.
+max-complexity = 10
+
+[tool.ruff.lint.isort]
+known-first-party = ["my_project"]   # Replace with your package name(s)
+split-on-trailing-comma = true
+
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI's Depends() / Query() / Path() / Body() etc. are evaluated at
+# request time, not standard mutable defaults — B008 is a false positive here.
+# REMOVE this block entirely for non-FastAPI projects.
+extend-immutable-calls = [
+    "fastapi.Depends",
+    "fastapi.Query",
+    "fastapi.Path",
+    "fastapi.Body",
+    "fastapi.Header",
+    "fastapi.Cookie",
+    "fastapi.Form",
+    "fastapi.File",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Test files: long assertion messages legitimately exceed line limits
+"tests/**/*.py" = ["E501"]
+# Generated / vendor code: suppress everything
+# "src/my_project/generated/**" = ["E", "W", "F", "I", "UP", "B"]
+
+# =============================================================================
+# TEST RUNNER — pytest
+# =============================================================================
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
+markers = [
+    "unit: fast hermetic tests with no external services",
+    "integration: requires live database or external service",
+    "e2e: full end-to-end scenario",
+    "live: makes real LLM / API calls (skipped in CI unless --live is passed)",
+]
+
+# =============================================================================
+# COVERAGE
+# =============================================================================
+
+[tool.coverage.run]
+source = ["src"]
+branch = true                    # Measure branch (arc) coverage, not just line
+omit = ["*/__pycache__/*", "*/examples/*", "*/generated/*"]
+
+[tool.coverage.report]
+show_missing = true
+skip_empty = true
+precision = 1
+fail_under = 80                  # CI hard-failure threshold; lower only with a
+                                 # dated comment explaining the gap and a target date

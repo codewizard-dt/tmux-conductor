@@ -2,7 +2,7 @@
 
 ## Objective
 
-Add `extra_hosts: ["host.docker.internal:host-gateway"]` to the scaffolded `conductor-compose.yml` so dev containers can reach host-bound dev servers (e.g. an Astro/Vite server on `localhost:4321`), and document the host-side bind requirement.
+Add `extra_hosts: ["host.docker.internal:host-gateway"]` to the scaffolded `devcontainer-compose.yml` so dev containers can reach host-bound dev servers (e.g. an Astro/Vite server on `localhost:4321`), and document the host-side bind requirement.
 
 ## Approach
 
@@ -10,7 +10,7 @@ Add `extra_hosts: ["host.docker.internal:host-gateway"]` to the scaffolded `cond
 
 ## Prerequisites
 
-- [ ] Task 001 (Initial Scaffolding) completed — `scaffold.sh` exists and emits `conductor-compose.yml`
+- [ ] Task 001 (Initial Scaffolding) completed — `scaffold.sh` exists and emits `devcontainer-compose.yml`
 
 ---
 
@@ -18,7 +18,7 @@ Add `extra_hosts: ["host.docker.internal:host-gateway"]` to the scaffolded `cond
 
 ### 1. Update scaffold.sh compose template  <!-- agent: general-purpose -->
 
-- [x] In `scaffold.sh`, locate the `cat > "$COMPOSE_FILE" <<EOF ... EOF` block (the heredoc that writes `conductor-compose.yml`)
+- [x] In `scaffold.sh`, locate the `cat > "$COMPOSE_FILE" <<EOF ... EOF` block (the heredoc that writes `devcontainer-compose.yml`)
 - [x] Add an `extra_hosts` entry to the service definition, immediately after the `environment:` block
   - The new lines to append inside the heredoc:
     ```
@@ -55,8 +55,8 @@ Add `extra_hosts: ["host.docker.internal:host-gateway"]` to the scaffolded `cond
 
 - [x] `bash -n scaffold.sh` exits 0
 - [x] Run `./scaffold.sh ./tmp/scaffold-test` (create `./tmp/scaffold-test` first as an empty dir) and confirm:
-  - The generated `./tmp/scaffold-test/conductor-compose.yml` contains the `extra_hosts:` block under the service
-  - `docker compose -f ./tmp/scaffold-test/conductor-compose.yml config` parses without error (requires Docker installed; if not available locally, document this skipped check in the UAT)
+  - The generated `./tmp/scaffold-test/devcontainer-compose.yml` contains the `extra_hosts:` block under the service
+  - `docker compose -f ./tmp/scaffold-test/devcontainer-compose.yml config` parses without error (requires Docker installed; if not available locally, document this skipped check in the UAT)
 - [ ] Manually verify (with a host dev server bound to `0.0.0.0:4321`) from inside a built container: `curl -sI http://host.docker.internal:4321` returns an HTTP response <!-- Deferred to UAT -->
 - [x] Clean up `./tmp/scaffold-test/` <!-- Updated: 2026-04-14 -->
 

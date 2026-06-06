@@ -47,7 +47,7 @@ The flowchart is the centerpiece — draft it first so the prose can reference i
     subgraph Setup["Setup / Entry"]
       User([User])
       Scaffold["scaffold.sh<br/>(target project setup)"]
-      Compose[(conductor-compose.yml<br/>+ devcontainer.json)]
+      Compose[(devcontainer-compose.yml<br/>+ devcontainer.json)]
       Conductor["conductor.sh<br/>(tmux session + windows)"]
       Spawn["spawn.sh<br/>(alt: split-pane layout)"]
       AgentExec["agent_exec.sh<br/>(container exec wrapper)"]
@@ -149,8 +149,8 @@ Create `scripts/README.md` with this structure and required sections. Keep each 
   - `dispatch.sh` — sends one command to one pane. `tmux send-keys -l` (literal) for the prompt, then a separate `Enter` keypress. Args: `<target> <command>`.
   - `broadcast.sh` — fan-out wrapper. Iterates `AGENTS` and invokes `dispatch.sh` for each existing pane. Args: `<command>`.
   - `teardown.sh` — sends `/exit` to each agent via `dispatch.sh`, sleeps 10s, then `tmux kill-session`. No args.
-  - `agent_exec.sh` — host-side wrapper that runs a command inside the agent's container. Modes: `compose` (via `docker compose -f conductor-compose.yml exec`) or `docker` (via `docker exec`). Strips `ANTHROPIC_API_KEY`/`ANTHROPIC_AUTH_TOKEN` and forwards `CONDUCTOR_AGENT_NAME`, `CONDUCTOR_STATE_DIR=/conductor-state`, `CONDUCTOR_LOG_DIR=/conductor-logs`. Args: `<mode> <target> -- <cmd...>`.
-  - `scaffold.sh` — one-time-per-project setup. Generates `.devcontainer/Dockerfile`, `.devcontainer/init-claude-config.sh`, `.devcontainer/devcontainer.json`, and `conductor-compose.yml` in the target project. Options: `--image`, `--service`, `--agent-name`, `--force`. Default image: `ghcr.io/codewizard-dt/tmux-conductor-base:latest`.
+  - `agent_exec.sh` — host-side wrapper that runs a command inside the agent's container. Modes: `compose` (via `docker compose -f devcontainer-compose.yml exec`) or `docker` (via `docker exec`). Strips `ANTHROPIC_API_KEY`/`ANTHROPIC_AUTH_TOKEN` and forwards `CONDUCTOR_AGENT_NAME`, `CONDUCTOR_STATE_DIR=/conductor-state`, `CONDUCTOR_LOG_DIR=/conductor-logs`. Args: `<mode> <target> -- <cmd...>`.
+  - `scaffold.sh` — one-time-per-project setup. Generates `.devcontainer/Dockerfile`, `.devcontainer/init-claude-config.sh`, `.devcontainer/devcontainer.json`, and `devcontainer-compose.yml` in the target project. Options: `--image`, `--service`, `--agent-name`, `--force`. Default image: `ghcr.io/codewizard-dt/tmux-conductor-base:latest`.
   - `add-task.sh` — enqueues a task into `../tasks.txt` using `basename "$PWD"` as the agent name. Intended to be called from the target project directory (or aliased). Args: `<command words...>`.
 
 - [x] Insert `## Architecture` section **above** the per-script sections, containing the mermaid flowchart from Step 2 plus one short caption paragraph above it explaining the three subgraphs:

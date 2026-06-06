@@ -1,2 +1,19 @@
-jobfinder: /clear
-jobfinder: /uat-auto 70
+basic-project-setup: /clear
+basic-project-setup: /tackle 001
+basic-project-setup: /clear
+basic-project-setup: /tackle 005
+basic-project-setup: /clear
+basic-project-setup: /uat-generator 005
+basic-project-setup: /clear
+basic-project-setup: /uat-auto 005
+tmux-conductor: /clear
+tmux-conductor: /uat-generator 016
+tmux-conductor: /clear 
+tmux-conductor: /uat-auto 016
+tmux-conductor: /clear 
+tmux-conductor: /tackle 017
+tmux-conductor: /clear
+tmux-conductor: /uat-generator 017
+tmux-conductor: /clear 
+tmux-conductor: /uat-auto 017
+tmux-conductor: /clear 

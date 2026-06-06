@@ -1,0 +1,67 @@
+{
+  // pyrightconfig.json
+  // For basedpyright (recommended) or pyright.
+  // If you use pyproject.toml with [tool.basedpyright] / [tool.pyright],
+  // you can omit this file and put all settings there. Prefer one source of truth.
+
+  // --- Scope: explicit include/exclude keeps analysis fast and avoids noise ---
+  "include": [
+    "src",       // production source
+    "tests",     // test code should be checked
+    "scripts"    // utility scripts
+  ],
+  "exclude": [
+    "**/node_modules",
+    "**/.venv",
+    "**/__pycache__",
+    "**/.mypy_cache",
+    "**/.ruff_cache",
+    "**/.pytest_cache",
+    "**/dist",
+    "**/build",
+    "**/*.egg-info"
+  ],
+
+  // --- Virtual environment ---
+  // venvPath: directory CONTAINING the venv folder (usually ".")
+  // venv: name of the venv folder itself (usually ".venv")
+  "venvPath": ".",
+  "venv": ".venv",
+
+  // --- Python version (keep in sync with mypy.ini + pyproject.toml) ---
+  "pythonVersion": "3.12",
+
+  // --- Type-checking mode ---
+  // ANTI-PATTERN: omitting typeCheckingMode defaults to "off" — no type checking at all.
+  // "basic"    → lightweight checks, good starting point for legacy codebases
+  // "standard" → recommended floor for active projects
+  // "strict"   → all checks; use for greenfield or fully-annotated code
+  "typeCheckingMode": "standard",
+
+  // --- Companion mode (when running alongside mypy) ---
+  // If mypy is your primary checker, set typeCheckingMode = "off" and only
+  // opt in to rules mypy currently lacks. See pyproject.toml [tool.basedpyright].
+
+  // --- Diagnostic overrides ---
+  // Missing imports should always be errors: broken resolution is always a problem.
+  "reportMissingImports": "error",
+  // Many popular libraries still lack stubs; keep as warning.
+  "reportMissingTypeStubs": "warning",
+  // Free correctness wins — flag unused imports and variables
+  "reportUnusedImports": "warning",
+  "reportUnusedVariables": "warning",
+  // Flag access to __-prefixed members from outside the class
+  "reportPrivateUsage": "warning",
+
+  // --- Strict overrides to add even in "standard" mode ---
+  // Uncomment as the codebase matures:
+  // "reportReturnType": "error",
+  // "reportOperatorIssue": "error",
+  // "reportIndexIssue": "error",
+  // "reportTypedDictNotRequiredAccess": "error",  // mypy gap: python/mypy#9408
+
+  // --- Import resolution ---
+  // Only add extraPaths to fix legitimate src-layout issues.
+  // Do NOT use to paper over packaging problems.
+  // "extraPaths": ["src"]
+}

@@ -4,7 +4,7 @@
 #
 # Usage: scaffold.sh <target-project-path> [--image <base-image>] [--service <service-name>] [--force]
 #
-# Generates conductor-compose.yml and .devcontainer/devcontainer.json
+# Generates devcontainer-compose.yml and .devcontainer/devcontainer.json
 # in the target project directory.
 
 set -euo pipefail
@@ -16,9 +16,9 @@ FORCE=false
 TARGET=""
 AGENT_NAME=""
 
-# Resolve conductor repo root (dir containing this script) at scaffold time,
+# Resolve conductor repo root (parent of scripts/) at scaffold time,
 # so the generated compose file bakes absolute paths for hook + state mounts.
-CONDUCTOR_REPO="$(cd "$(dirname "$0")" && pwd)"
+CONDUCTOR_REPO="$(cd "$(dirname "$0")/.." && pwd)"
 CONDUCTOR_STATE_DIR_DEFAULT="${CONDUCTOR_REPO}/logs/state"
 CONDUCTOR_LOG_DIR_DEFAULT="${CONDUCTOR_REPO}/logs"
 
@@ -125,7 +125,7 @@ if [[ -z "$AGENT_NAME" ]]; then
   AGENT_NAME="$DIRNAME"
 fi
 
-COMPOSE_FILE="$TARGET/conductor-compose.yml"
+COMPOSE_FILE="$TARGET/devcontainer-compose.yml"
 DEVCONTAINER_DIR="$TARGET/.devcontainer"
 DEVCONTAINER_FILE="$DEVCONTAINER_DIR/devcontainer.json"
 DOCKERFILE="$DEVCONTAINER_DIR/Dockerfile"
@@ -143,6 +143,10 @@ FROM ${IMAGE}
 #   - Claude Code CLI (~/.local/bin/claude)
 #   - uv (~/.cargo/bin/uv)
 # See https://github.com/codewizard-dt/tmux-conductor/blob/main/Dockerfile.base
+
+# Install lsof (not in base image) for port/process introspection
+USER root
+RUN apt-get update && apt-get install -y --no-install-recommends lsof && rm -rf /var/lib/apt/lists/*
 
 # Copy init script that seeds ~/.claude config from host copy (or generates defaults)
 COPY --chown=conductor:conductor init-claude-config.sh /home/conductor/init-claude-config.sh
@@ -240,7 +244,7 @@ EOF
   echo "Created: $INIT_SCRIPT"
 fi
 
-# ── Generate conductor-compose.yml ────────────────────────────────────
+# ── Generate devcontainer-compose.yml ────────────────────────────────────
 if should_write "$COMPOSE_FILE"; then
   # Ensure the state and log dirs exist on the host before compose tries to bind-mount them
   # (otherwise Docker creates them as root-owned).
@@ -284,7 +288,7 @@ if should_write "$DEVCONTAINER_FILE"; then
   cat > "$DEVCONTAINER_FILE" <<EOF
 {
   "name": "conductor-agent",
-  "dockerComposeFile": "../conductor-compose.yml",
+  "dockerComposeFile": "../devcontainer-compose.yml",
   "service": "${SERVICE}",
   "workspaceFolder": "/workspaces/${DIRNAME}",
   "customizations": { "vscode": { "extensions": [] } }
@@ -308,8 +312,8 @@ echo "  Base image: $IMAGE"
 echo "  1. Generate a token (once, valid 1 year):  claude setup-token"
 echo "  2. Save it:  echo 'CLAUDE_CODE_OAUTH_TOKEN=<token>' >> ~/.conductor_env"
 echo "  3. cd $TARGET"
-echo "  4. docker compose -f conductor-compose.yml up -d --build"
-echo "  5. Verify: docker compose -f conductor-compose.yml exec $SERVICE claude --version"
+echo "  4. docker compose -f devcontainer-compose.yml up -d --build"
+echo "  5. Verify: docker compose -f devcontainer-compose.yml exec $SERVICE claude --version"
 echo ""
 echo "Auth: ~/.conductor_env is loaded as the container's env_file."
 echo "      Token persists across reboots — regenerate only if revoked."

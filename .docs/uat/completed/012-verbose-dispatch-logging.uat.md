@@ -72,7 +72,7 @@
 - [x] Pass <!-- 2026-04-19 -->
 
 ### UAT-STATIC-006: CONDUCTOR_LOG_DIR present in scaffold.sh compose environment and volume
-- **Description**: The generated `conductor-compose.yml` must set `CONDUCTOR_LOG_DIR=/conductor-logs` and mount the host log directory
+- **Description**: The generated `devcontainer-compose.yml` must set `CONDUCTOR_LOG_DIR=/conductor-logs` and mount the host log directory
 - **Steps**:
   1. Run the command below
 - **Command**:

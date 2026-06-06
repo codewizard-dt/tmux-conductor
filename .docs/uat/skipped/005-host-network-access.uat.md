@@ -28,12 +28,12 @@
 - [ ] Pass
 
 ### UAT-SH-002: Scaffold output contains extra_hosts block
-- **Scope**: Verifies the new `extra_hosts: ["host.docker.internal:host-gateway"]` entry is emitted into the generated `conductor-compose.yml`.
+- **Scope**: Verifies the new `extra_hosts: ["host.docker.internal:host-gateway"]` entry is emitted into the generated `devcontainer-compose.yml`.
 - **Steps**:
   1. From repo root, create the test dir and run the scaffold, then inspect the generated compose file.
 - **Command**:
   ```bash
-  mkdir -p ./tmp/scaffold-test && ./scripts/scaffold.sh ./tmp/scaffold-test && grep -A1 'extra_hosts:' ./tmp/scaffold-test/conductor-compose.yml
+  mkdir -p ./tmp/scaffold-test && ./scripts/scaffold.sh ./tmp/scaffold-test && grep -A1 'extra_hosts:' ./tmp/scaffold-test/devcontainer-compose.yml
   ```
 - **Expected Result**: `scaffold.sh` reports `Scaffold complete for: ./tmp/scaffold-test`. The `grep` output shows:
   ```
@@ -46,10 +46,10 @@
 ### UAT-SH-003: Generated compose validates with docker compose config
 - **Scope**: Confirms the new `extra_hosts` block is syntactically valid compose YAML.
 - **Steps**:
-  1. Run the command below (depends on `UAT-SH-002` having run and generated `./tmp/scaffold-test/conductor-compose.yml`).
+  1. Run the command below (depends on `UAT-SH-002` having run and generated `./tmp/scaffold-test/devcontainer-compose.yml`).
 - **Command**:
   ```bash
-  docker compose -f ./tmp/scaffold-test/conductor-compose.yml config
+  docker compose -f ./tmp/scaffold-test/devcontainer-compose.yml config
   ```
 - **Expected Result**: Exit code `0`. Rendered output includes the service with `extra_hosts:` → `host.docker.internal: host-gateway` mapped. If `docker` is unavailable on this host, mark this test **SKIPPED** and record the reason in the Pass comment.
 - [ ] Pass
@@ -94,15 +94,15 @@
 - **Scope**: End-to-end verification that a container launched from the scaffolded compose can reach a host-bound service at `host.docker.internal:<port>`.
 - **Prerequisites** (specific to this test):
   - Host dev server running and bound to `0.0.0.0:4321` (e.g. `astro dev --host` in another project). Confirm with `curl -sI http://127.0.0.1:4321` on the host returning a response.
-  - A scaffolded project built and started: `cd ./tmp/scaffold-test && docker compose -f conductor-compose.yml up -d --build`.
+  - A scaffolded project built and started: `cd ./tmp/scaffold-test && docker compose -f devcontainer-compose.yml up -d --build`.
 - **Steps**:
   1. From the host, exec into the running container and curl the host dev server through `host.docker.internal`.
 - **Command**:
   ```bash
-  docker compose -f ./tmp/scaffold-test/conductor-compose.yml exec app curl -sI http://host.docker.internal:4321
+  docker compose -f ./tmp/scaffold-test/devcontainer-compose.yml exec app curl -sI http://host.docker.internal:4321
   ```
 - **Expected Result**: An HTTP status line (e.g. `HTTP/1.1 200 OK` or any `2xx`/`3xx`/`4xx` — the point is the TCP/HTTP round-trip succeeded, not the specific status). A connection refused / timeout / "could not resolve host" indicates the `extra_hosts` mapping or host bind is wrong.
-- **Teardown**: `docker compose -f ./tmp/scaffold-test/conductor-compose.yml down && rm -rf ./tmp/scaffold-test`
+- **Teardown**: `docker compose -f ./tmp/scaffold-test/devcontainer-compose.yml down && rm -rf ./tmp/scaffold-test`
 - [ ] Pass
 
 ---

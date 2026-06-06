@@ -14,7 +14,7 @@ Three views of the same system. **Setup / Entry** is how a user turns a project 
 flowchart TD
   User([User])
   Scaffold["scaffold.sh<br/>(one-time project setup)"]
-  Compose[(conductor-compose.yml<br/>+ devcontainer.json)]
+  Compose[(devcontainer-compose.yml<br/>+ devcontainer.json)]
   Conductor["conductor.sh<br/>(tmux session + windows)"]
   Spawn["spawn.sh<br/>(alt: split-pane layout)"]
   AgentExec["agent_exec.sh<br/>(container exec wrapper)"]
@@ -159,7 +159,7 @@ scripts/teardown.sh
 
 ## agent_exec.sh
 
-Host-side wrapper that runs a command inside an agent's container. Supports two modes: `compose` (via `docker compose -f conductor-compose.yml exec`) and `docker` (via `docker exec`). Strips `ANTHROPIC_API_KEY` and `ANTHROPIC_AUTH_TOKEN` from the host env before exec, and forwards `CONDUCTOR_AGENT_NAME`, `CONDUCTOR_STATE_DIR=/conductor-state`, and `CONDUCTOR_LOG_DIR=/conductor-logs` into the container so hooks write to the shared mount.
+Host-side wrapper that runs a command inside an agent's container. Supports two modes: `compose` (via `docker compose -f devcontainer-compose.yml exec`) and `docker` (via `docker exec`). Strips `ANTHROPIC_API_KEY` and `ANTHROPIC_AUTH_TOKEN` from the host env before exec, and forwards `CONDUCTOR_AGENT_NAME`, `CONDUCTOR_STATE_DIR=/conductor-state`, and `CONDUCTOR_LOG_DIR=/conductor-logs` into the container so hooks write to the shared mount.
 
 Usage:
 ```
@@ -168,7 +168,7 @@ scripts/agent_exec.sh <mode> <target> -- <cmd...>
 
 ## scaffold.sh
 
-One-time-per-project setup. Generates `.devcontainer/Dockerfile`, `.devcontainer/init-claude-config.sh`, `.devcontainer/devcontainer.json`, and `conductor-compose.yml` inside the target project. Defaults to the prebuilt base image `ghcr.io/codewizard-dt/tmux-conductor-base:latest`, which ships Chromium, Claude Code CLI, and uv preinstalled. Flags: `--image`, `--service`, `--agent-name`, `--force`.
+One-time-per-project setup. Generates `.devcontainer/Dockerfile`, `.devcontainer/init-claude-config.sh`, `.devcontainer/devcontainer.json`, and `devcontainer-compose.yml` inside the target project. Defaults to the prebuilt base image `ghcr.io/codewizard-dt/tmux-conductor-base:latest`, which ships Chromium, Claude Code CLI, and uv preinstalled. Flags: `--image`, `--service`, `--agent-name`, `--force`.
 
 Usage:
 ```

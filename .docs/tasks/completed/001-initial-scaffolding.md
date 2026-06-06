@@ -2,11 +2,11 @@
 
 ## Objective
 
-Extract all conductor scripts from CONDUCTOR.md into real executable files, create the host-side container exec wrapper, and build a scaffold script that sets up any existing repo with a `conductor-compose.yml` and `.devcontainer/devcontainer.json` for agent orchestration.
+Extract all conductor scripts from CONDUCTOR.md into real executable files, create the host-side container exec wrapper, and build a scaffold script that sets up any existing repo with a `devcontainer-compose.yml` and `.devcontainer/devcontainer.json` for agent orchestration.
 
 ## Approach
 
-Scripts are extracted from CONDUCTOR.md with minimal modification. The conductor runs on the macOS host and reaches into dev containers via `docker compose exec` / `docker exec` through an `agent_exec.sh` wrapper. A new `scaffold.sh` script generates the compose file using a non-standard name (`conductor-compose.yml`) to avoid conflicts with existing project compose files, plus a matching `devcontainer.json`.
+Scripts are extracted from CONDUCTOR.md with minimal modification. The conductor runs on the macOS host and reaches into dev containers via `docker compose exec` / `docker exec` through an `agent_exec.sh` wrapper. A new `scaffold.sh` script generates the compose file using a non-standard name (`devcontainer-compose.yml`) to avoid conflicts with existing project compose files, plus a matching `devcontainer.json`.
 
 ## Prerequisites
 
@@ -31,7 +31,7 @@ Scripts are extracted from CONDUCTOR.md with minimal modification. The conductor
   - `TASK_QUEUE="./tasks.txt"`
   - `LOG_DIR="./logs"`
   - `EXEC_MODE="local"` — new setting: `local` runs agents directly, `container` uses `agent_exec.sh` to reach into dev containers
-  - `COMPOSE_FILE="conductor-compose.yml"` — the non-standard compose filename
+  - `COMPOSE_FILE="devcontainer-compose.yml"` — the non-standard compose filename
   - `COMPOSE_SERVICE="app"` — the service name to exec into
   - Include inline comments explaining each variable
 
@@ -112,7 +112,7 @@ Scripts are extracted from CONDUCTOR.md with minimal modification. The conductor
 - [x] Create `agent_exec.sh` in the project root — host-side container exec wrapper <!-- Completed: 2026-04-13 -->
   - Usage: `agent_exec.sh <mode> <target> -- <cmd...>`
   - Mode `compose`: runs `docker compose -f "$COMPOSE_FILE" exec -T "$SERVICE" "$@"`
-    - Accept `COMPOSE_FILE` from environment or default to `conductor-compose.yml`
+    - Accept `COMPOSE_FILE` from environment or default to `devcontainer-compose.yml`
   - Mode `docker`: runs `docker exec -i "$CONTAINER" "$@"`
   - Mode validation: print usage and exit 2 on unknown mode
   - Use `exec` to replace the wrapper process with the docker command
@@ -126,7 +126,7 @@ Scripts are extracted from CONDUCTOR.md with minimal modification. The conductor
   - Defaults: image=`ubuntu:24.04`, service=`app`
   - Parse CLI arguments with a while/case loop
   - Validate target path exists and is a directory
-  - Generate `<target-path>/conductor-compose.yml`:
+  - Generate `<target-path>/devcontainer-compose.yml`:
     ```yaml
     services:
       app:
@@ -142,7 +142,7 @@ Scripts are extracted from CONDUCTOR.md with minimal modification. The conductor
     ```json
     {
       "name": "conductor-agent",
-      "dockerComposeFile": "../conductor-compose.yml",
+      "dockerComposeFile": "../devcontainer-compose.yml",
       "service": "app",
       "workspaceFolder": "/workspaces/<dirname>",
       "postCreateCommand": "echo 'conductor devcontainer ready'",
