@@ -5,13 +5,15 @@ GHCR_REPO   = ghcr.io/codewizard-dt/tmux-conductor
 DROPLET_IP ?=
 PROJECT     = tmux-conductor
 GITHUB_USER ?= $(shell gh api user --jq .login 2>/dev/null)
+BACKEND_PORT ?= 8788
+FRONTEND_PORT ?= 4321
 
-.PHONY: ports ps up dev push deploy deploy-pull ssh-alias login down typecheck-backend typecheck-frontend typecheck
+.PHONY: ports ps up dev dev-build push deploy deploy-pull ssh-alias login down typecheck-backend typecheck-frontend typecheck lint-backend lint-frontend lint
 
 ## ports — print service URLs
 ports:
-	@echo "Dashboard API: http://localhost:$${PORT:-8788}"
-	@echo "Dashboard UI:  http://localhost:$${UI_PORT:-4321} (dev) | http://localhost:$${PORT:-8788} (prod)"
+	@echo "Dashboard API: http://localhost:$${BACKEND_PORT}"
+	@echo "Dashboard UI:  http://localhost:$${FRONTEND_PORT} (dev) | http://localhost:$${BACKEND_PORT} (prod)"
 
 ## login — authenticate Docker with GHCR (run once locally and once on the VPS)
 login:
@@ -26,15 +28,17 @@ down:
 	docker compose -f docker-compose.yml -f docker-compose.build.yml down
 
 ## dev — build from source with hot-reload (Dockerfile.dev)
-dev: down
-	docker compose -f docker-compose.build.yml up --wait
-	@echo "API:        http://localhost:$${PORT:-8788}"
-	@echo "UI (dev):   http://localhost:$${UI_PORT:-4321}"
+# dev: down
+# 	docker compose -f docker-compose.build.yml up --wait
+dev:
+	(cd frontend && npm run dev) & (cd backend && npm run dev)
+	@echo "API:        http://localhost:$${BACKEND_PORT}"
+	@echo "UI (dev):   http://localhost:$${FRONTEND_PORT}"
 
 dev-build: down
 	docker compose -f docker-compose.build.yml up --build --wait
-	@echo "API:        http://localhost:$${PORT:-8788}"
-	@echo "UI (dev):   http://localhost:$${UI_PORT:-4321}"
+	@echo "API:        http://localhost:$${BACKEND_PORT}"
+	@echo "UI (dev):   http://localhost:$${FRONTEND_PORT}"
 
 ## up — pull latest GHCR images and start the production stack
 up:
@@ -46,8 +50,8 @@ push:
 	docker buildx build --platform linux/amd64 \
 		$(if $(PUBLIC_API_URL),--build-arg PUBLIC_API_URL=$(PUBLIC_API_URL),) \
 		-t $(GHCR_REPO)-dashboard:latest --push \
-		-f scripts/dashboard/Dockerfile.prod \
-		scripts/dashboard
+		-f Dockerfile.prod \
+		.
 
 ## deploy — sync compose file, Makefile, and .env.production to VPS then restart
 deploy:
@@ -82,3 +86,17 @@ typecheck-frontend:
 
 ## typecheck — run tsc --noEmit in both backend/ and frontend/
 typecheck: typecheck-backend typecheck-frontend
+
+## lint-backend — run ESLint in backend/
+lint-backend:
+	cd backend && npm run lint
+
+## lint-frontend — run ESLint in frontend/
+lint-frontend:
+	cd frontend && npm run lint
+
+## lint — run ESLint in both backend/ and frontend/
+lint: lint-backend lint-frontend
+
+## strict-typecheck — run typecheck and lint in both backend/ and frontend/
+strict-typecheck: typecheck lint

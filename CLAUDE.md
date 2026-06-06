@@ -30,7 +30,7 @@ All scripts below live in `scripts/` except `install-hooks.sh` (repo root).
 | `broadcast.sh` | Sends a command to all agent panes |
 | `teardown.sh` | Graceful shutdown: sends `/exit` to each agent, waits, kills session |
 | `scripts/add-task.sh` | Appends a scoped task entry to `tasks.txt` using the caller's CWD name as agent name |
-| `backend/index.js` | Fastify backend on port 8788 — `GET /status`, `GET /agents`, `GET\|POST /queue/:agent`, `DELETE /queue/:agent/:index`, `PUT /queue/:agent/reorder`, `GET /events` (SSE) |
+| `backend/index.ts` | Fastify backend on port 8788 — `GET /status`, `GET /agents`, `GET\|POST /queue/:agent`, `DELETE /queue/:agent/:index`, `PUT /queue/:agent/reorder`, `GET /events` (SSE) |
 | `frontend/` | Astro+React single-page app on port 4321 — real-time accordion agent list, queue editor, status indicators |
 | `hooks/on-session-start.js` | Claude Code hook (Node.js) — writes `idle` to `$STATE_DIR/<agent>.state` on SessionStart (matcher `startup|resume|clear`) |
 | `hooks/on-prompt-submit.js` | Claude Code hook (Node.js) — writes `busy` to `$STATE_DIR/<agent>.state` on UserPromptSubmit |
@@ -63,8 +63,8 @@ All scripts below live in `scripts/` except `install-hooks.sh` (repo root).
 ## Task/Doc Workflow
 
 This repo uses a structured task lifecycle under `.docs/`:
-- Tasks go in `.docs/tasks/active/` with `<NNN>-<slug>.md` naming
-- UAT files go in `.docs/uat/pending/` with `<NNN>-<slug>.uat.md` naming
+- Tasks go in `.docs/tasks/` with `<NNN>-<slug>.md` naming
+- UAT files go in `.docs/uat/` with `<NNN>-<slug>.uat.md` naming
 - Slash commands: `/add-task`, `/tackle`, `/uat-generator`, `/uat-walkthrough`, `/uat-skip`, `/trash-task`
 - `/tackle` does not move task files — they stay in `active/` until UAT passes
 

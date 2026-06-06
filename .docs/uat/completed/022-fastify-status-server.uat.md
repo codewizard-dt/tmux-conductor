@@ -54,7 +54,7 @@
 
 ### UAT-STATIC-004: server binds to 127.0.0.1 on port 8788
 
-- **Description**: The listen call must specify `host: '127.0.0.1'` and port `8788` (or `process.env.PORT`)
+- **Description**: The listen call must specify `host: '127.0.0.1'` and port `8788` (or `process.env.BACKEND_PORT`)
 - **Steps**:
   1. Run the command below
 - **Command**:

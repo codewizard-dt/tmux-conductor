@@ -64,9 +64,9 @@ export default defineConfig({
 
 The `server.port` is currently hardcoded to `4321`. Optionally read from env:
 
-- [x] If `UI_PORT` is available via `process.env.UI_PORT` in the config file, update:
+- [x] If `FRONTEND_PORT` is available via `process.env.FRONTEND_PORT` in the config file, update:
   ```js
-  server: { port: parseInt(process.env.UI_PORT || '4321', 10) },
+  server: { port: parseInt(process.env.FRONTEND_PORT || '4321', 10) },
   ```
   Note: `astro.config.mjs` runs in a Node.js context, so `process.env` is available even before Vite loads `.env`. This uses the env var if the shell has exported it (e.g. via `make`), otherwise falls back to `4321`.
 

@@ -4,7 +4,7 @@ import react from '@astrojs/react'
 
 export default defineConfig({
   integrations: [react()],
-  server: { port: parseInt(process.env['UI_PORT'] ?? '4321', 10) },
+  server: { port: parseInt(process.env['FRONTEND_PORT'] ?? '4321', 10) },
   vite: {
     envDir: '..',
     server: {

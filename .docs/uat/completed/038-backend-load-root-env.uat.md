@@ -7,7 +7,7 @@
 
 ## Prerequisites
 
-- [ ] Repo root `.env` file exists (copy from `.env.example` if needed) with at minimum `PORT=8788` and `CORS_ORIGIN=http://localhost:4321`
+- [ ] Repo root `.env` file exists (copy from `.env.example` if needed) with at minimum `BACKEND_PORT=8788` and `CORS_ORIGIN=http://localhost:4321`
 - [ ] `dotenv` is listed under `dependencies` in `backend/package.json`
 - [ ] `cd backend && npm install` has been run (node_modules present)
 - [ ] No other process is already bound to port 8788
@@ -53,9 +53,9 @@
 
 ### UAT-API-001: Backend starts and binds on the port from root `.env`
 
-- **Description**: Verify the backend reads `PORT` from the repo-root `.env` and listens on the correct port (8788 by default). If dotenv loading is broken, the fallback default `8788` in code would mask the failure; this test checks the explicit env var is read by confirming the port matches `.env`.
+- **Description**: Verify the backend reads `BACKEND_PORT` from the repo-root `.env` and listens on the correct port (8788 by default). If dotenv loading is broken, the fallback default `8788` in code would mask the failure; this test checks the explicit env var is read by confirming the port matches `.env`.
 - **Steps**:
-  1. Ensure `PORT=8788` is set in the repo-root `.env`
+  1. Ensure `BACKEND_PORT=8788` is set in the repo-root `.env`
   2. Start the backend: `cd backend && node index.js` — confirm startup log shows `http://127.0.0.1:8788`
   3. Run the curl command below
 - **Command**:
@@ -85,7 +85,7 @@
 
 ### UAT-EDGE-001: Backend falls back gracefully when root `.env` is absent
 
-- **Description**: Verify the backend still starts (does not crash) when the root `.env` file is temporarily absent, using code defaults (`PORT=8788`, `CORS_ORIGIN=*`). `dotenv.config()` does not throw when the file is missing — it silently no-ops.
+- **Description**: Verify the backend still starts (does not crash) when the root `.env` file is temporarily absent, using code defaults (`BACKEND_PORT=8788`, `CORS_ORIGIN=*`). `dotenv.config()` does not throw when the file is missing — it silently no-ops.
 - **Steps**:
   1. Stop the running backend (Ctrl-C)
   2. Temporarily rename the root `.env` to `.env.bak`: `mv .env .env.bak`
@@ -99,18 +99,18 @@
 - **Expected Result**: Backend starts without error and responds `{"ok":true}`. No crash or unhandled exception in the terminal. CORS header falls back to `*` when `CORS_ORIGIN` is unset.
 - [x] Pass <!-- 2026-06-06 -->
 
-### UAT-EDGE-002: `PORT` env var from root `.env` overrides the in-code default
+### UAT-EDGE-002: `BACKEND_PORT` env var from root `.env` overrides the in-code default
 
-- **Description**: Confirm that a non-default `PORT` value in root `.env` is actually picked up (proving dotenv loads the file, not just relying on the hardcoded `8788` fallback).
+- **Description**: Confirm that a non-default `BACKEND_PORT` value in root `.env` is actually picked up (proving dotenv loads the file, not just relying on the hardcoded `8788` fallback).
 - **Steps**:
   1. Stop the running backend
-  2. Edit the root `.env`: change `PORT=8788` to `PORT=8790`
+  2. Edit the root `.env`: change `BACKEND_PORT=8788` to `BACKEND_PORT=8790`
   3. Start the backend: `cd backend && node index.js` — startup log should show `http://127.0.0.1:8790`
   4. Run the curl command below
-  5. Restore `.env` to `PORT=8788` and restart the backend when done
+  5. Restore `.env` to `BACKEND_PORT=8788` and restart the backend when done
 - **Command**:
   ```bash
   curl -sS 'http://localhost:8790/api/healthz'
   ```
-- **Expected Result**: `200 OK` with `{"ok":true}` on port 8790. Confirms the backend read `PORT` from root `.env` (not just the fallback default).
+- **Expected Result**: `200 OK` with `{"ok":true}` on port 8790. Confirms the backend read `BACKEND_PORT` from root `.env` (not just the fallback default).
 - [x] Pass <!-- 2026-06-06 -->

@@ -18,8 +18,8 @@ jobs:
       matrix:
         include:
           - image: tmux-conductor-dashboard
-            context: ./scripts/dashboard
-            dockerfile: ./scripts/dashboard/Dockerfile.prod
+            context: .
+            dockerfile: ./Dockerfile.prod
 
     steps:
       - uses: actions/checkout@v4

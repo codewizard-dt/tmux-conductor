@@ -8,7 +8,7 @@
 ## Prerequisites
 
 - [ ] Working directory is the repo root (`/path/to/tmux-conductor`)
-- [ ] Shell has no conflicting `PORT`, `UI_PORT`, `CORS_ORIGIN`, or `PUBLIC_API_URL` exports already set
+- [ ] Shell has no conflicting `BACKEND_PORT`, `FRONTEND_PORT`, `CORS_ORIGIN`, or `PUBLIC_API_URL` exports already set
 
 ---
 
@@ -21,14 +21,14 @@
   1. From the repo root, run the command below
 - **Command**:
   ```bash
-  grep -E '^(PORT|UI_PORT|CORS_ORIGIN|PUBLIC_API_URL)=' .env | sort
+  grep -E '^(BACKEND_PORT|FRONTEND_PORT|CORS_ORIGIN|PUBLIC_API_URL)=' .env | sort
   ```
 - **Expected Result**: Exactly four lines printed, in sorted order:
   ```
   CORS_ORIGIN=http://localhost:4321
-  PORT=8788
+  BACKEND_PORT=8788
   PUBLIC_API_URL=http://localhost:8788/api
-  UI_PORT=4321
+  FRONTEND_PORT=4321
   ```
 - [x] Pass <!-- 2026-06-06 -->
 
@@ -39,14 +39,14 @@
   1. From the repo root, run the command below
 - **Command**:
   ```bash
-  grep -cE '^#' .env.example && grep -E '^(PORT|UI_PORT|CORS_ORIGIN|PUBLIC_API_URL)=' .env.example | sort
+  grep -cE '^#' .env.example && grep -E '^(BACKEND_PORT|FRONTEND_PORT|CORS_ORIGIN|PUBLIC_API_URL)=' .env.example | sort
   ```
 - **Expected Result**: First line is a count `>= 4` (there are comment lines); then four variable lines in sorted order:
   ```
   CORS_ORIGIN=http://localhost:4321
-  PORT=8788
+  BACKEND_PORT=8788
   PUBLIC_API_URL=http://localhost:8788/api
-  UI_PORT=4321
+  FRONTEND_PORT=4321
   ```
 - [x] Pass <!-- 2026-06-06 -->
 
@@ -124,7 +124,7 @@
 
 ### UAT-MAKE-001: `make ports` picks up root `.env` variables
 
-- **Description**: Verify that the Makefile's `-include .env` + `export` causes `make ports` to read `PORT` and `UI_PORT` from the root `.env` rather than falling back to defaults.
+- **Description**: Verify that the Makefile's `-include .env` + `export` causes `make ports` to read `BACKEND_PORT` and `FRONTEND_PORT` from the root `.env` rather than falling back to defaults.
 - **Steps**:
   1. From the repo root, run the command below (unsets any shell-level overrides first)
 - **Command**:

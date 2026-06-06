@@ -168,7 +168,7 @@ Start the server once for the section below, and stop it after UAT-HTTP-007.
 **Start server (run in a separate terminal or background):**
 ```bash
 cp ./tmp/uat-023/tasks.txt ./tmp/uat-023/api-tasks.txt 2>/dev/null || true
-CONDUCTOR_CONF=./conductor.conf TASK_QUEUE=./tmp/uat-023/api-tasks.txt PORT=8799 node scripts/dashboard/server/index.js &
+CONDUCTOR_CONF=./conductor.conf TASK_QUEUE=./tmp/uat-023/api-tasks.txt BACKEND_PORT=8799 node scripts/dashboard/server/index.js &
 SERVER_PID=$!
 sleep 1   # allow Fastify to bind
 ```

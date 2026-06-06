@@ -6,7 +6,7 @@
 
 ## Objective
 
-Create a single root `.env` and `.env.example` at the repo root consolidating all shared environment variables (`PORT`, `UI_PORT`, `CORS_ORIGIN`, `PUBLIC_API_URL`) so both `backend/` and `frontend/` read from one place.
+Create a single root `.env` and `.env.example` at the repo root consolidating all shared environment variables (`BACKEND_PORT`, `FRONTEND_PORT`, `CORS_ORIGIN`, `PUBLIC_API_URL`) so both `backend/` and `frontend/` read from one place.
 
 ## Approach
 
@@ -20,8 +20,8 @@ The root `Makefile` already has `-include .env` and `export`, so make targets wi
 
 Create file `.env` at repo root with:
 ```
-PORT=8788
-UI_PORT=4321
+BACKEND_PORT=8788
+FRONTEND_PORT=4321
 CORS_ORIGIN=http://localhost:4321
 PUBLIC_API_URL=http://localhost:8788/api
 ```
@@ -33,10 +33,10 @@ PUBLIC_API_URL=http://localhost:8788/api
 Create file `.env.example` at repo root:
 ```
 # Fastify backend port
-PORT=8788
+BACKEND_PORT=8788
 
 # Astro dev server port
-UI_PORT=4321
+FRONTEND_PORT=4321
 
 # Allowed CORS origin for the backend (should match UI dev server URL)
 CORS_ORIGIN=http://localhost:4321

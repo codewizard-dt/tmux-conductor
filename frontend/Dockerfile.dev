@@ -3,4 +3,6 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm install
 EXPOSE 4321
+ARG PUBLIC_API_URL
+ENV PUBLIC_API_URL=$PUBLIC_API_URL
 CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]

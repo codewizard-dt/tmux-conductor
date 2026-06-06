@@ -37,13 +37,13 @@
   `envDir: '..'` is present and correctly scoped inside `vite`.
 - [x] Pass <!-- 2026-06-06 -->
 
-### UAT-CFG-002: `server.port` reads from `UI_PORT` env var with fallback
+### UAT-CFG-002: `server.port` reads from `FRONTEND_PORT` env var with fallback
 - **File**: `frontend/astro.config.mjs`
-- **Description**: Verify the dev-server port is driven by `process.env.UI_PORT` (falls back to `4321`) rather than being hardcoded.
+- **Description**: Verify the dev-server port is driven by `process.env.FRONTEND_PORT` (falls back to `4321`) rather than being hardcoded.
 - **Steps**:
   1. Open `frontend/astro.config.mjs` and inspect the `server` key at the top level of `defineConfig`.
-  2. Confirm it uses `parseInt(process.env.UI_PORT || '4321', 10)`.
-- **Expected Result**: `server: { port: parseInt(process.env.UI_PORT || '4321', 10) }` — not a bare numeric literal.
+  2. Confirm it uses `parseInt(process.env.FRONTEND_PORT || '4321', 10)`.
+- **Expected Result**: `server: { port: parseInt(process.env.FRONTEND_PORT || '4321', 10) }` — not a bare numeric literal.
 - [x] Pass <!-- 2026-06-06 -->
 
 ### UAT-CFG-003: No `frontend/.env` file exists
@@ -74,10 +74,10 @@
 - **Expected Result**: Build completes with exit code 0 (`Build complete` or similar Astro success message). No errors referencing `PUBLIC_API_URL` or missing environment variables.
 - [x] Pass <!-- 2026-06-06 -->
 
-### UAT-ENV-002: Dev server starts on default port 4321 when `UI_PORT` is unset
-- **Description**: Verify the Astro dev server binds to port 4321 (the fallback) when `UI_PORT` is not set in the environment.
+### UAT-ENV-002: Dev server starts on default port 4321 when `FRONTEND_PORT` is unset
+- **Description**: Verify the Astro dev server binds to port 4321 (the fallback) when `FRONTEND_PORT` is not set in the environment.
 - **Steps**:
-  1. Unset `UI_PORT` in the current shell: `unset UI_PORT`
+  1. Unset `FRONTEND_PORT` in the current shell: `unset FRONTEND_PORT`
   2. Start the dev server in a separate terminal from inside `frontend/`:
      ```bash
      cd frontend && npm run dev
@@ -86,10 +86,10 @@
 - **Expected Result**: Output includes `http://localhost:4321` (not any other port). The server starts without errors.
 - [x] Pass <!-- 2026-06-06 -->
 
-### UAT-ENV-003: Dev server starts on custom port when `UI_PORT` is set
-- **Description**: Verify `UI_PORT` overrides the default port 4321.
+### UAT-ENV-003: Dev server starts on custom port when `FRONTEND_PORT` is set
+- **Description**: Verify `FRONTEND_PORT` overrides the default port 4321.
 - **Steps**:
-  1. Export a custom port in the current shell: `export UI_PORT=4399`
+  1. Export a custom port in the current shell: `export FRONTEND_PORT=4399`
   2. Start the dev server from inside `frontend/`:
      ```bash
      cd frontend && npm run dev

@@ -87,7 +87,7 @@ Server entry point: `scripts/dashboard/server/index.js`. Start command: `node sc
   - For each agent, call `readAgentState` and `countQueuedTasks`
   - Return 200 JSON
 - [ ] Register `GET /healthz` → `{ ok: true }`
-- [ ] Start server on `process.env.PORT || 8788`, bind to `127.0.0.1`
+- [ ] Start server on `process.env.BACKEND_PORT || 8788`, bind to `127.0.0.1`
 - [ ] Log `Dashboard server listening on http://127.0.0.1:<port>` on startup
 
 ### 5. Verification  <!-- agent: general-purpose -->

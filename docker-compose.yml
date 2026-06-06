@@ -1,11 +1,15 @@
+name: tmux-conductor
+
 services:
   dashboard:
     image: ghcr.io/codewizard-dt/tmux-conductor-dashboard:latest
     ports:
-      - "${PORT:-8788}:8788"
+      - "${BACKEND_PORT:-8788}:${BACKEND_PORT:-8788}"
+    env_file:
+      - .env
     environment:
-      HOST: "0.0.0.0"
-      PORT: "8788"
+      HOST: "${HOST:-0.0.0.0}"
+      BACKEND_PORT: "${BACKEND_PORT:-8788}"
       CONDUCTOR_CONF: /app/conductor.conf
     volumes:
       - ./conductor.conf:/app/conductor.conf
@@ -14,7 +18,13 @@ services:
       - /tmp:/tmp
     user: "${UID:-1000}:${GID:-1000}"
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8788/healthz"]
+      test:
+        [
+          "CMD",
+          "wget",
+          "-qO-",
+          "http://{HOST:-0.0.0.0}:${BACKEND_PORT:-8788}/api/healthz",
+        ]
       interval: 10s
       timeout: 3s
       retries: 3

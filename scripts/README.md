@@ -17,8 +17,8 @@ flowchart TD
   Spawn["spawn.sh<br/>(alt: split-pane layout)"]
   Pane["agent pane"]:::ext
   BgPane["bg process window<br/>(host-side, no wrap)"]:::ext
-  DashServer["dashboard/server/index.js<br/>(Fastify :8788)"]:::ext
-  DashUI["dashboard/ui/<br/>(Astro+React :4321)"]:::ext
+  DashServer["backend/index.ts<br/>(Fastify :8788)"]:::ext
+  DashUI["frontend/<br/>(Astro+React :4321)"]:::ext
   Monitor["monitor.sh"]:::ext
 
   User -->|"start session"| Conductor
@@ -176,16 +176,16 @@ The Fastify HTTP server backing the Astro+React dashboard. Runs on `127.0.0.1:87
 
 | File | Purpose |
 |------|---------|
-| `backend/index.js` | Fastify app: `GET /status` (per-agent state + queue lengths), `GET\|POST /queue/:agent` (CRUD), `PUT /queue/:agent/reorder`, `DELETE /queue/:agent/:index`, `POST /agents` (spawn), `GET /events` (SSE), `GET /healthz` |
-| `backend/config.js` | Reads and parses `conductor.conf` via regex; exports `readConductorConf()` and `appendAgentToConf()` |
-| `backend/state.js` | Exports `readAgentState()`, `countQueuedTasks()`, `isTmuxWindowPresent()`, `readQueue()`, `writeQueue()`, `getAgentLines()` |
+| `backend/index.ts` | Fastify app: `GET /status` (per-agent state + queue lengths), `GET\|POST /queue/:agent` (CRUD), `PUT /queue/:agent/reorder`, `DELETE /queue/:agent/:index`, `POST /agents` (spawn), `GET /events` (SSE), `GET /healthz` |
+| `backend/config.ts` | Reads and parses `conductor.conf` via regex; exports `readConductorConf()` and `appendAgentToConf()` |
+| `backend/state.ts` | Exports `readAgentState()`, `countQueuedTasks()`, `isTmuxWindowPresent()`, `readQueue()`, `writeQueue()`, `getAgentLines()` |
 
 Usage:
 ```
-cd backend && node index.js
+cd backend && npm start
 ```
 
-## frontend/ (formerly dashboard/ui/)
+## frontend/
 
 The Astro+React single-page app that consumes the Fastify backend. Runs on `localhost:4321` in a dedicated tmux window launched automatically via `BG_PROCESSES` in `conductor.conf`. Displays a real-time accordion list of agents with state indicators and an inline queue editor; subscribes to the `GET /events` SSE stream for live updates.
 
@@ -209,8 +209,8 @@ Open `http://localhost:4321` in your browser.
 | `broadcast.sh` | **Useful** |
 | `teardown.sh` | **Essential** |
 | `add-task.sh` | **Useful** |
-| `dashboard/server/*.js` | **Active** |
-| `dashboard/ui/` | **Active** |
+| `backend/` | **Active** |
+| `frontend/` | **Active** |
 | `.archive/scaffold.sh` | **Archived — Docker era** |
 | `.archive/agent_exec.sh` | **Archived — Docker era** |
 

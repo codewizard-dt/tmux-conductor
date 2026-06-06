@@ -136,7 +136,7 @@
   3. Run the command below from the repo root
 - **Command**:
   ```bash
-  PORT=8799 CONDUCTOR_CONF=./tmp/uat-035/conductor.conf node backend/index.js > ./tmp/uat-035/server.log 2>&1 & SERVER_PID=$! ; sleep 1 ; grep -i 'listening\|127.0.0.1\|8799' ./tmp/uat-035/server.log && kill $SERVER_PID 2>/dev/null
+  BACKEND_PORT=8799 CONDUCTOR_CONF=./tmp/uat-035/conductor.conf node backend/index.js > ./tmp/uat-035/server.log 2>&1 & SERVER_PID=$! ; sleep 1 ; grep -i 'listening\|127.0.0.1\|8799' ./tmp/uat-035/server.log && kill $SERVER_PID 2>/dev/null
   ```
 - **Expected Result**: The log contains a line like `Dashboard server listening on http://127.0.0.1:8799`. The process is then killed cleanly.
 - [x] Pass <!-- 2026-06-06 -->
@@ -147,7 +147,7 @@
 - **Steps**:
   1. Start the server in the background (UAT-RUNTIME-003 setup steps apply — port 8799, scratch conf)
   2. Run the command below (server must be running; if it was killed in 003, restart it first):
-     `PORT=8799 CONDUCTOR_CONF=./tmp/uat-035/conductor.conf node backend/index.js &`
+     `BACKEND_PORT=8799 CONDUCTOR_CONF=./tmp/uat-035/conductor.conf node backend/index.js &`
   3. After 1 second, run:
 - **Command**:
   ```bash

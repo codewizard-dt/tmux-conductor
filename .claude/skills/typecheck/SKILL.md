@@ -1,23 +1,34 @@
-# Skill: typecheck
+---
+name: typecheck
+description: Run strict-typecheck, fix the first error, repeat until clean
+model: claude-sonnet-4-6
+disable-model-invocation: false
+user-invocable: true
+---
 
-Run TypeScript type-checking across the monorepo (no emit — type errors only).
+# Run strict-typecheck and fix issues
 
-## Commands
+IMPORTANT: Adhere to all rules in `.docs/guides/mcp-tools.md` if it exists.
 
-| Scope | Command |
-|-------|---------|
-| Both packages | `make typecheck` |
-| Backend only | `make typecheck-backend` |
-| Frontend only | `make typecheck-frontend` |
+## Step 1: find the problem
 
-## Details
+Run `make strict-typecheck 2>&1 | head -20`
 
-- **Backend target** — runs `cd backend && npx tsc --noEmit` against `backend/tsconfig.json` (NodeNext/strict)
-- **Frontend target** — runs `cd frontend && npx tsc --noEmit` against `frontend/tsconfig.json` (extends `astro/tsconfigs/strict` plus additional strict flags)
-- **Composite target** — runs backend then frontend in sequence
+If there are no errors, this task is done.
 
-## When to use
+## Step 2: assess the problem
 
-- After editing TypeScript source in `backend/` or `frontend/`
-- Before committing or opening a PR
-- When diagnosing a type error reported by an agent or CI
+- Analyze the output for only the **first** error reported
+- Use Serena to read the relevant code symbols where the error occurs
+- Understand the root cause: type annotation issue, import problem, or genuine type mismatch?
+- Use Context7 or Brave Search if you need more detail on the error
+
+## Step 3: fix the root cause
+
+- Fix the root cause of the first error using Serena's symbolic editing tools
+- Re-run `make strict-typecheck 2>&1 | head -20` to verify the fix
+
+## Step 4: repeat, one error at a time
+
+- Repeat steps 1–3 until the output is empty
+- Do not keep a to-do list of separate errors — just run the command again to get the next one
