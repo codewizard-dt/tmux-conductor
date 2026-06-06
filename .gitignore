@@ -306,7 +306,7 @@ checkpoints/
 # ---------------------------------------------------------------------------
 # Dashboard UI (Astro + React)
 # ---------------------------------------------------------------------------
-scripts/dashboard/ui/.env
-scripts/dashboard/ui/node_modules
-scripts/dashboard/ui/dist
+frontend/.env
+frontend/node_modules
+frontend/dist
 .playwright-mcp/

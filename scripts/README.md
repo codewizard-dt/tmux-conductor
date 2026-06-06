@@ -170,28 +170,28 @@ The following scripts are preserved in `scripts/.archive/` for reference but are
 - `scaffold.sh` — generated `devcontainer-compose.yml` and `.devcontainer/devcontainer.json`; superseded by local-agent model (ROADMAP-001)
 - `agent_exec.sh` — host-side container exec wrapper; superseded by local-agent model (ROADMAP-001)
 
-## dashboard/server/
+## backend/ (repo root)
 
 The Fastify HTTP server backing the Astro+React dashboard. Runs on `127.0.0.1:8788` in a dedicated tmux window launched automatically via `BG_PROCESSES` in `conductor.conf`.
 
 | File | Purpose |
 |------|---------|
-| `dashboard/server/index.js` | Fastify app: `GET /status` (per-agent state + queue lengths), `GET\|POST /queue/:agent` (CRUD), `PUT /queue/:agent/reorder`, `DELETE /queue/:agent/:index`, `POST /agents` (spawn), `GET /events` (SSE), `GET /healthz` |
-| `dashboard/server/config.js` | Reads and parses `conductor.conf` via regex; exports `readConductorConf()` and `appendAgentToConf()` |
-| `dashboard/server/state.js` | Exports `readAgentState()`, `countQueuedTasks()`, `isTmuxWindowPresent()`, `readQueue()`, `writeQueue()`, `getAgentLines()` |
+| `backend/index.js` | Fastify app: `GET /status` (per-agent state + queue lengths), `GET\|POST /queue/:agent` (CRUD), `PUT /queue/:agent/reorder`, `DELETE /queue/:agent/:index`, `POST /agents` (spawn), `GET /events` (SSE), `GET /healthz` |
+| `backend/config.js` | Reads and parses `conductor.conf` via regex; exports `readConductorConf()` and `appendAgentToConf()` |
+| `backend/state.js` | Exports `readAgentState()`, `countQueuedTasks()`, `isTmuxWindowPresent()`, `readQueue()`, `writeQueue()`, `getAgentLines()` |
 
 Usage:
 ```
-cd scripts/dashboard/server && node index.js
+cd backend && node index.js
 ```
 
-## dashboard/ui/
+## frontend/ (formerly dashboard/ui/)
 
 The Astro+React single-page app that consumes the Fastify backend. Runs on `localhost:4321` in a dedicated tmux window launched automatically via `BG_PROCESSES` in `conductor.conf`. Displays a real-time accordion list of agents with state indicators and an inline queue editor; subscribes to the `GET /events` SSE stream for live updates.
 
 Usage:
 ```
-cd scripts/dashboard/ui && npm run dev
+cd frontend && npm run dev
 ```
 
 Open `http://localhost:4321` in your browser.

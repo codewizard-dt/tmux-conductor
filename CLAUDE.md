@@ -30,8 +30,8 @@ All scripts below live in `scripts/` except `install-hooks.sh` (repo root).
 | `broadcast.sh` | Sends a command to all agent panes |
 | `teardown.sh` | Graceful shutdown: sends `/exit` to each agent, waits, kills session |
 | `scripts/add-task.sh` | Appends a scoped task entry to `tasks.txt` using the caller's CWD name as agent name |
-| `scripts/dashboard/server/index.js` | Fastify backend on port 8788 — `GET /status`, `GET /agents`, `GET\|POST /queue/:agent`, `DELETE /queue/:agent/:index`, `PUT /queue/:agent/reorder`, `GET /events` (SSE) |
-| `scripts/dashboard/ui/` | Astro+React single-page app on port 4321 — real-time accordion agent list, queue editor, status indicators |
+| `backend/index.js` | Fastify backend on port 8788 — `GET /status`, `GET /agents`, `GET\|POST /queue/:agent`, `DELETE /queue/:agent/:index`, `PUT /queue/:agent/reorder`, `GET /events` (SSE) |
+| `frontend/` | Astro+React single-page app on port 4321 — real-time accordion agent list, queue editor, status indicators |
 | `hooks/on-session-start.js` | Claude Code hook (Node.js) — writes `idle` to `$STATE_DIR/<agent>.state` on SessionStart (matcher `startup|resume|clear`) |
 | `hooks/on-prompt-submit.js` | Claude Code hook (Node.js) — writes `busy` to `$STATE_DIR/<agent>.state` on UserPromptSubmit |
 | `hooks/on-stop.js` | Claude Code hook (Node.js) — writes `idle` to `$STATE_DIR/<agent>.state` on Stop |

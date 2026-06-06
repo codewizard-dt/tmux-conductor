@@ -1,7 +1,7 @@
 services:
   dashboard:
     build:
-      context: scripts/dashboard/server
+      context: backend
       dockerfile: Dockerfile.dev
     ports:
       - "${PORT:-8788}:8788"
@@ -10,7 +10,7 @@ services:
       PORT: "8788"
       CONDUCTOR_CONF: /app/conductor.conf
     volumes:
-      - ./scripts/dashboard/server:/app
+      - ./backend:/app
       - /app/node_modules
     command: node --watch index.js
     healthcheck:
@@ -22,14 +22,14 @@ services:
 
   ui:
     build:
-      context: scripts/dashboard/ui
+      context: frontend
       dockerfile: Dockerfile.dev
     ports:
       - "${UI_PORT:-4321}:4321"
     environment:
       - PUBLIC_API_URL=http://localhost:8788/api
     volumes:
-      - ./scripts/dashboard/ui:/app
+      - ./frontend:/app
       - /app/node_modules
     depends_on:
       dashboard:

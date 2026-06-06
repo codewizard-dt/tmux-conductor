@@ -105,8 +105,8 @@ A real-time web dashboard is included and wired into `conductor.conf` via `BG_PR
 
 | Component | Port | Start command |
 |-----------|------|---------------|
-| Fastify backend | 8788 | `cd scripts/dashboard/server && node index.js` |
-| Astro+React UI | 4321 | `cd scripts/dashboard/ui && npm run dev` |
+| Fastify backend | 8788 | `cd backend && node index.js` |
+| Astro+React UI | 4321 | `cd frontend && npm run dev` |
 
 **Endpoints** (Fastify backend):
 
@@ -123,10 +123,10 @@ If you want to start only the dashboard without launching a full conductor sessi
 
 ```bash
 # Terminal 1 — backend
-cd scripts/dashboard/server && node index.js
+cd backend && node index.js
 
 # Terminal 2 — frontend
-cd scripts/dashboard/ui && npm run dev
+cd frontend && npm run dev
 ```
 
 Then open `http://localhost:4321` in your browser.

@@ -9,11 +9,8 @@ import { readConductorConf, appendAgentToConf, DEFAULT_CONF_PATH } from './confi
 import { readAgentState, countQueuedTasks, isTmuxWindowPresent, readQueue, writeQueue, getAgentLines } from './state.js';
 import dotenv from 'dotenv';
 
-const envPath = path.join(__dirname, '.env');
 const envPathMeta = path.join(path.dirname(fileURLToPath(import.meta.url)), '.env');
-console.log('envPath', envPath);
-console.log('envPathMeta', envPathMeta);
-dotenv.config({ path: envPath });
+dotenv.config({ path: envPathMeta });
 
 process.on('unhandledRejection', (reason, promise) => {
   console.error('Unhandled rejection:', reason);
@@ -29,7 +26,6 @@ const fastify = Fastify({ logger: false });
 
 
 const corsOrigin = process.env.CORS_ORIGIN || '*';
-console.log('corsOrigin', corsOrigin);
 await fastify.register(fastifyCors, {
   origin: corsOrigin,
 });

@@ -18,25 +18,25 @@ The dashboard's server and UI sub-packages are promoted from `scripts/dashboard/
 
 > Move both sub-packages to the repo root and patch every path reference that breaks.
 
-- [ ] Move `scripts/dashboard/server/` → `backend/` at repo root and update all references (Makefile, docker-compose files, CLAUDE.md, README.md, scripts/README.md)
-- [ ] Move `scripts/dashboard/ui/` → `frontend/` at repo root and update all references
+- [ ] [TASK-035: Move `scripts/dashboard/server/` → `backend/`](../tasks/035-move-server-to-backend.md)
+- [x] [TASK-036: Move `scripts/dashboard/ui/` → `frontend/`](../tasks/completed/036-move-ui-to-frontend.md)
 
 ## Phase 2: Env
 
 > Consolidate env into a single root `.env`; both apps read from there.
 
-- [ ] Create root `.env` and `.env.example` with all shared vars (`PORT`, `UI_PORT`, `CORS_ORIGIN`)
-- [ ] Update backend to load `.env` from repo root instead of its own directory
-- [ ] Update frontend/Astro env consumption to point at root `.env`
+- [ ] [TASK-037: Create root `.env` and `.env.example`](../tasks/037-create-root-env.md)
+- [ ] [TASK-038: Update backend to load `.env` from repo root](../tasks/038-backend-load-root-env.md)
+- [ ] [TASK-039: Update frontend to read `.env` from repo root](../tasks/039-frontend-root-env.md)
 
 ## Phase 3: TypeScript
 
 > Convert backend to TypeScript and apply strict configs + ESLint to both apps.
 
-- [ ] Convert `backend/index.js` → `index.ts`, `config.js` → `config.ts`, `state.js` → `state.ts`
-- [ ] Add `backend/tsconfig.json` with `NodeNext`/`NodeNext` module resolution and full strict flags
-- [ ] Add ESLint flat config (`eslint.config.mjs`) with `strictTypeChecked` to backend
-- [ ] Update `frontend/tsconfig.json` to layer full strict flags on top of the Astro base
+- [ ] [TASK-040: Convert backend JS source files to TypeScript](../tasks/040-backend-convert-to-typescript.md)
+- [ ] [TASK-041: Add `backend/tsconfig.json` with strict NodeNext config](../tasks/041-backend-tsconfig.md)
+- [ ] [TASK-042: Add ESLint flat config with `strictTypeChecked` to backend](../tasks/042-backend-eslint.md)
+- [ ] [TASK-043: Update `frontend/tsconfig.json` with full strict flags](../tasks/043-frontend-tsconfig-strict.md)
 - [ ] Add ESLint flat config (`eslint.config.mjs`) with `strictTypeChecked` + React plugin to frontend
 
 ## Phase 4: Typecheck CI

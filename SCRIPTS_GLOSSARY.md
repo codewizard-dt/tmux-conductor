@@ -33,15 +33,15 @@ Source: `/Users/davidtaylor/Repositories/tmux-conductor`
 | `scripts/teardown.sh` | **Graceful shutdown.** Sends `/exit` to each agent via `dispatch.sh`, sends `C-c` to each `BG_PROCESSES` window, sleeps ~10 seconds, then runs `tmux kill-session`. | **Essential** |
 | `scripts/add-task.sh` | **Queue enqueuer.** Appends `<cwd-basename>: <cmd>` to `tasks.txt`. Prompts to register the agent in `conductor.conf` if not already present. Intended to be run (or aliased) from within the target project directory. | **Useful** |
 
-### Dashboard server (`scripts/dashboard/server/`)
+### Dashboard server (`backend/`)
 
 These files implement the Fastify HTTP API backing the Astro+React dashboard from ROADMAP-001. They are being actively developed and will be Essential on completion.
 
 | Script | Purpose | Going forward? |
 |--------|---------|----------------|
-| `scripts/dashboard/server/index.js` | **HTTP server.** Fastify app exposing `GET /status` (per-agent state + queue lengths), `GET|POST /queue/:agent` (task queue CRUD), `PUT /queue/:agent/reorder`, `DELETE /queue/:agent/:index`, `POST /agents` (spawn new agent), `GET /events` (SSE live state stream), `GET /healthz`. | **Active (ROADMAP-001)** |
-| `scripts/dashboard/server/config.js` | **Config reader.** Parses `conductor.conf` via regex, extracts `SESSION_NAME`, `TASK_QUEUE`, `STATE_DIR`, and `AGENTS` array. Exports `readConductorConf()` and `appendAgentToConf()`. | **Active (ROADMAP-001)** |
-| `scripts/dashboard/server/state.js` | **State reader.** Exports `readAgentState()` (reads `<agent>.state` file), `countQueuedTasks()`, `isTmuxWindowPresent()`, `readQueue()`, `writeQueue()`, `getAgentLines()`. | **Active (ROADMAP-001)** |
+| `backend/index.js` | **HTTP server.** Fastify app exposing `GET /status` (per-agent state + queue lengths), `GET|POST /queue/:agent` (task queue CRUD), `PUT /queue/:agent/reorder`, `DELETE /queue/:agent/:index`, `POST /agents` (spawn new agent), `GET /events` (SSE live state stream), `GET /healthz`. | **Active (ROADMAP-001)** |
+| `backend/config.js` | **Config reader.** Parses `conductor.conf` via regex, extracts `SESSION_NAME`, `TASK_QUEUE`, `STATE_DIR`, and `AGENTS` array. Exports `readConductorConf()` and `appendAgentToConf()`. | **Active (ROADMAP-001)** |
+| `backend/state.js` | **State reader.** Exports `readAgentState()` (reads `<agent>.state` file), `countQueuedTasks()`, `isTmuxWindowPresent()`, `readQueue()`, `writeQueue()`, `getAgentLines()`. | **Active (ROADMAP-001)** |
 
 ### Archived scripts (`scripts/.archive/`)
 
