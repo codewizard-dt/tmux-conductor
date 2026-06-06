@@ -38,7 +38,7 @@ export default defineConfig({
 })
 ```
 
-- [ ] Add `envDir: '..'` to the top-level `defineConfig` object (Vite option passed through Astro):
+- [x] Add `envDir: '..'` to the top-level `defineConfig` object (Vite option passed through Astro):
   ```js
   export default defineConfig({
     integrations: [react()],
@@ -56,15 +56,15 @@ export default defineConfig({
 
 ### 2. Verify `PUBLIC_API_URL` is accessible  <!-- agent: general-purpose -->
 
-- [ ] Confirm root `.env` contains `PUBLIC_API_URL=http://localhost:8788/api`
-- [ ] Search `frontend/src/` for any hardcoded `localhost:8788` references — if found, replace with `import.meta.env.PUBLIC_API_URL`
-- [ ] Confirm no `frontend/.env` file exists (removed in task 037)
+- [x] Confirm root `.env` contains `PUBLIC_API_URL=http://localhost:8788/api`
+- [x] Search `frontend/src/` for any hardcoded `localhost:8788` references — if found, replace with `import.meta.env.PUBLIC_API_URL`
+- [x] Confirm no `frontend/.env` file exists (removed in task 037)
 
 ### 3. Update `frontend/astro.config.mjs` port from env  <!-- agent: general-purpose -->
 
 The `server.port` is currently hardcoded to `4321`. Optionally read from env:
 
-- [ ] If `UI_PORT` is available via `process.env.UI_PORT` in the config file, update:
+- [x] If `UI_PORT` is available via `process.env.UI_PORT` in the config file, update:
   ```js
   server: { port: parseInt(process.env.UI_PORT || '4321', 10) },
   ```
@@ -72,9 +72,9 @@ The `server.port` is currently hardcoded to `4321`. Optionally read from env:
 
 ### 4. Verification  <!-- agent: general-purpose -->
 
-- [ ] `frontend/astro.config.mjs` contains `envDir: '..'` inside the `vite` block
-- [ ] `cd frontend && npm run build` completes without env-related errors (if build is feasible in the dev environment)
-- [ ] No `frontend/.env` file exists
+- [x] `frontend/astro.config.mjs` contains `envDir: '..'` inside the `vite` block
+- [x] `cd frontend && npm run build` completes without env-related errors (if build is feasible in the dev environment)
+- [x] No `frontend/.env` file exists
 
 ---
-**UAT**: pending
+**UAT**: [`.docs/uat/039-frontend-root-env.uat.md`](../uat/039-frontend-root-env.uat.md)

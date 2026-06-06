@@ -4,7 +4,7 @@
 
 - **Status**: active
 - **Created**: 2026-06-06
-- **Last updated**: 2026-06-06 (UAT 041, 043 completed)
+- **Last updated**: 2026-06-06 (UAT 038, 039, 041, 043 completed)
 - **Owner**: David Taylor
 - **Linked PRD**: —
 - **Linked ADRs**: —
@@ -26,8 +26,8 @@ The dashboard's server and UI sub-packages are promoted from `scripts/dashboard/
 > Consolidate env into a single root `.env`; both apps read from there.
 
 - [x] [TASK-037: Create root `.env` and `.env.example`](../tasks/completed/037-create-root-env.md)
-- [ ] [TASK-038: Update backend to load `.env` from repo root](../tasks/038-backend-load-root-env.md)
-- [ ] [TASK-039: Update frontend to read `.env` from repo root](../tasks/039-frontend-root-env.md)
+- [x] [TASK-038: Update backend to load `.env` from repo root](../tasks/completed/038-backend-load-root-env.md)
+- [x] [TASK-039: Update frontend to read `.env` from repo root](../tasks/completed/039-frontend-root-env.md)
 
 ## Phase 3: TypeScript
 

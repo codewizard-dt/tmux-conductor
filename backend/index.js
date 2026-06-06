@@ -9,8 +9,7 @@ import { readConductorConf, appendAgentToConf, DEFAULT_CONF_PATH } from './confi
 import { readAgentState, countQueuedTasks, isTmuxWindowPresent, readQueue, writeQueue, getAgentLines } from './state.js';
 import dotenv from 'dotenv';
 
-const envPathMeta = path.join(path.dirname(fileURLToPath(import.meta.url)), '.env');
-dotenv.config({ path: envPathMeta });
+dotenv.config({ path: new URL('../.env', import.meta.url) });
 
 process.on('unhandledRejection', (reason, promise) => {
   console.error('Unhandled rejection:', reason);

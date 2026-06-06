@@ -52,4 +52,4 @@ dotenv.config({ path: envPath });
 - [ ] `cd backend && node --check index.js` exits 0 (syntax check passes)
 
 ---
-**UAT**: pending
+**UAT**: [`.docs/uat/038-backend-load-root-env.uat.md`](../uat/038-backend-load-root-env.uat.md)

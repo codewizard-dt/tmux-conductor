@@ -8,8 +8,6 @@
 | # | Task | Description |
 |---|------|-------------|
 | 008 | [Publish Base Image](active/008-publish-base-image.md) | Build + publish multi-arch `ghcr.io/codewizard-dt/tmux-conductor-base` with Chromium + Claude Code + uv preinstalled; update scaffold.sh to consume it (cuts per-project first-build from ~4min to ~15s) |
-| 038 | [Backend load root env](038-backend-load-root-env.md) | Fix dotenv loading in `backend/index.js` to read from repo root; add dotenv to package.json deps |
-| 039 | [Frontend root env](039-frontend-root-env.md) | Configure Astro/Vite `envDir` to read `.env` from repo root instead of `frontend/` |
 | 040 | [Backend convert to TypeScript](040-backend-convert-to-typescript.md) | Rename index.js, config.js, state.js to .ts and add TypeScript type annotations throughout |
 | 042 | [Backend ESLint](042-backend-eslint.md) | Add `backend/eslint.config.mjs` with `strictTypeChecked` preset |
 
