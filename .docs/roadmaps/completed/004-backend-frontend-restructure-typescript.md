@@ -2,7 +2,7 @@
 
 > Elevate the dashboard from a nested scripts sub-folder into a first-class monorepo structure with strict TypeScript, unified root env, and wired-up typecheck tooling.
 
-- **Status**: active
+- **Status**: done
 - **Created**: 2026-06-06
 - **Last updated**: 2026-06-06 (TASK-046 completed)
 - **Owner**: David Taylor
