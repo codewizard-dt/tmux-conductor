@@ -5,11 +5,14 @@ import { fileURLToPath } from 'url';
 import Fastify, { type FastifyReply } from 'fastify';
 import fastifyCors from '@fastify/cors';
 import fastifyStatic from '@fastify/static';
-import { readConductorConf, appendAgentToConf, DEFAULT_CONF_PATH } from './config.js';
-import { readAgentState, countQueuedTasks, isTmuxWindowPresent, readQueue, writeQueue, getAgentLines } from './state.js';
+import { readConductorConf, appendAgentToConf, DEFAULT_CONF_PATH } from './config.ts';
+import { readAgentState, countQueuedTasks, isTmuxWindowPresent, readQueue, writeQueue, getAgentLines } from './state.ts';
 import dotenv from 'dotenv';
 
-dotenv.config({ path: new URL('../.env', import.meta.url) });
+
+const envPath = new URL('../.env', import.meta.url);
+
+dotenv.config({ path: envPath });
 
 process.on('unhandledRejection', (reason, promise) => {
   console.error('Unhandled rejection:', reason);
@@ -25,6 +28,7 @@ const fastify = Fastify({ logger: false });
 
 
 const corsOrigin = process.env['CORS_ORIGIN'] || '*';
+
 await fastify.register(fastifyCors, {
   origin: corsOrigin,
 });
@@ -231,6 +235,7 @@ let prevSnapshot: Snapshot | null = null;
 function buildSnapshot() {
   const conf = readConductorConf();
   const { sessionName, taskQueue, stateDir, agents } = conf;
+  // console.log(conf);
   const sessionAlive = isTmuxWindowPresent(sessionName, 'monitor');
   const agentStatuses = agents.map((agent) => ({
     name: agent.name,
@@ -293,6 +298,6 @@ try {
   const pollInterval = setInterval(pollAndDiff, 2000);
   process.on('SIGTERM', () => { clearInterval(pollInterval); });
 } catch (err) {
-  fastify.log.error(err);
+  console.error('Failed to start dashboard server:', err);
   process.exit(1);
 }

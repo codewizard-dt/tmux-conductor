@@ -14,8 +14,13 @@ export interface ConductorConf {
   agents: AgentEntry[];
 }
 
-export const DEFAULT_CONF_PATH =
-  process.env['CONDUCTOR_CONF'] || new URL('../conductor.conf', import.meta.url).pathname;
+const confPath = {
+  process: process.env['CONDUCTOR_CONF'],
+  meta: new URL('./conductor.conf', import.meta.url).pathname
+};
+console.log('confPath:', confPath);
+export const DEFAULT_CONF_PATH = confPath.process || confPath.meta;
+
 
 let cache: ConductorConf | null = null;
 let cacheTime = 0;

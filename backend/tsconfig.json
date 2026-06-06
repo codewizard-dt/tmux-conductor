@@ -12,6 +12,8 @@
     "noPropertyAccessFromIndexSignature": true,
     "forceConsistentCasingInFileNames": true,
     "skipLibCheck": true,
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
     "esModuleInterop": false,
     "declaration": true,
     "declarationMap": true,

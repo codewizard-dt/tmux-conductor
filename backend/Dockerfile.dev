@@ -4,4 +4,4 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm install
 ENV HOST=0.0.0.0
-CMD ["node", "--watch", "index.js"]
+CMD ["node", "--watch", "--experimental-strip-types", "index.ts"]
