@@ -1,12 +1,12 @@
 # tmux-conductor
 
-A vendor-agnostic system for orchestrating multiple AI coding agent instances (Claude Code, OpenAI Codex, Aider, etc.) from a single tmux session. It spawns agents in panes, detects when each finishes a task via `capture-pane` idle detection, dispatches the next command from a task queue, monitors usage limits, and tears everything down cleanly.
+A vendor-agnostic system for orchestrating multiple AI coding agent instances (Claude Code, OpenAI Codex, Aider, etc.) from a single tmux session. Each agent runs directly in its own tmux window on the host — no Docker, no containers. The conductor detects when each agent finishes a task via per-agent state files (written by Claude Code lifecycle hooks, with a `capture-pane` regex fallback), dispatches the next command from a task queue, monitors usage limits, and tears everything down cleanly. A real-time Astro+React dashboard backed by a Fastify server provides live agent status and queue management.
 
 ## Prerequisites
 
 - **tmux** >= 3.0 (`brew install tmux` on macOS)
 - **bash** >= 4.0 (macOS ships 3.2 — run `brew install bash`)
-- **Docker Desktop** (only if using container execution mode)
+- **Node.js** >= 18 (for the dashboard server and Claude Code hooks)
 
 ## Quick Start
 
@@ -99,99 +99,37 @@ rm .paused
 
 This sends `/exit` to each agent, waits 10 seconds for graceful shutdown, then kills the tmux session.
 
-## Container Mode (Dev Containers)
+## Dashboard
 
-To run agents inside Docker containers instead of directly on the host:
+A real-time web dashboard is included and wired into `conductor.conf` via `BG_PROCESSES` — it starts automatically alongside the agent windows when you run `conductor.sh`.
 
-### 1. Scaffold the target project
+| Component | Port | Start command |
+|-----------|------|---------------|
+| Fastify backend | 8788 | `cd scripts/dashboard/server && node index.js` |
+| Astro+React UI | 4321 | `cd scripts/dashboard/ui && npm run dev` |
 
-```bash
-./scripts/scaffold.sh /path/to/your/project
-```
+**Endpoints** (Fastify backend):
 
-This generates:
-- `devcontainer-compose.yml` — Docker Compose file with a long-running container
-- `.devcontainer/Dockerfile` — minimal two-layer image built on `ghcr.io/codewizard-dt/tmux-conductor-base:latest` (Chromium, Claude Code CLI, uv, nodejs, npm, python3 preinstalled); first-build completes in ~15–30s instead of ~4 min
-- `.devcontainer/devcontainer.json` — VS Code Dev Container configuration
-- `.devcontainer/init-claude-config.sh` — first-boot entrypoint that seeds the container's Claude config from the host (see "Shared configuration & MCPs" below)
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/status` | Per-agent state and queue lengths |
+| `GET` | `/agents` | Agent list from `conductor.conf` |
+| `GET\|POST` | `/queue/:agent` | Read or append to an agent's task queue |
+| `DELETE` | `/queue/:agent/:index` | Remove a task by index |
+| `PUT` | `/queue/:agent/reorder` | Reorder tasks |
+| `GET` | `/events` | Server-Sent Events stream for live state updates |
 
-Options:
-```bash
-./scripts/scaffold.sh /path/to/project --image node:20 --service myapp --force
-```
-
-### 2. Start the container
-
-```bash
-cd /path/to/your/project
-docker compose -f devcontainer-compose.yml up -d
-```
-
-### 3. Switch to container mode
-
-In `conductor.conf`:
+If you want to start only the dashboard without launching a full conductor session:
 
 ```bash
-EXEC_MODE="container"
-COMPOSE_FILE="devcontainer-compose.yml"
-COMPOSE_SERVICE="app"
+# Terminal 1 — backend
+cd scripts/dashboard/server && node index.js
+
+# Terminal 2 — frontend
+cd scripts/dashboard/ui && npm run dev
 ```
 
-### 4. Launch normally
-
-```bash
-./scripts/conductor.sh
-```
-
-The conductor will automatically wrap agent launch commands with `agent_exec.sh` to exec into the container.
-
-### Base image
-
-The default scaffolded Dockerfile extends `ghcr.io/codewizard-dt/tmux-conductor-base:latest`, which bundles:
-- Chromium (from Debian main — no PPA, native on amd64 and arm64)
-- Claude Code CLI (`~/.local/bin/claude`)
-- uv (`~/.cargo/bin/uv`)
-- System packages: curl, git, nodejs, npm, python3, rsync, jq, vim
-
-This cuts per-project first-build from ~4 min to ~15–30s. The base image is rebuilt weekly (Mondays ~06:17 UTC) via `.github/workflows/base-image.yml` to pick up Chromium and apt security updates.
-
-Override at scaffold time with `./scripts/scaffold.sh /path/to/project --image <other>`. Forks can republish the base under their own GHCR namespace and update the default `IMAGE` in `scripts/scaffold.sh`.
-
-### Shared configuration & MCPs
-
-Each scaffolded container bind-mounts your host's `~/.claude/` and `~/.claude.json` read-only at `/host-claude-config/`. On first boot, `init-claude-config.sh` copies them into the conductor user's home and drops a sentinel file (`~/.claude/.conductor-initialized`) so subsequent restarts short-circuit and preserve in-container state.
-
-**Copied from the host:**
-- `~/.claude.json` (user-scope MCP server registrations, settings)
-- `~/.claude/settings.json`, `CLAUDE.md`, `plugins/`, and other static config
-
-**Not copied (container-local or deliberately excluded):**
-- `.credentials.json` — auth comes from `CLAUDE_CODE_OAUTH_TOKEN` in `~/.conductor_env`
-- `sessions/`, `projects/`, `history.jsonl`, `shell-snapshots/`, `telemetry/`, `ide/` — live session state stays per-container
-
-**Serena MCP** is auto-registered at project-local scope inside each container, keyed to `/workspaces/<dirname>`, so semantic code tools work out of the box without touching the host registration.
-
-**Force a reset** of a container's config (e.g. after editing host settings you want re-synced):
-
-```bash
-docker compose -f devcontainer-compose.yml exec app rm /home/conductor/.claude/.conductor-initialized
-docker compose -f devcontainer-compose.yml restart app
-```
-
-The next start will re-run the init-copy and re-register Serena.
-
-### Host network access
-
-From inside the scaffolded container, host services are reachable at `host.docker.internal:<port>`. The generated `devcontainer-compose.yml` maps this hostname to the special `host-gateway` value via `extra_hosts`, which makes the setup work identically on Linux, macOS, and Windows. On Docker Desktop (Mac/Windows) `host.docker.internal` resolves without `extra_hosts`, but the entry is included for Linux compatibility where that alias is not provided by default.
-
-Host dev servers must bind to `0.0.0.0` (not `127.0.0.1`) to be reachable from the container — a loopback-only bind is invisible across the bridge. Examples:
-
-```bash
-astro dev --host            # Astro
-vite --host 0.0.0.0         # Vite
-```
-
-Then from inside the container, hit `http://host.docker.internal:4321` (Astro default) or `http://host.docker.internal:5173` (Vite default).
+Then open `http://localhost:4321` in your browser.
 
 ## Configuration Reference
 
@@ -209,9 +147,6 @@ All settings live in `conductor.conf`:
 | `USAGE_CHECK_CMD` | *(Claude example)* | Command that exits 0 (OK) or 1 (limit hit) |
 | `TASK_QUEUE` | `./tasks.txt` | Path to task queue file (one task per line, optional `name: ` prefix for agent scoping) |
 | `LOG_DIR` | `./logs` | Directory for log files |
-| `EXEC_MODE` | `local` | `local` or `container` |
-| `COMPOSE_FILE` | `devcontainer-compose.yml` | Docker Compose file for container mode |
-| `COMPOSE_SERVICE` | `app` | Service name to exec into |
 
 ## Scripts
 
@@ -225,8 +160,6 @@ See [`scripts/README.md`](scripts/README.md) for per-script usage details and ar
 | `scripts/monitor.sh` | Main loop — idle detection, usage checks, task dispatch |
 | `scripts/broadcast.sh` | Send a command to all agent panes |
 | `scripts/teardown.sh` | Graceful shutdown |
-| `scripts/agent_exec.sh` | Container exec wrapper (compose/docker modes) |
-| `scripts/scaffold.sh` | Generate compose + devcontainer files for a target project |
 | `scripts/add-task.sh` | Enqueue a scoped task into `tasks.txt` from the target project's cwd |
 | `hooks/on-session-start.js` | Claude Code hook (Node.js) — writes `idle` to agent state on SessionStart (matcher `startup|resume|clear`) |
 | `hooks/on-prompt-submit.js` | Claude Code hook (Node.js) — writes `busy` to agent state on UserPromptSubmit |
@@ -269,6 +202,6 @@ scripts/conductor.sh / scripts/spawn.sh
 Claude Code → hook → $STATE_DIR/<agent>.state → monitor.sh
 ```
 
-For Claude Code agents, per-event Node.js hook scripts in `hooks/` are wired into Claude's lifecycle events: `on-session-start.js` writes `idle` on `SessionStart` (matcher `startup|resume|clear`), `on-prompt-submit.js` writes `busy` on `UserPromptSubmit`, `on-stop.js` writes `idle` on `Stop`, and `on-stop-failure.js` writes `idle` on `StopFailure` (API error); they share stdlib-only logic via `hooks/lib/write-state.js`. `install-hooks.sh` at the repo root copies the JS hooks plus the shared lib into `~/.claude/hooks/tmux-conductor/` and merge-registers them in `~/.claude/settings.json` with dedup-by-command so any pre-existing foreign hook entries survive — called automatically by the container's init script. The monitor reads `$STATE_DIR/<agent>.state` each poll and considers an agent idle only when it contains `idle`. `busy` is always trusted regardless of file age — a long-running task must never be re-dispatched just because the state file is old; only `on-stop.js` clears it. `idle` is only trusted when fresh (younger than `2 × POLL_INTERVAL`); a stale `idle` means the agent may have crashed after going idle without a `Stop` hook firing. The `CONDUCTOR_AGENT_NAME` environment variable tells the hooks which file to write; `scaffold.sh` bakes this in per container (default: target directory basename, overridable via `--agent-name`). If the state file is missing, the `idle` state is stale, or the file contains an unknown value, the monitor falls back to matching `IDLE_PATTERN` against the pane's `capture-pane` output — this covers Aider/Codex (no hook), any Claude instance running without the hook, and the Esc-interrupt case where no `Stop` event fires.
+For Claude Code agents, per-event Node.js hook scripts in `hooks/` are wired into Claude's lifecycle events: `on-session-start.js` writes `idle` on `SessionStart` (matcher `startup|resume|clear`), `on-prompt-submit.js` writes `busy` on `UserPromptSubmit`, `on-stop.js` writes `idle` on `Stop`, and `on-stop-failure.js` writes `idle` on `StopFailure` (API error); they share stdlib-only logic via `hooks/lib/write-state.js`. `install-hooks.sh` at the repo root copies the JS hooks plus the shared lib into `~/.claude/hooks/tmux-conductor/` and merge-registers them in `~/.claude/settings.json` with dedup-by-command so any pre-existing foreign hook entries survive. The monitor reads `$STATE_DIR/<agent>.state` each poll and considers an agent idle only when it contains `idle`. `busy` is always trusted regardless of file age — a long-running task must never be re-dispatched just because the state file is old; only `on-stop.js` clears it. `idle` is only trusted when fresh (younger than `2 × POLL_INTERVAL`); a stale `idle` means the agent may have crashed after going idle without a `Stop` hook firing. The `CONDUCTOR_AGENT_NAME` environment variable tells the hooks which file to write; set it in each agent's tmux window environment or prefix the launch command. If the state file is missing, the `idle` state is stale, or the file contains an unknown value, the monitor falls back to matching `IDLE_PATTERN` against the pane's `capture-pane` output — this covers Aider/Codex (no hook), any Claude instance running without the hook, and the Esc-interrupt case where no `Stop` event fires.
 
 Monitor also writes `busy` itself (via `mark_busy`) immediately before sending a new task to an agent. This closes a race window: after `dispatch.sh` sends the task but before the agent's `UserPromptSubmit` hook fires and writes `busy`, the state file still holds `idle` — without this pre-emptive write, the next poll would see `idle` and incorrectly double-dispatch. The hook overwrites the same `busy` value within milliseconds under normal conditions.

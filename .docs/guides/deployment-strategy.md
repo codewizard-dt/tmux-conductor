@@ -357,6 +357,7 @@ down:
 ## dev — build from source with hot-reload bind mounts (Dockerfile.dev)
 dev:
 	docker compose -f docker-compose.yml -f docker-compose.build.yml up --wait
+	@$(MAKE) --no-print-directory ports
 
 # --- Production / CI bypass ---
 

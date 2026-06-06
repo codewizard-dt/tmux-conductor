@@ -302,3 +302,11 @@ outputs/
 checkpoints/
 .dvc/cache
 .dvc/tmp
+
+# ---------------------------------------------------------------------------
+# Dashboard UI (Astro + React)
+# ---------------------------------------------------------------------------
+scripts/dashboard/ui/.env
+scripts/dashboard/ui/node_modules
+scripts/dashboard/ui/dist
+.playwright-mcp/

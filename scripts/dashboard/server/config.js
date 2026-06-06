@@ -1,0 +1,146 @@
+import { execSync } from 'child_process';
+import fs from 'fs/promises';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+export const DEFAULT_CONF_PATH =
+  process.env.CONDUCTOR_CONF || path.resolve(__dirname, '../../../conductor.conf');
+
+let cache = null;
+let cacheTime = 0;
+const CACHE_TTL_MS = 5000;
+
+/**
+ * Parse the `declare -px` output from bash for a given variable name.
+ * Returns the raw value string (with surrounding quotes stripped for scalars,
+ * or the parenthesised body for arrays).
+ */
+function parseDeclare(output, varName) {
+  // Match: declare -x VARNAME="value"  OR  declare -ax VARNAME=([0]="v" ...)
+  const re = new RegExp(
+    `declare\\s+-[a-z-]*\\s+${varName}=(.+)`,
+    'm'
+  );
+  const m = output.match(re);
+  if (!m) return null;
+  return m[1].trim();
+}
+
+/**
+ * Parse a bash scalar value (strips outer double-quotes, handles escapes).
+ */
+function parseScalar(raw) {
+  if (!raw) return '';
+  // Remove surrounding double-quotes if present
+  if (raw.startsWith('"') && raw.endsWith('"')) {
+    return raw.slice(1, -1).replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+  }
+  return raw;
+}
+
+/**
+ * Parse a bash indexed-array declaration body like:
+ *   ([0]="entry1" [1]="entry2")
+ * Returns an array of string values.
+ */
+function parseArray(raw) {
+  if (!raw) return [];
+  // Strip outer parens
+  const inner = raw.replace(/^\(|\)$/g, '').trim();
+  const entries = [];
+  // Match [N]="value" — value may contain escaped quotes
+  const entryRe = /\[\d+\]="((?:[^"\\]|\\.)*)"/g;
+  let m;
+  while ((m = entryRe.exec(inner)) !== null) {
+    entries.push(m[1].replace(/\\"/g, '"').replace(/\\\\/g, '\\'));
+  }
+  return entries;
+}
+
+/**
+ * Parse an AGENTS entry string: "name:workdir:launch_cmd"
+ * The launch_cmd may itself contain colons, so we only split on the first two.
+ */
+function parseAgentEntry(entry) {
+  const parts = entry.split(':');
+  const name = parts[0].trim();
+  const workdir = parts[1].trim();
+  const launchCmd = parts.slice(2).join(':').trim();
+  return { name, workdir, launchCmd };
+}
+
+/**
+ * Read and parse conductor.conf, returning structured config.
+ * Results are cached for CACHE_TTL_MS milliseconds.
+ *
+ * @param {string} [confPath] - Path to conductor.conf (defaults to env/relative)
+ * @returns {{ sessionName: string, taskQueue: string, stateDir: string, agents: Array<{name:string,workdir:string,launchCmd:string}> }}
+ */
+export function readConductorConf(confPath = DEFAULT_CONF_PATH) {
+  const now = Date.now();
+  if (cache && now - cacheTime < CACHE_TTL_MS) {
+    return cache;
+  }
+
+  const cmd = `bash -c "source ${confPath} && declare -p AGENTS SESSION_NAME TASK_QUEUE STATE_DIR"`;
+  const output = execSync(cmd, { encoding: 'utf8' });
+
+  const sessionName = parseScalar(parseDeclare(output, 'SESSION_NAME'));
+  const taskQueue = parseScalar(parseDeclare(output, 'TASK_QUEUE'));
+  const stateDir = parseScalar(parseDeclare(output, 'STATE_DIR'));
+  const agentsRaw = parseArray(parseDeclare(output, 'AGENTS'));
+  const agents = agentsRaw.map(parseAgentEntry);
+
+  cache = { sessionName, taskQueue, stateDir, agents };
+  cacheTime = now;
+  return cache;
+}
+
+/**
+ * Append a new agent entry to the AGENTS=(...) array in conductor.conf.
+ * Reads the file as text, finds the closing `)` of the AGENTS block, inserts
+ * the new entry line before it, and writes the file back.
+ *
+ * @param {string} confPath - Absolute path to conductor.conf
+ * @param {string} name - Agent name (used as tmux window name)
+ * @param {string} workdir - Absolute working directory path
+ * @param {string} launchCmd - Shell command to start the agent
+ * @returns {Promise<void>}
+ * @throws {Error} If the AGENTS=( block is not found
+ */
+export async function appendAgentToConf(confPath, name, workdir, launchCmd) {
+  const text = await fs.readFile(confPath, 'utf8');
+  const lines = text.split('\n');
+
+  // Find the start of the AGENTS=( block
+  let blockStart = -1;
+  for (let i = 0; i < lines.length; i++) {
+    if (/^AGENTS=\(/.test(lines[i])) {
+      blockStart = i;
+      break;
+    }
+  }
+  if (blockStart === -1) {
+    throw new Error(`AGENTS=( block not found in ${confPath}`);
+  }
+
+  // Find the closing ) of the AGENTS block (first line that is just ")")
+  let blockEnd = -1;
+  for (let i = blockStart + 1; i < lines.length; i++) {
+    if (/^\)/.test(lines[i])) {
+      blockEnd = i;
+      break;
+    }
+  }
+  if (blockEnd === -1) {
+    throw new Error(`Closing ) of AGENTS block not found in ${confPath}`);
+  }
+
+  // Insert the new entry before the closing )
+  const newEntry = `  "${name}:${workdir}:${launchCmd}"`;
+  lines.splice(blockEnd, 0, newEntry);
+
+  await fs.writeFile(confPath, lines.join('\n'), 'utf8');
+}

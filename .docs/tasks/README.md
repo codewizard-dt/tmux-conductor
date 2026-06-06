@@ -1,15 +1,13 @@
 # Tasks
 
+**Last task:** [034-docs-update-local-agent-model](completed/034-docs-update-local-agent-model.md)
+**Next task number:** 035
+
 ## Active Tasks
 
 | # | Task | Description |
 |---|------|-------------|
 | 008 | [Publish Base Image](active/008-publish-base-image.md) | Build + publish multi-arch `ghcr.io/codewizard-dt/tmux-conductor-base` with Chromium + Claude Code + uv preinstalled; update scaffold.sh to consume it (cuts per-project first-build from ~4min to ~15s) |
-| 013 | [Scripts Folder + add-task](active/013-scripts-folder-and-add-task.md) | Move 8 orchestration scripts to scripts/, update all references, add add-task.sh utility |
-| 014 | [Scripts README + Flowchart](active/014-scripts-readme-flowchart.md) | scripts/README.md documenting each of the nine scripts, with a combined mermaid flowchart of script relationships and task lifecycle |
-| 015 | [BG Processes + Remove TASK_CMD](active/015-bg-processes-and-remove-task-cmd.md) | Add `BG_PROCESSES=()` for host-side dev servers/watchers in their own tmux windows (no container wrap, no idle poll, C-c on teardown); drop `TASK_CMD` so all dispatches are explicit |
-| 016 | [Ensure Container Up](active/016-ensure-container-up.md) | Before spawning each agent, check per unique workdir whether the dev container is running; if not, run `docker compose up -d --build` in that workdir and skip only the agents whose container failed to start |
-| 017 | [Command Center Dashboard](active/017-command-center-dashboard.md) | Fastify + React dashboard (tmux window, 127.0.0.1:8787) with `/status` polling, per-agent run/stop/restart buttons, SSE log tailing (`dispatch`/`hooks`/`monitor` + live pane capture), and Swagger at `/docs` |
 
 ## Completed Tasks
 
@@ -25,3 +23,22 @@
 | 010 | [Hooks Global Install](completed/010-hooks-global-install.md) | Refactor install-hooks.sh to copy hooks into ~/.claude/hooks/tmux-conductor/ and merge-register into settings.json with dedup (preserves foreign hook entries); container scaffolding unchanged (UAT skipped) |
 | 011 | [Refactor Hooks to Node.js](completed/011-hooks-to-js.md) | Port the four per-event hooks from Bash to Node.js (stdlib only, shared `hooks/lib/write-state.js`), move `install-hooks.sh` to repo root, archive old `.sh` hooks under `hooks/.bash-backup/` (UAT skipped) |
 | 012 | [Verbose Dispatch State Logging](completed/012-verbose-dispatch-logging.md) | Enrich monitor log lines with detection method + state age + queue context; emit structured `dispatch.jsonl` per dispatch and `hooks.jsonl` per hook transition so agent state at send-time is fully auditable |
+| 013 | [Scripts Folder + add-task](completed/013-scripts-folder-and-add-task.md) | Move 8 orchestration scripts to scripts/, update all references, add add-task.sh utility |
+| 014 | [Scripts README + Flowchart](completed/014-scripts-readme-flowchart.md) | scripts/README.md documenting each of the nine scripts, with a combined mermaid flowchart of script relationships and task lifecycle |
+| 025 | [SSE Live State Stream](completed/025-sse-live-state-stream.md) | GET /events SSE stream pushing per-agent state changes to UI |
+| 027 | [Agent Accordion List](completed/027-agent-accordion-list.md) | React accordion component showing all agents with live state, queued tasks, and status color coding |
+| 018 | [Strip Container Mode](completed/018-strip-container-mode.md) | Remove all Docker/container wiring from conductor.sh and spawn.sh |
+| 019 | [Remove scaffold.sh](completed/019-remove-scaffold-sh.md) | Archive devcontainer scaffolding script no longer needed |
+| 020 | [Update conductor.conf](completed/020-update-conductor-conf.md) | Update config for local-agent model |
+| 021 | [Trash Tasks 016 and 017](completed/021-trash-016-017.md) | Superseded tasks trashed |
+| 022 | [Fastify Status Server](completed/022-fastify-status-server.md) | Dashboard backend with GET /status endpoint |
+| 023 | [Task Queue CRUD API](completed/023-task-queue-crud-api.md) | POST/PUT/DELETE /queue/:agent endpoints |
+| 024 | [Agent Management API](completed/024-agent-management-api.md) | POST /agents endpoint to spawn new agent windows |
+| 026 | [Scaffold Astro + React](completed/026-scaffold-astro-react.md) | Bootstrap Astro+React project under scripts/dashboard/ui/ |
+| 028 | [Add-task Form + Drag-to-Reorder](completed/028-add-task-drag-reorder.md) | Inline task-add input and drag-handle reorder inside each agent accordion |
+| 029 | [Add-agent Form](completed/029-add-agent-form.md) | Form at page top to spawn new agent window |
+| 030 | [Error State Detection + Red Highlight](completed/030-error-state-red-highlight.md) | Detect agent error state and surface red highlight |
+| 031 | [Empty-queue Amber Highlight](completed/031-empty-queue-amber-highlight.md) | Show amber accordion header when agent has no pending tasks |
+| 032 | [Awaiting-input Flash Icon](completed/032-awaiting-input-flash-icon.md) | Flashing ! icon when agent is awaiting user input |
+| 033 | [Wire Dashboard into conductor.sh + teardown.sh](completed/033-wire-dashboard-conductor.md) | Spawn dashboard window on session start and C-c on teardown |
+| 034 | [Docs Update: Local-agent Model](completed/034-docs-update-local-agent-model.md) | Update CLAUDE.md, root README, scripts/README.md |

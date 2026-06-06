@@ -4,9 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-tmux-conductor is a vendor-agnostic system for orchestrating multiple AI coding agent instances (Claude Code, OpenAI Codex, Aider, etc.) from a single tmux session. It spawns agents in panes, detects when each finishes a task via `capture-pane` idle detection, dispatches the next command from a task queue, monitors usage limits, and tears everything down cleanly.
+tmux-conductor is a vendor-agnostic system for orchestrating multiple AI coding agent instances (Claude Code, OpenAI Codex, Aider, etc.) from a single tmux session. Each agent runs directly in its own tmux window on the host (no Docker, no containers). The conductor spawns agents, detects when each finishes a task via per-agent state files written by Claude Code lifecycle hooks (with a `capture-pane` regex fallback), dispatches the next command from a task queue, monitors usage limits, and tears everything down cleanly. A real-time Astro+React dashboard backed by a Fastify server provides live agent status and queue management.
 
-**Current state:** Core implementation complete. All 8 shell scripts are implemented, executable, and pass syntax checks. Design documentation (`CONDUCTOR.md` with full script specifications, `deep-research-report.md` with infrastructure research) served as the specification source.
+**Current state:** Core implementation complete — orchestration scripts, Claude Code hooks, Fastify dashboard backend, and Astro+React dashboard UI are all implemented and wired together via `BG_PROCESSES` in `conductor.conf`.
 
 ## Architecture
 
@@ -29,16 +29,16 @@ All scripts below live in `scripts/` except `install-hooks.sh` (repo root).
 | `monitor.sh` | Main loop: polls for idle agents, checks usage limits, pops tasks from queue |
 | `broadcast.sh` | Sends a command to all agent panes |
 | `teardown.sh` | Graceful shutdown: sends `/exit` to each agent, waits, kills session |
-| `agent_exec.sh` | Host-side container exec wrapper (compose/docker modes) |
-| `scaffold.sh` | Generates `devcontainer-compose.yml` + `.devcontainer/devcontainer.json` for a target project; defaults to `ghcr.io/codewizard-dt/tmux-conductor-base:latest` (override with `--image`) |
 | `scripts/add-task.sh` | Appends a scoped task entry to `tasks.txt` using the caller's CWD name as agent name |
+| `scripts/dashboard/server/index.js` | Fastify backend on port 8788 — `GET /status`, `GET /agents`, `GET\|POST /queue/:agent`, `DELETE /queue/:agent/:index`, `PUT /queue/:agent/reorder`, `GET /events` (SSE) |
+| `scripts/dashboard/ui/` | Astro+React single-page app on port 4321 — real-time accordion agent list, queue editor, status indicators |
 | `hooks/on-session-start.js` | Claude Code hook (Node.js) — writes `idle` to `$STATE_DIR/<agent>.state` on SessionStart (matcher `startup|resume|clear`) |
 | `hooks/on-prompt-submit.js` | Claude Code hook (Node.js) — writes `busy` to `$STATE_DIR/<agent>.state` on UserPromptSubmit |
 | `hooks/on-stop.js` | Claude Code hook (Node.js) — writes `idle` to `$STATE_DIR/<agent>.state` on Stop |
 | `hooks/on-stop-failure.js` | Claude Code hook (Node.js) — writes `idle` to `$STATE_DIR/<agent>.state` on StopFailure (API error) |
 | `install-hooks.sh` (repo root) | Copies JS hook scripts plus `hooks/lib/write-state.js` into `~/.claude/hooks/tmux-conductor/` and merge-registers them in `~/.claude/settings.json` with dedup-by-command (preserves foreign hook entries; also prunes stale `.sh` registrations from prior installs) |
 | `$LOG_DIR/dispatch.jsonl` | Verbose dispatch log (host). One JSONL record per dispatch: `ts`, `agent`, `command`, `state`, `state_age_s`, `detection`, `queue`, `queue_remaining`, `pane_tail` |
-| `$CONDUCTOR_LOG_DIR/hooks.jsonl` | Hook transition log (container). One JSONL record per hook event: `ts`, `agent`, `event`, `prev_state`, `new_state` |
+| `$CONDUCTOR_LOG_DIR/hooks.jsonl` | Hook transition log. One JSONL record per hook event: `ts`, `agent`, `event`, `prev_state`, `new_state` |
 
 ### Key Design Decisions
 
@@ -47,17 +47,17 @@ All scripts below live in `scripts/` except `install-hooks.sh` (repo root).
 - `sed -i.bak` + cleanup for BSD/GNU sed compatibility (macOS ships BSD sed)
 - Idle detection primary signal is the per-agent state file at `$STATE_DIR/<agent>.state`. Two values: `idle` (hook-written by `on-session-start.js` on startup/resume/clear, `on-stop.js` on Stop, and `on-stop-failure.js` on StopFailure) and `busy` (hook-written by `on-prompt-submit.js` on UserPromptSubmit, and monitor-written by `mark_busy` immediately before dispatch to close the race between send-keys and the agent's first UserPromptSubmit hook fire). Monitor treats `idle` as idle and `busy` as working; any other contents fall through to the regex fallback. Each Claude Code lifecycle event has its own Node.js script in `hooks/` (on-session-start.js, on-prompt-submit.js, on-stop.js, on-stop-failure.js), sharing stdlib-only logic via `hooks/lib/write-state.js` (resolves agent name, drains stdin, writes the state file). `install-hooks.sh` at the repo root copies the JS hooks plus `hooks/lib/write-state.js` to `~/.claude/hooks/tmux-conductor/` and merges the registrations into `~/.claude/settings.json` with dedup-by-command so foreign hook entries survive.
 - If the state file is missing or stale (older than `2 × POLL_INTERVAL`), monitor falls back to the `IDLE_PATTERN` regex against the last 5 lines of `capture-pane -p` — this covers Aider, Codex, Claude-without-hooks, and the Esc-interrupt case where no `Stop` hook fires
-- `BG_PROCESSES` entries are host-side windows spawned alongside agents but are not monitored for idle, never receive queue dispatches, and are terminated via `C-c` during teardown. Parsed with the same `name:workdir:cmd` format as `AGENTS` but without `agent_exec.sh` wrapping or `CONDUCTOR_AGENT_NAME` env.
+- `BG_PROCESSES` entries are host-side windows spawned alongside agents but are not monitored for idle, never receive queue dispatches, and are terminated via `C-c` during teardown. Parsed with the same `name:workdir:cmd` format as `AGENTS` but without `CONDUCTOR_AGENT_NAME` env.
 - `POLL_INTERVAL` acts as debounce to avoid false positives during agent tool calls
 - Usage monitoring runs before every dispatch; when all agents hit limits, auto-teardown triggers
 - Task queue supports agent-scoped entries via `agentname: command` prefix — `pop_task()` matches scoped lines first, then falls back to unscoped (global) lines
-- Base image `ghcr.io/codewizard-dt/tmux-conductor-base` is rebuilt weekly (`.github/workflows/base-image.yml`) from `debian:bookworm-slim` with Chromium, Claude Code CLI, and uv preinstalled — every scaffolded project inherits fresh deps without paying the ~4 min install cost per project. Override with `scaffold.sh --image <other>`.
-- Verbose dispatch logging is enabled by default. On the host, `monitor.sh` appends one JSONL record to `$LOG_DIR/dispatch.jsonl` for every dispatch (fields: `ts`, `agent`, `command`, `state`, `state_age_s`, `detection`, `queue`, `queue_remaining`, `pane_tail`). Inside a container, the hook scripts (`on-stop.js`, etc.) append one JSONL record to `$CONDUCTOR_LOG_DIR/hooks.jsonl` for every state transition (fields: `ts`, `agent`, `event`, `prev_state`, `new_state`). Both paths are configurable: `LOG_DIR` in `conductor.conf` (host) and `CONDUCTOR_LOG_DIR` env var (container, set in `devcontainer-compose.yml` or the devcontainer env).
+- Verbose dispatch logging is enabled by default. `monitor.sh` appends one JSONL record to `$LOG_DIR/dispatch.jsonl` for every dispatch (fields: `ts`, `agent`, `command`, `state`, `state_age_s`, `detection`, `queue`, `queue_remaining`, `pane_tail`). The hook scripts (`on-stop.js`, etc.) append one JSONL record to `$CONDUCTOR_LOG_DIR/hooks.jsonl` for every state transition (fields: `ts`, `agent`, `event`, `prev_state`, `new_state`). `LOG_DIR` is configurable in `conductor.conf`; `CONDUCTOR_LOG_DIR` defaults to `./logs` and can be overridden per-agent via env.
 
 ## Prerequisites
 
 - tmux >= 3.0
 - bash >= 4.0 (macOS default is 3.2 — use `brew install bash` or adapt for indexed arrays)
+- Node.js >= 18 (for the dashboard server and Claude Code hooks)
 - Optional: `jq` for JSON config parsing
 
 ## Task/Doc Workflow

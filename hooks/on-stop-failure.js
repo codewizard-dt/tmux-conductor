@@ -1,2 +1,2 @@
 #!/usr/bin/env node
-require('./lib/write-state').writeState('idle', 'stop-failure');
+require('./lib/write-state').writeState('error', 'stop-failure');

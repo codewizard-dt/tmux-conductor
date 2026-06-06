@@ -6,38 +6,35 @@ See also: [`../CLAUDE.md`](../CLAUDE.md) for the full project overview and [`../
 
 ## Architecture
 
-Three views of the same system. **Setup / Entry** is how a user turns a project into an agent-ready container and launches the tmux session. **Orchestration loop** is the monitor polling agents and dispatching commands. **Task lifecycle** is how a task travels from `add-task.sh` through the queue to an agent pane and back via hooks. Nodes with a dashed outline are owned by another view and shown only as context.
+Three views of the same system. **Setup / Entry** is how a user launches the tmux session. **Orchestration loop** is the monitor polling agents and dispatching commands. **Task lifecycle** is how a task travels from `add-task.sh` through the queue to an agent pane and back via hooks. Nodes with a dashed outline are owned by another view and shown only as context.
 
 ### Setup / Entry
 
 ```mermaid
 flowchart TD
   User([User])
-  Scaffold["scaffold.sh<br/>(one-time project setup)"]
-  Compose[(devcontainer-compose.yml<br/>+ devcontainer.json)]
   Conductor["conductor.sh<br/>(tmux session + windows)"]
   Spawn["spawn.sh<br/>(alt: split-pane layout)"]
-  AgentExec["agent_exec.sh<br/>(container exec wrapper)"]
   Pane["agent pane"]:::ext
   BgPane["bg process window<br/>(host-side, no wrap)"]:::ext
+  DashServer["dashboard/server/index.js<br/>(Fastify :8788)"]:::ext
+  DashUI["dashboard/ui/<br/>(Astro+React :4321)"]:::ext
   Monitor["monitor.sh"]:::ext
 
-  User -->|"one-time per project"| Scaffold
-  Scaffold --> Compose
   User -->|"start session"| Conductor
   User -.->|"alt layout"| Spawn
-  Conductor -->|"EXEC_MODE=container"| AgentExec
-  Spawn -->|"EXEC_MODE=container"| AgentExec
-  AgentExec --> Pane
   Conductor --> Pane
   Spawn --> Pane
   Conductor -->|"per BG_PROCESSES entry"| BgPane
   Spawn -->|"per BG_PROCESSES entry"| BgPane
+  Conductor -->|"BG_PROCESSES: dashboard-server"| DashServer
+  Conductor -->|"BG_PROCESSES: dashboard-ui"| DashUI
+  DashUI -->|"HTTP + SSE"| DashServer
   Conductor -->|"launches monitor window"| Monitor
 
   classDef own fill:#e8f4ff,stroke:#3b82f6,color:#0b3a7a
   classDef ext fill:#f5f5f5,stroke:#9ca3af,color:#374151,stroke-dasharray:4 3
-  class Scaffold,Compose,Conductor,Spawn,AgentExec own
+  class Conductor,Spawn own
 ```
 
 ### Orchestration loop
@@ -101,9 +98,9 @@ flowchart TD
 
 ## conductor.sh
 
-Entry point for a conductor session. Creates the tmux session named `$SESSION_NAME`, spawns one window per entry in `AGENTS`, and launches the `monitor` window running `monitor.sh`. Reads `SESSION_NAME`, `AGENTS`, `BG_PROCESSES`, `EXEC_MODE`, `STATE_DIR`, and `LOG_DIR` from `../conductor.conf`. When `EXEC_MODE=container`, performs a pre-flight check for `~/.conductor_env` and routes each agent launch through `agent_exec.sh`.
+Entry point for a conductor session. Creates the tmux session named `$SESSION_NAME`, spawns one window per entry in `AGENTS`, and launches the `monitor` window running `monitor.sh`. Reads `SESSION_NAME`, `AGENTS`, `BG_PROCESSES`, `STATE_DIR`, and `LOG_DIR` from `../conductor.conf`.
 
-Each entry in `BG_PROCESSES` also gets its own tmux window, created after the agent windows and before the monitor window. Bg processes run on the **host** (no `agent_exec.sh` wrapping, no `CONDUCTOR_AGENT_NAME` env prefix) so things like `pnpm dev` execute in the same shell environment as the user's dev workflow.
+Each entry in `BG_PROCESSES` also gets its own tmux window, created after the agent windows and before the monitor window. Bg processes run on the **host** (no `CONDUCTOR_AGENT_NAME` env prefix) so things like `pnpm dev` execute in the same shell environment as the user's dev workflow.
 
 Usage:
 ```
@@ -112,7 +109,7 @@ scripts/conductor.sh
 
 ## spawn.sh
 
-Split-pane alternative to `conductor.sh`. Reads the same configuration but lays agents out within a single window using `tmux split-window` + `select-layout tiled` instead of separate windows. Useful when you want all agent panes on one screen at a glance. Also splits one pane per `BG_PROCESSES` entry (host-side, no container wrap) at the end of the agent splits.
+Split-pane alternative to `conductor.sh`. Reads the same configuration but lays agents out within a single window using `tmux split-window` + `select-layout tiled` instead of separate windows. Useful when you want all agent panes on one screen at a glance. Also splits one pane per `BG_PROCESSES` entry (host-side) at the end of the agent splits.
 
 Usage:
 ```
@@ -157,24 +154,6 @@ Usage:
 scripts/teardown.sh
 ```
 
-## agent_exec.sh
-
-Host-side wrapper that runs a command inside an agent's container. Supports two modes: `compose` (via `docker compose -f devcontainer-compose.yml exec`) and `docker` (via `docker exec`). Strips `ANTHROPIC_API_KEY` and `ANTHROPIC_AUTH_TOKEN` from the host env before exec, and forwards `CONDUCTOR_AGENT_NAME`, `CONDUCTOR_STATE_DIR=/conductor-state`, and `CONDUCTOR_LOG_DIR=/conductor-logs` into the container so hooks write to the shared mount.
-
-Usage:
-```
-scripts/agent_exec.sh <mode> <target> -- <cmd...>
-```
-
-## scaffold.sh
-
-One-time-per-project setup. Generates `.devcontainer/Dockerfile`, `.devcontainer/init-claude-config.sh`, `.devcontainer/devcontainer.json`, and `devcontainer-compose.yml` inside the target project. Defaults to the prebuilt base image `ghcr.io/codewizard-dt/tmux-conductor-base:latest`, which ships Chromium, Claude Code CLI, and uv preinstalled. Flags: `--image`, `--service`, `--agent-name`, `--force`.
-
-Usage:
-```
-scripts/scaffold.sh [--image <ref>] [--service <name>] [--agent-name <name>] [--force]
-```
-
 ## add-task.sh
 
 Convenience enqueuer for the task queue. Uses `basename "$PWD"` as the agent-scope prefix and appends a line `<agent>: <command>` to `../tasks.txt`. Intended to be run (or aliased) from within the target project directory so scoped tasks land on the right agent without manual prefixing.
@@ -184,10 +163,65 @@ Usage:
 scripts/add-task.sh <command words...>
 ```
 
+## Archived Scripts
+
+The following scripts are preserved in `scripts/.archive/` for reference but are no longer part of the active system:
+
+- `scaffold.sh` — generated `devcontainer-compose.yml` and `.devcontainer/devcontainer.json`; superseded by local-agent model (ROADMAP-001)
+- `agent_exec.sh` — host-side container exec wrapper; superseded by local-agent model (ROADMAP-001)
+
+## dashboard/server/
+
+The Fastify HTTP server backing the Astro+React dashboard. Runs on `127.0.0.1:8788` in a dedicated tmux window launched automatically via `BG_PROCESSES` in `conductor.conf`.
+
+| File | Purpose |
+|------|---------|
+| `dashboard/server/index.js` | Fastify app: `GET /status` (per-agent state + queue lengths), `GET\|POST /queue/:agent` (CRUD), `PUT /queue/:agent/reorder`, `DELETE /queue/:agent/:index`, `POST /agents` (spawn), `GET /events` (SSE), `GET /healthz` |
+| `dashboard/server/config.js` | Reads and parses `conductor.conf` via regex; exports `readConductorConf()` and `appendAgentToConf()` |
+| `dashboard/server/state.js` | Exports `readAgentState()`, `countQueuedTasks()`, `isTmuxWindowPresent()`, `readQueue()`, `writeQueue()`, `getAgentLines()` |
+
+Usage:
+```
+cd scripts/dashboard/server && node index.js
+```
+
+## dashboard/ui/
+
+The Astro+React single-page app that consumes the Fastify backend. Runs on `localhost:4321` in a dedicated tmux window launched automatically via `BG_PROCESSES` in `conductor.conf`. Displays a real-time accordion list of agents with state indicators and an inline queue editor; subscribes to the `GET /events` SSE stream for live updates.
+
+Usage:
+```
+cd scripts/dashboard/ui && npm run dev
+```
+
+Open `http://localhost:4321` in your browser.
+
+---
+
+## Going-forward summary
+
+| Script | Going forward? |
+|--------|---------------|
+| `conductor.sh` | **Essential** |
+| `spawn.sh` | **Essential** |
+| `monitor.sh` | **Essential** |
+| `dispatch.sh` | **Essential** |
+| `broadcast.sh` | **Useful** |
+| `teardown.sh` | **Essential** |
+| `add-task.sh` | **Useful** |
+| `dashboard/server/*.js` | **Active** |
+| `dashboard/ui/` | **Active** |
+| `.archive/scaffold.sh` | **Archived — Docker era** |
+| `.archive/agent_exec.sh` | **Archived — Docker era** |
+
+---
+
 ## See also
 
 - [`../CLAUDE.md`](../CLAUDE.md)
 - [`../conductor.conf`](../conductor.conf)
 - [`../hooks/`](../hooks/)
+- [`../hooks/README.md`](../hooks/README.md)
 - [`../install-hooks.sh`](../install-hooks.sh)
+- [`../SCRIPTS_GLOSSARY.md`](../SCRIPTS_GLOSSARY.md)
 - [`../.docs/tasks/README.md`](../.docs/tasks/README.md)

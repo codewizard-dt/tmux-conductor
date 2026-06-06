@@ -1,0 +1,21 @@
+services:
+  dashboard:
+    image: ghcr.io/codewizard-dt/tmux-conductor-dashboard:latest
+    ports:
+      - "${PORT:-8788}:8788"
+    environment:
+      HOST: "0.0.0.0"
+      PORT: "8788"
+      CONDUCTOR_CONF: /app/conductor.conf
+    volumes:
+      - ./conductor.conf:/app/conductor.conf
+      - ./logs/state:/app/logs/state:ro
+      - ./tasks.txt:/app/tasks.txt
+      - /tmp:/tmp
+    user: "${UID:-1000}:${GID:-1000}"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8788/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    restart: unless-stopped

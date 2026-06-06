@@ -1,0 +1,194 @@
+/* ── Agent Accordion List ─────────────────────────────────────────────────── */
+
+.agent-list {
+  font-family: system-ui, sans-serif;
+  max-width: 800px;
+  margin: 2rem auto;
+  padding: 0 1rem;
+}
+
+.agent-list h1 {
+  font-size: 1.5rem;
+  font-weight: 600;
+  margin-bottom: 1.5rem;
+  color: #1f2937;
+}
+
+/* Session banner */
+.session-banner {
+  padding: 1rem 1.25rem;
+  border-radius: 0.5rem;
+  background: #fef3c7;
+  border: 1px solid #fcd34d;
+  color: #92400e;
+  font-weight: 500;
+}
+
+/* Loading / empty states */
+.agent-empty {
+  color: #6b7280;
+  font-style: italic;
+}
+
+/* Accordion item */
+.agent-item {
+  border: 1px solid #e5e7eb;
+  border-radius: 0.5rem;
+  margin-bottom: 0.75rem;
+  overflow: hidden;
+}
+
+.agent-item summary {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  cursor: pointer;
+  user-select: none;
+  background: #f9fafb;
+  list-style: none; /* hide default triangle on some browsers */
+}
+
+.agent-item summary::-webkit-details-marker {
+  display: none;
+}
+
+.agent-item summary::before {
+  content: '▶';
+  font-size: 0.65rem;
+  color: #9ca3af;
+  transition: transform 0.15s ease;
+  flex-shrink: 0;
+}
+
+.agent-item[open] summary::before {
+  transform: rotate(90deg);
+}
+
+.agent-name {
+  font-weight: 600;
+  color: #111827;
+  flex: 1;
+}
+
+/* Status badge */
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.2rem 0.6rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.status-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+}
+
+/* ── Status colour classes ────────────────────────────────────────────────── */
+
+.status-busy {
+  background: #dbeafe;
+  color: #1e40af;
+}
+.status-busy .status-dot {
+  background: #2563eb;
+}
+
+.status-idle {
+  background: #dcfce7;
+  color: #166534;
+}
+.status-idle .status-dot {
+  background: #16a34a;
+}
+
+.status-empty {
+  background: #fef3c7;
+  color: #92400e;
+}
+.status-empty .status-dot {
+  background: #d97706;
+}
+
+.status-error {
+  background: #fee2e2;
+  color: #991b1b;
+}
+.status-error .status-dot {
+  background: #dc2626;
+}
+
+.status-unknown {
+  background: #f3f4f6;
+  color: #374151;
+}
+.status-unknown .status-dot {
+  background: #9ca3af;
+}
+
+.status-awaiting {
+  background: #fef9c3;
+  color: #713f12;
+}
+.status-awaiting .status-dot {
+  background: #ca8a04;
+}
+
+/* ── Flash animation (awaiting-input icon) ──────────────────────────────────── */
+
+@keyframes flash { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+.flash { animation: flash 1s ease-in-out infinite; }
+
+.awaiting-icon {
+  font-weight: 700;
+  font-size: 1rem;
+  color: #ca8a04;
+  margin-left: 0.25rem;
+  line-height: 1;
+}
+
+/* Accordion body */
+.agent-body {
+  padding: 0.75rem 1rem 1rem 1rem;
+  border-top: 1px solid #e5e7eb;
+  background: #ffffff;
+}
+
+.agent-body h3 {
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #6b7280;
+  margin: 0 0 0.5rem 0;
+}
+
+.task-list {
+  margin: 0;
+  padding-left: 1.25rem;
+  color: #374151;
+  font-size: 0.9rem;
+}
+
+.task-list li {
+  margin-bottom: 0.25rem;
+}
+
+.no-tasks {
+  color: #9ca3af;
+  font-size: 0.875rem;
+  font-style: italic;
+}
+
+/* Window status */
+.window-status {
+  font-size: 0.75rem;
+  color: #6b7280;
+  margin-top: 0.5rem;
+}

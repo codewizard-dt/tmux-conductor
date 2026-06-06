@@ -39,6 +39,59 @@ if [ -n "${BG_PROCESSES+x}" ] && [ "${#BG_PROCESSES[@]}" -gt 0 ]; then
   done
 fi
 
+move_to_backlog() {
+  local window_name="$1"
+  local queue_dir
+  queue_dir="$(dirname "$TASK_QUEUE")"
+  local backlog_file="${queue_dir}/tasks.backlog.txt"
+
+  if [ ! -f "$TASK_QUEUE" ] || [ ! -s "$TASK_QUEUE" ]; then
+    return 0
+  fi
+
+  # Extract scoped lines for this window name into the backlog
+  local moved=0
+  local tmp_queue
+  tmp_queue=$(mktemp)
+  while IFS= read -r line; do
+    if [[ "$line" =~ ^${window_name}:\ .+ ]]; then
+      printf '%s\n' "$line" >> "$backlog_file"
+      moved=$((moved + 1))
+    else
+      printf '%s\n' "$line" >> "$tmp_queue"
+    fi
+  done < "$TASK_QUEUE"
+  mv "$tmp_queue" "$TASK_QUEUE"
+
+  # If no agent windows remain alive, also move global (unscoped) lines to backlog
+  local alive=0
+  local live_windows
+  live_windows=$(tmux list-windows -t "$SESSION_NAME" -F '#{window_name}' 2>/dev/null || true)
+  for aname in "${AGENT_NAMES[@]}"; do
+    if printf '%s\n' "$live_windows" | grep -qxF "$aname"; then
+      alive=$((alive + 1))
+    fi
+  done
+
+  if [ "$alive" -eq 0 ]; then
+    if [ -f "$TASK_QUEUE" ] && [ -s "$TASK_QUEUE" ]; then
+      local tmp_global
+      tmp_global=$(mktemp)
+      while IFS= read -r line; do
+        if ! [[ "$line" =~ ^[a-zA-Z0-9_-]+:\ .+ ]]; then
+          printf '%s\n' "$line" >> "$backlog_file"
+          moved=$((moved + 1))
+        else
+          printf '%s\n' "$line" >> "$tmp_global"
+        fi
+      done < "$TASK_QUEUE"
+      mv "$tmp_global" "$TASK_QUEUE"
+    fi
+  fi
+
+  log "[$(date +%Y-%m-%dT%H:%M:%SZ)] BACKLOG: moved ${moved} task(s) for '${window_name}' to tasks.backlog.txt"
+}
+
 pop_task() {
   local agent_name="$1"
   LAST_QUEUE_KIND=""
@@ -133,6 +186,15 @@ is_idle() {
         LAST_DETECTION="state-file"
         LAST_STATE_VALUE="busy"
         LAST_STATE_AGE="$age"
+        # Secondary: check if the pane is awaiting interactive input
+        if [ -n "${AWAITING_PATTERN:-}" ]; then
+          local last_line
+          last_line=$(tmux capture-pane -t "$target" -p 2>/dev/null | grep -v '^[[:space:]]*$' | tail -1 || true)
+          if printf '%s\n' "$last_line" | grep -qE "$AWAITING_PATTERN"; then
+            debug "is_idle: target=$target awaiting-input pattern matched — writing 'awaiting'"
+            printf 'awaiting\n' > "$state_file" 2>/dev/null || true
+          fi
+        fi
         return 1
         ;;
       idle)
@@ -148,6 +210,22 @@ is_idle() {
         else
           debug "is_idle: target=$target state-file stale (age=${age}s > ${max_age}s), falling back to regex"
         fi
+        ;;
+      awaiting)
+        # Agent is awaiting interactive input. Re-check the pane; if the prompt
+        # is gone, the agent resumed on its own — revert the state file to busy.
+        LAST_DETECTION="state-file"
+        LAST_STATE_VALUE="awaiting"
+        LAST_STATE_AGE="$age"
+        if [ -n "${AWAITING_PATTERN:-}" ]; then
+          local last_line_aw
+          last_line_aw=$(tmux capture-pane -t "$target" -p 2>/dev/null | grep -v '^[[:space:]]*$' | tail -1 || true)
+          if ! printf '%s\n' "$last_line_aw" | grep -qE "$AWAITING_PATTERN"; then
+            debug "is_idle: target=$target awaiting state but prompt gone — reverting to 'busy'"
+            printf 'busy\n' > "$state_file" 2>/dev/null || true
+          fi
+        fi
+        return 1
         ;;
       *)
         # unknown contents — record raw value, fall through to regex
@@ -289,6 +367,7 @@ while true; do
     # Skip if pane doesn't exist (agent crashed or was closed)
     if ! tmux has-session -t "$target" 2>/dev/null; then
       log "WARN: $name — pane not found, skipping"
+      move_to_backlog "$name"
       continue
     fi
 
@@ -324,6 +403,7 @@ while true; do
     bg_target="$SESSION_NAME:$bg_name"
     if ! tmux has-session -t "$bg_target" 2>/dev/null; then
       log "WARN: bg '$bg_name' — window not found"
+      move_to_backlog "$bg_name"
     fi
   done
 

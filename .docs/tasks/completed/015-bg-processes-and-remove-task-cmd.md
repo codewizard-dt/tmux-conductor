@@ -118,3 +118,6 @@ Mirror the existing `AGENTS=()` shape for `BG_PROCESSES=()` but bypass `agent_ex
 - [ ] TASK_CMD removal: empty the queue, confirm `monitor.sh` logs `queue empty, no task. Agent stays idle.` and the JSONL `dispatch.jsonl` records a `"queue":"none"` entry with empty `command`
 - [ ] Confirm `tasks.txt` scoped + global dispatch still works end-to-end (unchanged behavior)
 - [ ] Restore `conductor.conf` to remove the `test-sleep` smoke-test entry before completing the task
+
+---
+**UAT**: [`.docs/uat/015-bg-processes-and-remove-task-cmd.uat.md`](../uat/015-bg-processes-and-remove-task-cmd.uat.md)
