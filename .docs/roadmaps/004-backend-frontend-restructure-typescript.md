@@ -4,7 +4,7 @@
 
 - **Status**: active
 - **Created**: 2026-06-06
-- **Last updated**: 2026-06-06 (UAT 038, 039, 041, 043 completed)
+- **Last updated**: 2026-06-06 (UAT 038, 039, 040, 041, 043 completed)
 - **Owner**: David Taylor
 - **Linked PRD**: —
 - **Linked ADRs**: —
@@ -33,7 +33,7 @@ The dashboard's server and UI sub-packages are promoted from `scripts/dashboard/
 
 > Convert backend to TypeScript and apply strict configs + ESLint to both apps.
 
-- [ ] [TASK-040: Convert backend JS source files to TypeScript](../tasks/040-backend-convert-to-typescript.md)
+- [x] [TASK-040: Convert backend JS source files to TypeScript](../tasks/completed/040-backend-convert-to-typescript.md)
 - [x] [TASK-041: Add `backend/tsconfig.json` with strict NodeNext config](../tasks/completed/041-backend-tsconfig.md)
 - [ ] [TASK-042: Add ESLint flat config with `strictTypeChecked` to backend](../tasks/042-backend-eslint.md)
 - [x] [TASK-043: Update `frontend/tsconfig.json` with full strict flags](../tasks/completed/043-frontend-tsconfig-strict.md)

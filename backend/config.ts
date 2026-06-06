@@ -1,14 +1,23 @@
 import { execSync } from 'child_process';
-import fs from 'fs/promises';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import * as fs from 'fs/promises';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+export interface AgentEntry {
+  name: string;
+  workdir: string;
+  launchCmd: string;
+}
+
+export interface ConductorConf {
+  sessionName: string;
+  taskQueue: string;
+  stateDir: string;
+  agents: AgentEntry[];
+}
 
 export const DEFAULT_CONF_PATH =
-  process.env.CONDUCTOR_CONF || path.resolve(__dirname, '../../../conductor.conf');
+  process.env['CONDUCTOR_CONF'] || new URL('../conductor.conf', import.meta.url).pathname;
 
-let cache = null;
+let cache: ConductorConf | null = null;
 let cacheTime = 0;
 const CACHE_TTL_MS = 5000;
 
@@ -17,21 +26,21 @@ const CACHE_TTL_MS = 5000;
  * Returns the raw value string (with surrounding quotes stripped for scalars,
  * or the parenthesised body for arrays).
  */
-function parseDeclare(output, varName) {
+function parseDeclare(output: string, varName: string): string | null {
   // Match: declare -x VARNAME="value"  OR  declare -ax VARNAME=([0]="v" ...)
   const re = new RegExp(
     `declare\\s+-[a-z-]*\\s+${varName}=(.+)`,
     'm'
   );
   const m = output.match(re);
-  if (!m) return null;
+  if (!m || m[1] === undefined) return null;
   return m[1].trim();
 }
 
 /**
  * Parse a bash scalar value (strips outer double-quotes, handles escapes).
  */
-function parseScalar(raw) {
+function parseScalar(raw: string | null): string {
   if (!raw) return '';
   // Remove surrounding double-quotes if present
   if (raw.startsWith('"') && raw.endsWith('"')) {
@@ -45,16 +54,19 @@ function parseScalar(raw) {
  *   ([0]="entry1" [1]="entry2")
  * Returns an array of string values.
  */
-function parseArray(raw) {
+function parseArray(raw: string | null): string[] {
   if (!raw) return [];
   // Strip outer parens
   const inner = raw.replace(/^\(|\)$/g, '').trim();
-  const entries = [];
+  const entries: string[] = [];
   // Match [N]="value" — value may contain escaped quotes
   const entryRe = /\[\d+\]="((?:[^"\\]|\\.)*)"/g;
-  let m;
+  let m: RegExpExecArray | null;
   while ((m = entryRe.exec(inner)) !== null) {
-    entries.push(m[1].replace(/\\"/g, '"').replace(/\\\\/g, '\\'));
+    const val = m[1];
+    if (val !== undefined) {
+      entries.push(val.replace(/\\"/g, '"').replace(/\\\\/g, '\\'));
+    }
   }
   return entries;
 }
@@ -63,10 +75,10 @@ function parseArray(raw) {
  * Parse an AGENTS entry string: "name:workdir:launch_cmd"
  * The launch_cmd may itself contain colons, so we only split on the first two.
  */
-function parseAgentEntry(entry) {
+function parseAgentEntry(entry: string): AgentEntry {
   const parts = entry.split(':');
-  const name = parts[0].trim();
-  const workdir = parts[1].trim();
+  const name = (parts[0] ?? '').trim();
+  const workdir = (parts[1] ?? '').trim();
   const launchCmd = parts.slice(2).join(':').trim();
   return { name, workdir, launchCmd };
 }
@@ -78,9 +90,9 @@ function parseAgentEntry(entry) {
  * @param {string} [confPath] - Path to conductor.conf (defaults to env/relative)
  * @returns {{ sessionName: string, taskQueue: string, stateDir: string, agents: Array<{name:string,workdir:string,launchCmd:string}> }}
  */
-export function readConductorConf(confPath = DEFAULT_CONF_PATH) {
+export function readConductorConf(confPath: string = DEFAULT_CONF_PATH): ConductorConf {
   const now = Date.now();
-  if (cache && now - cacheTime < CACHE_TTL_MS) {
+  if (cache !== null && now - cacheTime < CACHE_TTL_MS) {
     return cache;
   }
 
@@ -95,7 +107,7 @@ export function readConductorConf(confPath = DEFAULT_CONF_PATH) {
 
   cache = { sessionName, taskQueue, stateDir, agents };
   cacheTime = now;
-  return cache;
+  return cache as ConductorConf;
 }
 
 /**
@@ -110,14 +122,14 @@ export function readConductorConf(confPath = DEFAULT_CONF_PATH) {
  * @returns {Promise<void>}
  * @throws {Error} If the AGENTS=( block is not found
  */
-export async function appendAgentToConf(confPath, name, workdir, launchCmd) {
+export async function appendAgentToConf(confPath: string, name: string, workdir: string, launchCmd: string): Promise<void> {
   const text = await fs.readFile(confPath, 'utf8');
   const lines = text.split('\n');
 
   // Find the start of the AGENTS=( block
   let blockStart = -1;
   for (let i = 0; i < lines.length; i++) {
-    if (/^AGENTS=\(/.test(lines[i])) {
+    if (/^AGENTS=\(/.test(lines[i] ?? '')) {
       blockStart = i;
       break;
     }
@@ -129,7 +141,7 @@ export async function appendAgentToConf(confPath, name, workdir, launchCmd) {
   // Find the closing ) of the AGENTS block (first line that is just ")")
   let blockEnd = -1;
   for (let i = blockStart + 1; i < lines.length; i++) {
-    if (/^\)/.test(lines[i])) {
+    if (/^\)/.test(lines[i] ?? '')) {
       blockEnd = i;
       break;
     }

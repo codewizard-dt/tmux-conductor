@@ -1,6 +1,6 @@
-import fs from 'fs';
-import fsPromises from 'fs/promises';
-import path from 'path';
+import * as fs from 'fs';
+import * as fsPromises from 'fs/promises';
+import * as path from 'path';
 import { spawnSync } from 'child_process';
 
 /**
@@ -10,7 +10,7 @@ import { spawnSync } from 'child_process';
  * @param {string} agentName - Agent name (without extension)
  * @returns {'idle'|'busy'|'unknown'}
  */
-export function readAgentState(stateDir, agentName) {
+export function readAgentState(stateDir: string, agentName: string): string {
   const filePath = path.join(stateDir, `${agentName}.state`);
   try {
     const content = fs.readFileSync(filePath, 'utf8').trim();
@@ -27,7 +27,7 @@ export function readAgentState(stateDir, agentName) {
  * @param {string} agentName - Agent name used for scoped task matching
  * @returns {number}
  */
-export function countQueuedTasks(taskQueuePath, agentName) {
+export function countQueuedTasks(taskQueuePath: string, agentName: string): number {
   try {
     const content = fs.readFileSync(taskQueuePath, 'utf8');
     const lines = content.split('\n');
@@ -70,7 +70,7 @@ export function countQueuedTasks(taskQueuePath, agentName) {
  * @param {string} windowName - tmux window name
  * @returns {boolean}
  */
-export function isTmuxWindowPresent(sessionName, windowName) {
+export function isTmuxWindowPresent(sessionName: string, windowName: string): boolean {
   const result = spawnSync('tmux', ['has-session', '-t', `${sessionName}:${windowName}`], {
     encoding: 'utf8',
   });
@@ -83,10 +83,10 @@ export function isTmuxWindowPresent(sessionName, windowName) {
  * @param {string} taskQueuePath - Path to tasks.txt
  * @returns {string[]}
  */
-export function readQueue(taskQueuePath) {
+export function readQueue(taskQueuePath: string): string[] {
   try {
     const content = fs.readFileSync(taskQueuePath, 'utf8');
-    return content.split('\n').filter((l) => l.trim() !== '');
+    return content.split('\n').filter((l: string) => l.trim() !== '');
   } catch {
     return [];
   }
@@ -102,7 +102,7 @@ let writeChain = Promise.resolve();
  * @param {string[]} lines
  * @returns {Promise<void>}
  */
-export function writeQueue(taskQueuePath, lines) {
+export function writeQueue(taskQueuePath: string, lines: string[]): Promise<void> {
   writeChain = writeChain.then(() =>
     fsPromises.writeFile(taskQueuePath, lines.join('\n') + '\n'),
   );
@@ -119,12 +119,13 @@ export function writeQueue(taskQueuePath, lines) {
  * @param {string} agentName
  * @returns {{ indices: number[], tasks: string[] }}
  */
-export function getAgentLines(lines, agentName) {
-  const indices = [];
-  const tasks = [];
+export function getAgentLines(lines: string[], agentName: string): { indices: number[]; tasks: string[] } {
+  const indices: number[] = [];
+  const tasks: string[] = [];
   const scopePrefix = `${agentName}: `;
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
+    if (line === undefined) continue;
     if (line.startsWith(scopePrefix)) {
       indices.push(i);
       tasks.push(line.slice(scopePrefix.length));

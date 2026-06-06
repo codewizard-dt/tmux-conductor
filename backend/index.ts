@@ -1,8 +1,8 @@
 import { spawnSync, execSync } from 'child_process';
 import { existsSync } from 'fs';
-import path from 'path';
+import * as path from 'path';
 import { fileURLToPath } from 'url';
-import Fastify from 'fastify';
+import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import fastifyCors from '@fastify/cors';
 import fastifyStatic from '@fastify/static';
 import { readConductorConf, appendAgentToConf, DEFAULT_CONF_PATH } from './config.js';
@@ -24,16 +24,16 @@ process.on('uncaughtException', (err) => {
 const fastify = Fastify({ logger: false });
 
 
-const corsOrigin = process.env.CORS_ORIGIN || '*';
+const corsOrigin = process.env['CORS_ORIGIN'] || '*';
 await fastify.register(fastifyCors, {
   origin: corsOrigin,
 });
 
 // ── SSE state (shared between the /api plugin and the poll loop) ─────────────
 
-const sseClients = new Set();
+const sseClients = new Set<FastifyReply>();
 
-function broadcastSSE(eventName, data) {
+function broadcastSSE(eventName: string, data: unknown): void {
   const msg = `event: ${eventName}\ndata: ${JSON.stringify(data)}\n\n`;
   for (const reply of sseClients) {
     try { reply.raw.write(msg); } catch { sseClients.delete(reply); }
@@ -71,7 +71,7 @@ await fastify.register(async (api) => {
 
   // ── Task Queue CRUD ──────────────────────────────────────────────────────
 
-  api.get('/queue/:agent', async (req, reply) => {
+  api.get<{ Params: { agent: string } }>('/queue/:agent', async (req, reply) => {
     const { agent } = req.params;
     const conf = readConductorConf();
     const lines = readQueue(conf.taskQueue);
@@ -79,9 +79,9 @@ await fastify.register(async (api) => {
     reply.send({ agent, tasks });
   });
 
-  api.post('/queue/:agent', async (req, reply) => {
+  api.post<{ Params: { agent: string }; Body: { task?: string } }>('/queue/:agent', async (req, reply) => {
     const { agent } = req.params;
-    const { task } = req.body || {};
+    const { task } = req.body ?? {};
     if (!task || typeof task !== 'string' || task.trim() === '') {
       return reply.status(400).send({ error: 'task is required and must be a non-empty string' });
     }
@@ -93,9 +93,9 @@ await fastify.register(async (api) => {
     reply.send({ ok: true, line: newLine });
   });
 
-  api.put('/queue/:agent/reorder', async (req, reply) => {
+  api.put<{ Params: { agent: string }; Body: { order?: unknown } }>('/queue/:agent/reorder', async (req, reply) => {
     const { agent } = req.params;
-    const { order } = req.body || {};
+    const { order } = req.body ?? {};
     const conf = readConductorConf();
     const lines = readQueue(conf.taskQueue);
     const { indices } = getAgentLines(lines, agent);
@@ -110,16 +110,20 @@ await fastify.register(async (api) => {
       });
     }
 
-    const agentLines = indices.map((gi) => lines[gi]);
-    const reordered = order.map((i) => agentLines[i]);
+    const agentLines: (string | undefined)[] = indices.map((gi) => lines[gi]);
+    const reordered: (string | undefined)[] = (order as number[]).map((i) => agentLines[i]);
     for (let i = 0; i < indices.length; i++) {
-      lines[indices[i]] = reordered[i];
+      const r = reordered[i];
+      const idx = indices[i];
+      if (r !== undefined && idx !== undefined) {
+        lines[idx] = r;
+      }
     }
     await writeQueue(conf.taskQueue, lines);
     reply.send({ ok: true });
   });
 
-  api.delete('/queue/:agent/:index', async (req, reply) => {
+  api.delete<{ Params: { agent: string; index: string } }>('/queue/:agent/:index', async (req, reply) => {
     const { agent } = req.params;
     const idx = parseInt(req.params.index, 10);
     const conf = readConductorConf();
@@ -130,19 +134,22 @@ await fastify.register(async (api) => {
       return reply.status(404).send({ error: `index ${idx} out of range (agent has ${indices.length} tasks)` });
     }
 
-    lines.splice(indices[idx], 1);
+    const globalIdx = indices[idx];
+    if (globalIdx !== undefined) {
+      lines.splice(globalIdx, 1);
+    }
     await writeQueue(conf.taskQueue, lines);
     reply.send({ ok: true });
   });
 
   // ── Agent Management ──────────────────────────────────────────────────────
 
-  api.post('/agents', async (req, reply) => {
+  api.post<{ Body: { name?: string; workdir?: string; launchCmd?: string } }>('/agents', async (req, reply) => {
     const {
       name,
       workdir,
       launchCmd = 'claude --dangerously-skip-permissions',
-    } = req.body || {};
+    } = req.body ?? {};
 
     if (!name || typeof name !== 'string' || !/^[a-z0-9_-]+$/.test(name)) {
       return reply.status(400).send({
@@ -187,7 +194,7 @@ await fastify.register(async (api) => {
     reply.hijack();
     // hijack() bypasses Fastify's onSend lifecycle, so @fastify/cors never runs
     // for this route — set the CORS header on the raw response manually.
-    const allowOrigin = process.env.CORS_ORIGIN || req.headers.origin || '*';
+    const allowOrigin = process.env['CORS_ORIGIN'] || req.headers.origin || '*';
     reply.raw.setHeader('Access-Control-Allow-Origin', allowOrigin);
     reply.raw.setHeader('Vary', 'Origin');
     reply.raw.setHeader('Content-Type', 'text/event-stream');
@@ -214,7 +221,12 @@ await fastify.register(async (api) => {
 
 // ── Poll-and-diff loop ────────────────────────────────────────────────────────
 
-let prevSnapshot = null;
+interface Snapshot {
+  sessionAlive: boolean;
+  agents: Array<{ name: string; state: string; windowPresent: boolean; queuedTasks: number }>;
+}
+
+let prevSnapshot: Snapshot | null = null;
 
 function buildSnapshot() {
   const conf = readConductorConf();
@@ -271,10 +283,10 @@ if (existsSync(uiDist)) {
 
 // ── Start ─────────────────────────────────────────────────────────────────────
 
-const port = parseInt(process.env.PORT || '8788', 10);
+const port = parseInt(process.env['PORT'] || '8788', 10);
 
 try {
-  const host = process.env.HOST ?? '127.0.0.1';
+  const host = process.env['HOST'] ?? '127.0.0.1';
   await fastify.listen({ port, host });
   console.log(`Dashboard server listening on http://${host}:${port}`);
 

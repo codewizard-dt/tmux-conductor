@@ -8,7 +8,6 @@
 | # | Task | Description |
 |---|------|-------------|
 | 008 | [Publish Base Image](active/008-publish-base-image.md) | Build + publish multi-arch `ghcr.io/codewizard-dt/tmux-conductor-base` with Chromium + Claude Code + uv preinstalled; update scaffold.sh to consume it (cuts per-project first-build from ~4min to ~15s) |
-| 040 | [Backend convert to TypeScript](040-backend-convert-to-typescript.md) | Rename index.js, config.js, state.js to .ts and add TypeScript type annotations throughout |
 | 042 | [Backend ESLint](042-backend-eslint.md) | Add `backend/eslint.config.mjs` with `strictTypeChecked` preset |
 
 ## Completed Tasks

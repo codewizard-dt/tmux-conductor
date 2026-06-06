@@ -202,7 +202,7 @@ One row per roadmap. Sort by file number ascending.
 | [ROADMAP-001](completed/001-local-agents-dashboard.md) | Local Agents Dashboard | done | —/— | David Taylor | — |
 | [ROADMAP-002](002-ngrok-tunnel-daemon.md) | Ngrok Tunnel Daemon | active | 0/— | David Taylor | — |
 | [ROADMAP-003](003-deploy-do-app-platform-oauth.md) | Deploy to DO App Platform with OAuth | active | 0/— | David Taylor | — |
-| [ROADMAP-004](004-backend-frontend-restructure-typescript.md) | Promote Dashboard to Top-Level Backend & Frontend with TypeScript | active | 8/10 | David Taylor | — |
+| [ROADMAP-004](004-backend-frontend-restructure-typescript.md) | Promote Dashboard to Top-Level Backend & Frontend with TypeScript | active | 9/10 | David Taylor | — |
 
 When adding a row:
 
