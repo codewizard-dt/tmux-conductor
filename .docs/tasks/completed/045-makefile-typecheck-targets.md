@@ -28,8 +28,8 @@ Append the three `.PHONY` targets to the root `Makefile`. Keep the same comment-
 
 File: `Makefile`
 
-- [ ] Add `typecheck`, `typecheck-backend`, `typecheck-frontend` to the `.PHONY` line
-- [ ] Append the following block after the existing targets:
+- [x] Add `typecheck`, `typecheck-backend`, `typecheck-frontend` to the `.PHONY` line
+- [x] Append the following block after the existing targets:
 
 ```makefile
 ## typecheck-backend — run tsc --noEmit in backend/
@@ -46,9 +46,9 @@ typecheck: typecheck-backend typecheck-frontend
 
 ### 2. Verify targets work  <!-- agent: general-purpose -->
 
-- [ ] Run `make typecheck-backend` — should exit 0
-- [ ] Run `make typecheck-frontend` — should exit 0
-- [ ] Run `make typecheck` — should run both and exit 0
+- [x] Run `make typecheck-backend` — should exit 0
+- [x] Run `make typecheck-frontend` — should exit 0
+- [x] Run `make typecheck` — should run both and exit 0
 
 ---
-**UAT**: pending
+**UAT**: [`.docs/uat/completed/045-makefile-typecheck-targets.uat.md`](../uat/completed/045-makefile-typecheck-targets.uat.md)

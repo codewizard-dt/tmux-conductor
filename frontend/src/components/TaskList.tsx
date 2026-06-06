@@ -72,6 +72,10 @@ export interface TaskListProps {
   onReorder: (newTasks: string[]) => void;
 }
 
+interface ApiErrorBody {
+  error?: string;
+}
+
 export default function TaskList({ agentName, tasks, onReorder }: TaskListProps) {
   const [error, setError] = React.useState<string | null>(null);
 
@@ -111,11 +115,12 @@ export default function TaskList({ agentName, tasks, onReorder }: TaskListProps)
         body: JSON.stringify({ order: newOrder }),
       });
       if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error((body as any)?.error ?? `HTTP ${res.status}`);
+        const body = await res.json().catch(() => ({})) as ApiErrorBody;
+        throw new Error(body.error ?? `HTTP ${res.status.toString()}`);
       }
-    } catch (err: any) {
-      setError(`Reorder failed: ${err.message}`);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Unknown error';
+      setError(`Reorder failed: ${msg}`);
       // Rollback
       onReorder(tasks);
     }
@@ -134,7 +139,7 @@ export default function TaskList({ agentName, tasks, onReorder }: TaskListProps)
       {error && (
         <p style={{ color: 'red', fontSize: '12px', margin: '4px 0' }}>{error}</p>
       )}
-      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={(e) => { void handleDragEnd(e); }}>
         <SortableContext items={ids} strategy={verticalListSortingStrategy}>
           <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
             {tasks.map((task, i) => (

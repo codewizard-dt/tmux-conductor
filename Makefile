@@ -6,7 +6,7 @@ DROPLET_IP ?=
 PROJECT     = tmux-conductor
 GITHUB_USER ?= $(shell gh api user --jq .login 2>/dev/null)
 
-.PHONY: ports ps up dev push deploy deploy-pull ssh-alias login down
+.PHONY: ports ps up dev push deploy deploy-pull ssh-alias login down typecheck-backend typecheck-frontend typecheck
 
 ## ports — print service URLs
 ports:
@@ -71,3 +71,14 @@ ssh-alias:
 		printf "\nHost $(PROJECT)\n  HostName $(DROPLET_IP)\n  User root\n" >> ~/.ssh/config; \
 		echo "Added: Host $(PROJECT) -> $(DROPLET_IP)"; \
 	fi
+
+## typecheck-backend — run tsc --noEmit in backend/
+typecheck-backend:
+	cd backend && npx tsc --noEmit
+
+## typecheck-frontend — run tsc --noEmit in frontend/
+typecheck-frontend:
+	cd frontend && npx tsc --noEmit
+
+## typecheck — run tsc --noEmit in both backend/ and frontend/
+typecheck: typecheck-backend typecheck-frontend

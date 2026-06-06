@@ -3,6 +3,10 @@ import { API_BASE as API_URL } from '../lib/api';
 const DEFAULT_LAUNCH_CMD = 'claude --dangerously-skip-permissions';
 const NAME_PATTERN = /^[a-z0-9_-]+$/;
 
+interface ApiErrorBody {
+  error?: string;
+}
+
 export default function AddAgentForm() {
   const [name, setName] = useState('');
   const [workdir, setWorkdir] = useState('');
@@ -12,7 +16,7 @@ export default function AddAgentForm() {
   const [success, setSuccess] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.SyntheticEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
     setSuccess(false);
@@ -41,9 +45,9 @@ export default function AddAgentForm() {
         setLaunchCmd(DEFAULT_LAUNCH_CMD);
         setShowAdvanced(false);
         setSuccess(true);
-        setTimeout(() => setSuccess(false), 4000);
+        setTimeout(() => { setSuccess(false); }, 4000);
       } else if (res.status === 409) {
-        const body = await res.json();
+        const body = await res.json() as ApiErrorBody;
         setError(body.error ?? 'Conflict error');
       } else {
         setError('Failed to spawn agent');
@@ -58,7 +62,7 @@ export default function AddAgentForm() {
   return (
     <div style={{ marginBottom: '1.5rem', padding: '1rem', border: '1px solid #ccc', borderRadius: '6px' }}>
       <h2 style={{ marginTop: 0 }}>Add Agent</h2>
-      <form onSubmit={handleSubmit}>
+      <form onSubmit={(e: React.SyntheticEvent<HTMLFormElement>) => { void handleSubmit(e); }}>
         <div style={{ marginBottom: '0.75rem' }}>
           <label htmlFor="agent-name" style={{ display: 'block', marginBottom: '0.25rem' }}>
             Name
@@ -67,7 +71,7 @@ export default function AddAgentForm() {
             id="agent-name"
             type="text"
             value={name}
-            onChange={(e) => setName(e.target.value)}
+            onChange={(e) => { setName(e.target.value); }}
             placeholder="agent-name"
             pattern="^[a-z0-9_-]+$"
             required
@@ -83,7 +87,7 @@ export default function AddAgentForm() {
             id="agent-workdir"
             type="text"
             value={workdir}
-            onChange={(e) => setWorkdir(e.target.value)}
+            onChange={(e) => { setWorkdir(e.target.value); }}
             placeholder="/absolute/path"
             required
             style={{ width: '100%', padding: '0.4rem', boxSizing: 'border-box' }}
@@ -93,7 +97,7 @@ export default function AddAgentForm() {
         <div style={{ marginBottom: '0.75rem' }}>
           <button
             type="button"
-            onClick={() => setShowAdvanced((v) => !v)}
+            onClick={() => { setShowAdvanced((v) => !v); }}
             style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#555', padding: 0 }}
           >
             {showAdvanced ? '▾ Hide advanced' : '▸ Show advanced'}
@@ -107,7 +111,7 @@ export default function AddAgentForm() {
                 id="agent-launch-cmd"
                 type="text"
                 value={launchCmd}
-                onChange={(e) => setLaunchCmd(e.target.value)}
+                onChange={(e) => { setLaunchCmd(e.target.value); }}
                 placeholder={DEFAULT_LAUNCH_CMD}
                 style={{ width: '100%', padding: '0.4rem', boxSizing: 'border-box' }}
               />

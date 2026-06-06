@@ -111,4 +111,4 @@ File: `frontend/package.json`
 - [ ] `frontend/package.json` contains a `"lint"` script
 
 ---
-**UAT**: pending
+**UAT**: [`.docs/uat/completed/044-frontend-eslint.uat.md`](../uat/completed/044-frontend-eslint.uat.md)

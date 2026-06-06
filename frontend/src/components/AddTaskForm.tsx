@@ -7,12 +7,16 @@ export interface AddTaskFormProps {
   onAdded: (task: string) => void;
 }
 
+interface ApiErrorBody {
+  error?: string;
+}
+
 export default function AddTaskForm({ agentName, onAdded }: AddTaskFormProps) {
   const [value, setValue] = React.useState('');
   const [error, setError] = React.useState<string | null>(null);
   const [submitting, setSubmitting] = React.useState(false);
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.SyntheticEvent<HTMLFormElement>) {
     e.preventDefault();
     const trimmed = value.trim();
     if (!trimmed) return;
@@ -28,14 +32,15 @@ export default function AddTaskForm({ agentName, onAdded }: AddTaskFormProps) {
       });
 
       if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error((body as any)?.error ?? `HTTP ${res.status}`);
+        const body = await res.json().catch(() => ({})) as ApiErrorBody;
+        throw new Error(body.error ?? `HTTP ${res.status.toString()}`);
       }
 
       setValue('');
       onAdded(trimmed);
-    } catch (err: any) {
-      setError(err.message ?? 'Failed to add task');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to add task';
+      setError(msg);
     } finally {
       setSubmitting(false);
     }
@@ -70,13 +75,13 @@ export default function AddTaskForm({ agentName, onAdded }: AddTaskFormProps) {
 
   return (
     <div>
-      <form onSubmit={handleSubmit} style={formStyle}>
+      <form onSubmit={(e) => { void handleSubmit(e); }} style={formStyle}>
         <input
           type="text"
           placeholder="New task…"
           value={value}
           onChange={e => { setValue(e.target.value); setError(null); }}
-          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleSubmit(e as any); } }}
+          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); void handleSubmit(e as unknown as React.SyntheticEvent<HTMLFormElement>); } }}
           style={inputStyle}
           disabled={submitting}
           aria-label="New task text"

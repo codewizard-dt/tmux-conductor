@@ -112,16 +112,17 @@ export default function AgentList() {
     // 1. Initial fetch
     fetch(`${apiUrl}/status`)
       .then((r) => {
-        if (!r.ok) throw new Error(`HTTP ${r.status}`)
+        if (!r.ok) throw new Error(`HTTP ${r.status.toString()}`)
         return r.json() as Promise<SessionState>
       })
       .then((data) => {
-        setAgents(data.agents ?? [])
-        setSessionAlive(data.sessionAlive ?? true)
+        setAgents(data.agents)
+        setSessionAlive(data.sessionAlive)
         setLoading(false)
       })
-      .catch((err) => {
-        setError(`Failed to load status: ${err.message}`)
+      .catch((err: unknown) => {
+        const msg = err instanceof Error ? err.message : 'Unknown error'
+        setError(`Failed to load status: ${msg}`)
         setLoading(false)
       })
 
@@ -130,7 +131,7 @@ export default function AgentList() {
 
     es.addEventListener('agent-update', (e: MessageEvent) => {
       try {
-        const updated: Agent = JSON.parse(e.data)
+        const updated: Agent = JSON.parse(e.data as string) as Agent
         setAgents((prev) => {
           const idx = prev.findIndex((a) => a.name === updated.name)
           if (idx === -1) return [...prev, updated]
@@ -145,7 +146,7 @@ export default function AgentList() {
 
     es.addEventListener('session-update', (e: MessageEvent) => {
       try {
-        const data = JSON.parse(e.data)
+        const data = JSON.parse(e.data as string) as { sessionAlive?: boolean }
         if (typeof data.sessionAlive === 'boolean') {
           setSessionAlive(data.sessionAlive)
         }
