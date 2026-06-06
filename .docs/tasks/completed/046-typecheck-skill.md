@@ -53,4 +53,4 @@ Run TypeScript type-checking across the monorepo (no emit — type errors only).
 - [ ] Confirm `make typecheck` (from task 045) still exits 0
 
 ---
-**UAT**: pending
+**UAT**: [`.docs/uat/046-typecheck-skill.uat.md`](../uat/046-typecheck-skill.uat.md)

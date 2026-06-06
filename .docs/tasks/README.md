@@ -1,6 +1,6 @@
 # Tasks
 
-**Last task:** [046-typecheck-skill](046-typecheck-skill.md)
+**Last task:** [046-typecheck-skill](completed/046-typecheck-skill.md)
 **Next task number:** 047
 
 ## Active Tasks
@@ -8,8 +8,6 @@
 | # | Task | Description |
 |---|------|-------------|
 | 008 | [Publish Base Image](active/008-publish-base-image.md) | Build + publish multi-arch `ghcr.io/codewizard-dt/tmux-conductor-base` with Chromium + Claude Code + uv preinstalled; update scaffold.sh to consume it (cuts per-project first-build from ~4min to ~15s) |
-| 046 | [Typecheck Skill](046-typecheck-skill.md) | Write `.claude/skills/typecheck/SKILL.md` documenting the make typecheck targets |
-
 ## Completed Tasks
 
 | # | Task | Description |

@@ -4,7 +4,7 @@
 
 - **Status**: active
 - **Created**: 2026-06-06
-- **Last updated**: 2026-06-06 (TASK-044 completed)
+- **Last updated**: 2026-06-06 (TASK-046 completed)
 - **Owner**: David Taylor
 - **Linked PRD**: —
 - **Linked ADRs**: —
@@ -44,7 +44,7 @@ The dashboard's server and UI sub-packages are promoted from `scripts/dashboard/
 > Wire typecheck into the Makefile and install the `/typecheck` skill.
 
 - [x] [TASK-045: Add `make typecheck`, `make typecheck-backend`, `make typecheck-frontend` targets to root Makefile](../tasks/completed/045-makefile-typecheck-targets.md)
-- [ ] [TASK-046: Write `.claude/skills/typecheck/SKILL.md`](../tasks/046-typecheck-skill.md)
+- [x] [TASK-046: Write `.claude/skills/typecheck/SKILL.md`](../tasks/completed/046-typecheck-skill.md)
 
 ## Notes
 
