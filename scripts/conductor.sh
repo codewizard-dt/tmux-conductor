@@ -70,6 +70,11 @@ echo "All agents launched. Attaching to session..."
 echo "  Manual controls: see CONDUCTOR.md § Manual Controls"
 echo ""
 
+# Skip attach when launched by daemon
+if [ -n "${CONDUCTOR_NO_ATTACH:-}" ]; then
+  exit 0
+fi
+
 # Attach (or print instructions if already in tmux)
 if [ -n "${TMUX:-}" ]; then
   echo "Already in tmux. Switch with: tmux switch-client -t $SESSION_NAME"

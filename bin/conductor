@@ -1,0 +1,184 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SOCKET_PATH="${CONDUCTOR_DAEMON_SOCK:-$HOME/.local/share/tmux-conductor/daemon.sock}"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+CMD="${1:-help}"
+shift || true
+
+# Ensure the daemon is reachable; start it automatically if not
+_ensure_daemon() {
+  if ! curl -s --unix-socket "$SOCKET_PATH" http://localhost/healthz >/dev/null 2>&1; then
+    echo "Daemon not running — starting it now..."
+    LOG="$HOME/.local/share/tmux-conductor/daemon.log"
+    mkdir -p "$(dirname "$LOG")"
+    nohup "$REPO_ROOT/daemon/node_modules/.bin/tsx" "$REPO_ROOT/daemon/index.ts" >"$LOG" 2>&1 &
+    # Wait up to 5s for socket to appear
+    for _ in 1 2 3 4 5; do
+      sleep 1
+      curl -s --unix-socket "$SOCKET_PATH" http://localhost/healthz >/dev/null 2>&1 && break
+    done
+    if ! curl -s --unix-socket "$SOCKET_PATH" http://localhost/healthz >/dev/null 2>&1; then
+      echo "Error: daemon failed to start. Check $LOG" >&2
+      exit 1
+    fi
+    echo "Daemon started."
+  fi
+}
+
+# Parse a JSON response from curl, extracting a key; prints error and exits on failure
+_curl_json() {
+  local RESPONSE
+  RESPONSE=$(curl -s --unix-socket "$SOCKET_PATH" "${@}")
+  if [ -z "$RESPONSE" ]; then
+    echo "Error: daemon returned empty response." >&2
+    exit 1
+  fi
+  printf '%s' "$RESPONSE"
+}
+
+case "$CMD" in
+  list)
+    _ensure_daemon
+    _curl_json http://localhost/sessions | \
+      python3 -c "
+import json,sys
+data=json.load(sys.stdin)
+sessions=data.get('sessions',[])
+if not sessions: print('No active sessions.'); sys.exit(0)
+print(f\"{'SESSION':<20} {'REPO':<50} {'STATUS':<10} STARTED\")
+print('-'*95)
+for s in sessions:
+  alive='alive' if s.get('alive') else 'dead'
+  print(f\"{s['sessionName']:<20} {s['repoPath']:<50} {alive:<10} {s['startedAt']}\")
+"
+    ;;
+
+  start)
+    _ensure_daemon
+    REPO_PATH="$(realpath "${1:-$PWD}")"
+    RESPONSE=$(_curl_json http://localhost/sessions \
+      -H "Content-Type: application/json" \
+      -d "{\"repoPath\":\"$REPO_PATH\"}")
+    echo "$RESPONSE" | python3 -c "
+import json, sys
+d = json.load(sys.stdin)
+if 'error' in d:
+    sys.stderr.write('Error: ' + str(d['error']) + '\n')
+    sys.exit(1)
+print('Session:', d.get('sessionName', ''))
+print('Status: ', d.get('status', ''))
+print('Attach: ', d.get('attachCmd', ''))
+"
+    ;;
+
+  connect)
+    _ensure_daemon
+    REPO_PATH="$(realpath "${1:-$PWD}")"
+    RESPONSE=$(_curl_json http://localhost/sessions \
+      -H "Content-Type: application/json" \
+      -d "{\"repoPath\":\"$REPO_PATH\"}")
+    SESSION_NAME=$(echo "$RESPONSE" | python3 -c "
+import json, sys
+d = json.load(sys.stdin)
+if 'error' in d:
+    sys.stderr.write('Error: ' + str(d['error']) + '\n')
+    sys.exit(1)
+print(d.get('sessionName', ''))
+")
+    if [ -n "$SESSION_NAME" ]; then
+      exec tmux attach-session -t "$SESSION_NAME"
+    else
+      echo "Error: daemon returned no session name." >&2
+      exit 1
+    fi
+    ;;
+
+  stop)
+    _ensure_daemon
+    if [ -z "${1:-}" ]; then
+      echo "Usage: conductor stop <sessionName>" >&2
+      exit 1
+    fi
+    _curl_json -X DELETE "http://localhost/sessions/$1"
+    ;;
+
+  daemon)
+    SUBCMD="${1:-help}"
+    shift || true
+    case "$SUBCMD" in
+      start)
+        if curl -s --unix-socket "$SOCKET_PATH" http://localhost/healthz >/dev/null 2>&1; then
+          echo "Daemon already running."
+          exit 0
+        fi
+        LOG="$HOME/.local/share/tmux-conductor/daemon.log"
+        mkdir -p "$(dirname "$LOG")"
+        nohup "$REPO_ROOT/daemon/node_modules/.bin/tsx" "$REPO_ROOT/daemon/index.ts" >"$LOG" 2>&1 &
+        echo "Daemon started (pid $!). Log: $LOG"
+        ;;
+
+      stop)
+        PID=$(lsof -t "$SOCKET_PATH" 2>/dev/null | head -1)
+        if [ -n "$PID" ]; then
+          kill "$PID" && echo "Daemon stopped."
+        else
+          echo "Daemon not running."
+        fi
+        ;;
+
+      status)
+        if curl -s --unix-socket "$SOCKET_PATH" http://localhost/healthz >/dev/null 2>&1; then
+          echo "Daemon is running. Socket: $SOCKET_PATH"
+        else
+          echo "Daemon is not running."
+        fi
+        ;;
+
+      install)
+        PLIST_SRC="$REPO_ROOT/com.tmux-conductor.daemon.plist"
+        PLIST_DST="$HOME/Library/LaunchAgents/com.tmux-conductor.daemon.plist"
+        mkdir -p "$(dirname "$PLIST_DST")"
+        sed "s|__REPO_ROOT__|$REPO_ROOT|g" "$PLIST_SRC" > "$PLIST_DST"
+        launchctl load "$PLIST_DST"
+        echo "Installed and loaded daemon plist."
+        ;;
+
+      help|--help|-h)
+        echo "Usage: conductor daemon <subcommand>"
+        echo ""
+        echo "Subcommands:"
+        echo "  start    Start the daemon in the background"
+        echo "  stop     Stop the running daemon"
+        echo "  status   Check if the daemon is running"
+        echo "  install  Install and load the macOS launchd plist"
+        ;;
+
+      *)
+        echo "Unknown daemon subcommand: $SUBCMD" >&2
+        exit 1
+        ;;
+    esac
+    ;;
+
+  help|--help|-h)
+    echo "Usage: conductor <command> [args]"
+    echo ""
+    echo "Commands:"
+    echo "  list              List all active sessions"
+    echo "  start [path]      Start a session for a repo (default: current directory)"
+    echo "  connect [path]    Start a session and attach to it"
+    echo "  stop <name>       Stop a named session"
+    echo "  daemon <sub>      Manage the conductor daemon (start|stop|status|install)"
+    echo ""
+    echo "Environment:"
+    echo "  CONDUCTOR_DAEMON_SOCK  Path to daemon Unix socket (default: ~/.local/share/tmux-conductor/daemon.sock)"
+    ;;
+
+  *)
+    echo "Unknown command: $CMD" >&2
+    echo "Run 'conductor help' for usage." >&2
+    exit 1
+    ;;
+esac

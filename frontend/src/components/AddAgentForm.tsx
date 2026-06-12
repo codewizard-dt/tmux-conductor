@@ -50,6 +50,7 @@ export default function AddAgentForm() {
         const body = await res.json() as ApiErrorBody;
         setError(body.error ?? 'Conflict error');
       } else {
+        const body = await res.json() as ApiErrorBody;
         setError('Failed to spawn agent');
       }
     } catch {

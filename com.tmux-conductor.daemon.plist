@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.tmux-conductor.daemon</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>__REPO_ROOT__/daemon/node_modules/.bin/tsx</string>
+    <string>__REPO_ROOT__/daemon/index.ts</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>__REPO_ROOT__</string>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>/Users/davidtaylor/.local/share/tmux-conductor/daemon.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/davidtaylor/.local/share/tmux-conductor/daemon.log</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin</string>
+  </dict>
+</dict>
+</plist>
