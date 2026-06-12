@@ -1,12 +1,12 @@
 import { spawnSync, execSync } from 'child_process';
-import { existsSync } from 'fs';
+import { existsSync, unlinkSync } from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
 import Fastify, { type FastifyReply } from 'fastify';
 import fastifyCors from '@fastify/cors';
 import fastifyStatic from '@fastify/static';
-import { readConductorConf, appendAgentToConf, DEFAULT_CONF_PATH } from './config.ts';
-import { readAgentState, countQueuedTasks, isTmuxWindowPresent, readQueue, writeQueue, getAgentLines } from './state.ts';
+import { readConductorConf, appendAgentToConf, removeAgentFromConf, clearConfCache, DEFAULT_CONF_PATH } from './config.ts';
+import { detectAgentStatus, countQueuedTasks, isTmuxWindowPresent, readQueue, writeQueue, getAgentLines } from './state.ts';
 import dotenv from 'dotenv';
 
 
@@ -31,6 +31,7 @@ const corsOrigin = process.env['CORS_ORIGIN'] || '*';
 
 await fastify.register(fastifyCors, {
   origin: corsOrigin,
+  methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE'],
 });
 
 // ── SSE state (shared between the /api plugin and the poll loop) ─────────────
@@ -54,15 +55,17 @@ await fastify.register((api) => {
 
   api.get('/status', async (_req, reply) => {
     const conf = readConductorConf();
-    const { sessionName, taskQueue, stateDir, agents } = conf;
+    const { sessionName, taskQueue, agents } = conf;
 
     const sessionAlive = isTmuxWindowPresent(sessionName, 'monitor');
 
     const agentStatuses = agents.map((agent) => ({
       name: agent.name,
-      state: readAgentState(stateDir, agent.name),
+      state: detectAgentStatus(conf, agent.name),
       windowPresent: isTmuxWindowPresent(sessionName, agent.name),
       queuedTasks: countQueuedTasks(taskQueue, agent.name),
+      launchCmd: agent.launchCmd,
+      workdir: agent.workdir,
     }));
 
     reply.send({
@@ -155,9 +158,9 @@ await fastify.register((api) => {
       launchCmd = 'claude --dangerously-skip-permissions',
     } = req.body;
 
-    if (!name || typeof name !== 'string' || !/^[a-z0-9_-]+$/.test(name)) {
+    if (!name || typeof name !== 'string' || !/^[a-zA-Z0-9_-]+$/.test(name)) {
       return reply.status(400).send({
-        error: 'name is required and must match ^[a-z0-9_-]+$',
+        error: 'name is required and must match ^[a-zA-Z0-9_-]+$',
       });
     }
 
@@ -182,6 +185,7 @@ await fastify.register((api) => {
     }
 
     await appendAgentToConf(DEFAULT_CONF_PATH, name, workdir, launchCmd);
+    clearConfCache();
 
     execSync(`tmux new-window -t ${sessionName} -n ${name} -c ${workdir}`);
     execSync(
@@ -190,6 +194,95 @@ await fastify.register((api) => {
     );
 
     return reply.status(201).send({ ok: true, agent: { name, workdir, launchCmd } });
+  });
+
+  // Recreate the tmux window for an agent that already exists in conf but whose
+  // window has died. Unlike POST /agents this does not touch conductor.conf.
+  api.post<{ Params: { agent: string } }>('/agents/:agent/window', async (req, reply) => {
+    const { agent: name } = req.params;
+    const conf = readConductorConf();
+    const { sessionName, stateDir } = conf;
+
+    const entry = conf.agents.find((a) => a.name === name);
+    if (!entry) {
+      return reply.status(404).send({ error: `agent '${name}' not found in conductor.conf` });
+    }
+
+    const sessionCheck = spawnSync('tmux', ['has-session', '-t', sessionName], { encoding: 'utf8' });
+    if (sessionCheck.status !== 0) {
+      return reply.status(409).send({ error: 'session not running', sessionAlive: false });
+    }
+
+    if (isTmuxWindowPresent(sessionName, name)) {
+      return reply.status(409).send({ error: 'window already exists' });
+    }
+
+    execSync(`tmux new-window -t ${sessionName} -n ${name} -c ${entry.workdir}`);
+    execSync(
+      `tmux send-keys -t ${sessionName}:${name} ` +
+      `"CONDUCTOR_AGENT_NAME='${name}' CONDUCTOR_STATE_DIR='${stateDir}' ${entry.launchCmd}" Enter`,
+    );
+
+    return reply.status(201).send({ ok: true, agent: { name, workdir: entry.workdir, launchCmd: entry.launchCmd } });
+  });
+
+  // Remove an agent entirely: kill its tmux window (if alive), delete its entry
+  // from conductor.conf, drop its scoped queue lines, and remove its state file.
+  // Global (unscoped) queue lines are left untouched.
+  api.delete<{ Params: { agent: string } }>('/agents/:agent', async (req, reply) => {
+    const { agent: name } = req.params;
+    const conf = readConductorConf();
+    const { sessionName, taskQueue, stateDir } = conf;
+
+    const entry = conf.agents.find((a) => a.name === name);
+    if (!entry) {
+      return reply.status(404).send({ error: `agent '${name}' not found in conductor.conf` });
+    }
+
+    if (isTmuxWindowPresent(sessionName, name)) {
+      execSync(`tmux kill-window -t ${sessionName}:${name}`);
+    }
+
+    await removeAgentFromConf(DEFAULT_CONF_PATH, name);
+    clearConfCache();
+
+    const lines = readQueue(taskQueue);
+    const remaining = lines.filter((l) => !l.startsWith(`${name}: `));
+    if (remaining.length !== lines.length) {
+      await writeQueue(taskQueue, remaining);
+    }
+
+    try { unlinkSync(path.join(stateDir, `${name}.state`)); } catch { /* no state file — fine */ }
+
+    return reply.send({ ok: true, removed: name });
+  });
+
+  // Read-only working-tree diff for an agent's workdir, so changes can be
+  // reviewed from the dashboard.
+  api.get<{ Params: { agent: string } }>('/agents/:agent/diff', async (req, reply) => {
+    const { agent: name } = req.params;
+    const conf = readConductorConf();
+    const entry = conf.agents.find((a) => a.name === name);
+    if (!entry) {
+      return reply.status(404).send({ error: `agent '${name}' not found in conductor.conf` });
+    }
+
+    const git = (args: string[]): { ok: boolean; out: string } => {
+      const r = spawnSync('git', ['-C', entry.workdir, ...args], { encoding: 'utf8' });
+      return { ok: r.status === 0, out: typeof r.stdout === 'string' ? r.stdout : '' };
+    };
+
+    const isRepo = git(['rev-parse', '--is-inside-work-tree']).ok;
+    if (!isRepo) {
+      return reply.send({ agent: name, workdir: entry.workdir, isRepo: false, changedFiles: [], stat: '', diff: '' });
+    }
+
+    const porcelain = git(['status', '--porcelain']).out;
+    const changedFiles = porcelain.split('\n').map((l) => l.trim()).filter((l) => l !== '');
+    const stat = git(['diff', '--stat']).out;
+    const diff = git(['diff']).out;
+
+    return reply.send({ agent: name, workdir: entry.workdir, isRepo: true, changedFiles, stat, diff });
   });
 
   // ── SSE Live State Stream ─────────────────────────────────────────────────
@@ -227,21 +320,22 @@ await fastify.register((api) => {
 
 interface Snapshot {
   sessionAlive: boolean;
-  agents: Array<{ name: string; state: string; windowPresent: boolean; queuedTasks: number }>;
+  agents: Array<{ name: string; state: string; windowPresent: boolean; queuedTasks: number; launchCmd: string; workdir: string }>;
 }
 
 let prevSnapshot: Snapshot | null = null;
 
-function buildSnapshot() {
+function buildSnapshot(): Snapshot {
   const conf = readConductorConf();
-  const { sessionName, taskQueue, stateDir, agents } = conf;
-  // console.log(conf);
+  const { sessionName, taskQueue, agents } = conf;
   const sessionAlive = isTmuxWindowPresent(sessionName, 'monitor');
   const agentStatuses = agents.map((agent) => ({
     name: agent.name,
-    state: readAgentState(stateDir, agent.name),
+    state: detectAgentStatus(conf, agent.name),
     windowPresent: isTmuxWindowPresent(sessionName, agent.name),
     queuedTasks: countQueuedTasks(taskQueue, agent.name),
+    launchCmd: agent.launchCmd,
+    workdir: agent.workdir,
   }));
   return { sessionAlive, agents: agentStatuses };
 }
@@ -272,7 +366,15 @@ function pollAndDiff() {
         state: agent.state,
         queuedTasks: agent.queuedTasks,
         windowPresent: agent.windowPresent,
+        launchCmd: agent.launchCmd,
+        workdir: agent.workdir,
       });
+    }
+  }
+
+  for (const prev of prevSnapshot.agents) {
+    if (!current.agents.some((a) => a.name === prev.name)) {
+      broadcastSSE('agent-removed', { name: prev.name });
     }
   }
 

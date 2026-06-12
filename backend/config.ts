@@ -11,6 +11,9 @@ export interface ConductorConf {
   sessionName: string;
   taskQueue: string;
   stateDir: string;
+  idlePattern: string;
+  awaitingPattern: string;
+  pollInterval: number;
   agents: AgentEntry[];
 }
 
@@ -25,6 +28,16 @@ export const DEFAULT_CONF_PATH = confPath.process || confPath.meta;
 let cache: ConductorConf | null = null;
 let cacheTime = 0;
 const CACHE_TTL_MS = 5000;
+
+/**
+ * Drop the cached conf so the next readConductorConf() re-reads the file.
+ * Call after any mutation of conductor.conf (agent add/remove) so /status and
+ * the SSE poll loop reflect the change immediately instead of after the TTL.
+ */
+export function clearConfCache(): void {
+  cache = null;
+  cacheTime = 0;
+}
 
 /**
  * Parse the `declare -px` output from bash for a given variable name.
@@ -47,9 +60,16 @@ function parseDeclare(output: string, varName: string): string | null {
  */
 function parseScalar(raw: string | null): string {
   if (!raw) return '';
-  // Remove surrounding double-quotes if present
+  // Remove surrounding double-quotes if present.
+  // `declare -p` double-quotes scalars and backslash-escapes ", \, $ and `
+  // so the value round-trips through `source`; undo exactly those escapes.
   if (raw.startsWith('"') && raw.endsWith('"')) {
-    return raw.slice(1, -1).replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+    return raw.slice(1, -1).replace(/\\([$`"\\])/g, '$1');
+  }
+  // Single-quoted scalars (bash uses these for values it can't double-quote
+  // cleanly) are emitted verbatim between the quotes — strip the quotes only.
+  if (raw.startsWith("'") && raw.endsWith("'")) {
+    return raw.slice(1, -1);
   }
   return raw;
 }
@@ -101,16 +121,23 @@ export function readConductorConf(confPath: string = DEFAULT_CONF_PATH): Conduct
     return cache;
   }
 
-  const cmd = `bash -c "source ${confPath} && declare -p AGENTS SESSION_NAME TASK_QUEUE STATE_DIR"`;
+  // `2>/dev/null || true` keeps this resilient when a conf predates the
+  // IDLE_PATTERN/AWAITING_PATTERN/POLL_INTERVAL settings: declare -p still
+  // prints the variables that exist, and missing ones simply parse as empty
+  // (pollInterval then falls back to 15, idlePattern to '' → regex skipped).
+  const cmd = `bash -c "source ${confPath} && declare -p AGENTS SESSION_NAME TASK_QUEUE STATE_DIR IDLE_PATTERN AWAITING_PATTERN POLL_INTERVAL 2>/dev/null || true"`;
   const output = execSync(cmd, { encoding: 'utf8' });
 
   const sessionName = parseScalar(parseDeclare(output, 'SESSION_NAME'));
   const taskQueue = parseScalar(parseDeclare(output, 'TASK_QUEUE'));
   const stateDir = parseScalar(parseDeclare(output, 'STATE_DIR'));
+  const idlePattern = parseScalar(parseDeclare(output, 'IDLE_PATTERN'));
+  const awaitingPattern = parseScalar(parseDeclare(output, 'AWAITING_PATTERN'));
+  const pollInterval = parseInt(parseScalar(parseDeclare(output, 'POLL_INTERVAL')), 10) || 15;
   const agentsRaw = parseArray(parseDeclare(output, 'AGENTS'));
   const agents = agentsRaw.map(parseAgentEntry);
 
-  cache = { sessionName, taskQueue, stateDir, agents };
+  cache = { sessionName, taskQueue, stateDir, idlePattern, awaitingPattern, pollInterval, agents };
   cacheTime = now;
   return cache;
 }
@@ -159,5 +186,52 @@ export async function appendAgentToConf(confPath: string, name: string, workdir:
   const newEntry = `  "${name}:${workdir}:${launchCmd}"`;
   lines.splice(blockEnd, 0, newEntry);
 
+  await fs.writeFile(confPath, lines.join('\n'), 'utf8');
+}
+
+/**
+ * Remove an agent entry from the AGENTS=(...) array in conductor.conf.
+ * Matches the entry line by its `"name:` prefix inside the AGENTS block.
+ *
+ * @param {string} confPath - Absolute path to conductor.conf
+ * @param {string} name - Agent name to remove
+ * @returns {Promise<void>}
+ * @throws {Error} If the AGENTS=( block or the agent's entry is not found
+ */
+export async function removeAgentFromConf(confPath: string, name: string): Promise<void> {
+  const text = await fs.readFile(confPath, 'utf8');
+  const lines = text.split('\n');
+
+  let blockStart = -1;
+  for (let i = 0; i < lines.length; i++) {
+    if (/^AGENTS=\(/.test(lines[i] ?? '')) {
+      blockStart = i;
+      break;
+    }
+  }
+  if (blockStart === -1) {
+    throw new Error(`AGENTS=( block not found in ${confPath}`);
+  }
+
+  let blockEnd = -1;
+  for (let i = blockStart + 1; i < lines.length; i++) {
+    if (/^\)/.test(lines[i] ?? '')) {
+      blockEnd = i;
+      break;
+    }
+  }
+  if (blockEnd === -1) {
+    throw new Error(`Closing ) of AGENTS block not found in ${confPath}`);
+  }
+
+  const entryRe = new RegExp(`^\\s*"${name}:`);
+  const entryIdx = lines.findIndex(
+    (line, i) => i > blockStart && i < blockEnd && entryRe.test(line),
+  );
+  if (entryIdx === -1) {
+    throw new Error(`Agent '${name}' not found in AGENTS block of ${confPath}`);
+  }
+
+  lines.splice(entryIdx, 1);
   await fs.writeFile(confPath, lines.join('\n'), 'utf8');
 }

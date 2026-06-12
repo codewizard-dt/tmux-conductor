@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { API_BASE as API_URL } from '../lib/api';
 const DEFAULT_LAUNCH_CMD = 'claude --dangerously-skip-permissions';
-const NAME_PATTERN = /^[a-z0-9_-]+$/;
+const NAME_PATTERN = /^[a-zA-Z0-9_-]+$/;
 
 interface ApiErrorBody {
   error?: string;
@@ -23,7 +23,7 @@ export default function AddAgentForm() {
 
     // Client-side validation
     if (!NAME_PATTERN.test(name)) {
-      setError('Name must match ^[a-z0-9_-]+$ (lowercase letters, digits, hyphens, underscores)');
+      setError('Name must match ^[a-zA-Z0-9_-]+$ (letters, digits, hyphens, underscores)');
       return;
     }
     if (!workdir.startsWith('/')) {
@@ -50,8 +50,8 @@ export default function AddAgentForm() {
         const body = await res.json() as ApiErrorBody;
         setError(body.error ?? 'Conflict error');
       } else {
-        const body = await res.json() as ApiErrorBody;
-        setError('Failed to spawn agent');
+        const body = await res.json().catch(() => ({})) as ApiErrorBody;
+        setError(body.error ?? 'Failed to spawn agent');
       }
     } catch {
       setError('Failed to spawn agent');
@@ -74,7 +74,7 @@ export default function AddAgentForm() {
             value={name}
             onChange={(e) => { setName(e.target.value); }}
             placeholder="agent-name"
-            pattern="^[a-z0-9_-]+$"
+            pattern="^[a-zA-Z0-9_-]+$"
             required
             style={{ width: '100%', padding: '0.4rem', boxSizing: 'border-box' }}
           />

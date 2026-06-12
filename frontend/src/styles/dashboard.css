@@ -2,7 +2,7 @@
 
 .agent-list {
   font-family: system-ui, sans-serif;
-  max-width: 800px;
+  max-width: 1200px;
   margin: 2rem auto;
   padding: 0 1rem;
 }
@@ -140,6 +140,22 @@
   background: #ca8a04;
 }
 
+.status-starting {
+  background: #cffafe;
+  color: #155e75;
+}
+.status-starting .status-dot {
+  background: #0891b2;
+}
+
+.status-no-window {
+  background: #f3f4f6;
+  color: #4b5563;
+}
+.status-no-window .status-dot {
+  background: #6b7280;
+}
+
 /* ── Flash animation (awaiting-input icon) ──────────────────────────────────── */
 
 @keyframes flash { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
@@ -186,9 +202,189 @@
   font-style: italic;
 }
 
-/* Window status */
-.window-status {
+/* ── Status board (kanban columns) ────────────────────────────────────────── */
+
+.agent-board {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 1rem;
+  align-items: start;
+}
+
+.board-column {
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.5rem;
+  padding: 0.75rem;
+}
+
+.board-column-title {
   font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #374151;
+  margin: 0 0 0.75rem 0;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.board-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.25rem;
+  height: 1.25rem;
+  padding: 0 0.35rem;
+  border-radius: 9999px;
+  background: #e5e7eb;
+  color: #4b5563;
+  font-size: 0.7rem;
+}
+
+.board-empty {
+  color: #9ca3af;
+  font-size: 0.85rem;
+  text-align: center;
+  margin: 0.25rem 0;
+}
+
+/* The accordion items sit inside columns — drop their own background so the
+   column background shows through, and remove the outer max-width assumption. */
+.board-column .agent-item {
+  background: #ffffff;
+}
+
+/* ── Agent meta (command / workdir / window) ──────────────────────────────── */
+
+.agent-meta {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.2rem 0.75rem;
+  margin: 0 0 0.75rem 0;
+  font-size: 0.8rem;
+}
+
+.agent-meta dt {
+  font-weight: 600;
   color: #6b7280;
-  margin-top: 0.5rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 0.7rem;
+  align-self: center;
+}
+
+.agent-meta dd {
+  margin: 0;
+  min-width: 0;
+}
+
+.agent-meta code {
+  font-size: 0.75rem;
+  word-break: break-all;
+  color: #111827;
+}
+
+/* ── Create-window action ─────────────────────────────────────────────────── */
+
+.window-action {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 0.75rem;
+}
+
+.window-action button {
+  padding: 0.35rem 0.9rem;
+  font-size: 0.8rem;
+  border: 1px solid #2563eb;
+  border-radius: 0.4rem;
+  background: #2563eb;
+  color: #fff;
+  cursor: pointer;
+}
+
+.window-action button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.window-error {
+  color: #b91c1c;
+  font-size: 0.75rem;
+}
+
+/* ── Remove-agent action ──────────────────────────────────────────────────── */
+
+.remove-action {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-top: 0.75rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid #e5e7eb;
+}
+
+.remove-action button {
+  padding: 0.35rem 0.9rem;
+  font-size: 0.8rem;
+  border: 1px solid #dc2626;
+  border-radius: 0.4rem;
+  background: #fff;
+  color: #dc2626;
+  cursor: pointer;
+}
+
+.remove-action button:hover:not(:disabled) {
+  background: #fee2e2;
+}
+
+.remove-action button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* ── Diff / changes section ───────────────────────────────────────────────── */
+
+.diff-section {
+  margin-top: 0.75rem;
+  border-top: 1px solid #e5e7eb;
+  padding-top: 0.6rem;
+}
+
+.diff-toggle {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #4b5563;
+  font-size: 0.8rem;
+  padding: 0;
+}
+
+.diff-empty {
+  color: #9ca3af;
+  font-size: 0.8rem;
+  font-style: italic;
+  margin: 0.4rem 0;
+}
+
+.diff-files {
+  margin: 0.5rem 0;
+  padding-left: 1.1rem;
+  font-size: 0.75rem;
+  color: #374151;
+}
+
+.diff-body {
+  max-height: 320px;
+  overflow: auto;
+  background: #0f172a;
+  color: #e2e8f0;
+  font-size: 0.72rem;
+  line-height: 1.4;
+  padding: 0.6rem 0.75rem;
+  border-radius: 0.4rem;
+  margin: 0;
+  white-space: pre;
 }

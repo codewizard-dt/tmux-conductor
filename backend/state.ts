@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as fsPromises from 'fs/promises';
 import * as path from 'path';
 import { spawnSync } from 'child_process';
+import type { ConductorConf } from './config.ts';
 
 /**
  * Read the state file for a given agent.
@@ -18,6 +19,70 @@ export function readAgentState(stateDir: string, agentName: string): string {
   } catch {
     return 'unknown';
   }
+}
+
+/**
+ * Capture the last `n` non-blank lines of an agent's tmux pane.
+ * Returns '' if the pane can't be captured (window gone, tmux error).
+ */
+function capturePaneTail(sessionName: string, windowName: string, n: number): string {
+  const result = spawnSync('tmux', ['capture-pane', '-t', `${sessionName}:${windowName}`, '-p'], {
+    encoding: 'utf8',
+  });
+  if (result.status !== 0 || typeof result.stdout !== 'string') return '';
+  return result.stdout
+    .split('\n')
+    .filter((l) => l.trim() !== '')
+    .slice(-n)
+    .join('\n');
+}
+
+/**
+ * Resolve an agent's effective status the same way monitor.sh's is_idle does,
+ * so the dashboard never shows a bare "unknown" while the agent's window is alive.
+ *
+ * Precedence:
+ *   1. window absent                       -> 'no-window'
+ *   2. fresh hook-written state file       -> its value ('busy'|'idle'|'awaiting')
+ *      ('busy' is always trusted; 'idle'/'awaiting' only when age <= 2*POLL_INTERVAL)
+ *   3. capture-pane regex fallback         -> 'idle' if IDLE_PATTERN matches,
+ *      'starting' if the pane is empty, else 'busy'
+ *
+ * @returns {'no-window'|'idle'|'busy'|'awaiting'|'starting'|'unknown'}
+ */
+export function detectAgentStatus(conf: ConductorConf, agentName: string): string {
+  const { sessionName, stateDir, idlePattern, pollInterval } = conf;
+
+  if (!isTmuxWindowPresent(sessionName, agentName)) {
+    return 'no-window';
+  }
+
+  const filePath = path.join(stateDir, `${agentName}.state`);
+  try {
+    const state = fs.readFileSync(filePath, 'utf8').replace(/\r/g, '').split('\n')[0]?.trim() ?? '';
+    if (state === 'busy' || state === 'awaiting') {
+      return state;
+    }
+    if (state === 'idle') {
+      const ageSeconds = (Date.now() - fs.statSync(filePath).mtimeMs) / 1000;
+      if (ageSeconds <= pollInterval * 2) {
+        return 'idle';
+      }
+      // stale idle — fall through to the regex fallback below
+    }
+  } catch {
+    // no state file — fall through to the regex fallback below
+  }
+
+  const tail = capturePaneTail(sessionName, agentName, 5);
+  if (tail === '') return 'starting';
+  if (idlePattern) {
+    // Match via `grep -qE` exactly like monitor.sh — IDLE_PATTERN is a POSIX ERE
+    // (e.g. it uses [[:space:]]) that JavaScript's RegExp does not understand.
+    const grep = spawnSync('grep', ['-qE', idlePattern], { input: tail, encoding: 'utf8' });
+    if (grep.status === 0) return 'idle';
+  }
+  return 'busy';
 }
 
 /**

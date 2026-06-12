@@ -1,23 +1,19 @@
 {
   "name": "ui",
   "type": "module",
-  "version": "0.0.3",
+  "version": "0.2.0",
   "engines": {
     "node": ">=22.12.0"
   },
   "scripts": {
-    "dev": "astro dev",
-    "build": "astro build",
-    "preview": "astro preview",
-    "astro": "astro",
-    "lint": "eslint ."
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview"
   },
   "dependencies": {
-    "@astrojs/react": "^5.0.7",
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
-    "astro": "^6.4.4",
     "react": "^19.2.7",
     "react-dom": "^19.2.7"
   },
@@ -25,9 +21,11 @@
     "@types/node": "^24.13.0",
     "@types/react": "^19.2.16",
     "@types/react-dom": "^19.2.3",
-    "eslint": "^9.0.0",
-    "eslint-plugin-react": "^7.37.0",
-    "eslint-plugin-react-hooks": "^5.0.0",
-    "typescript-eslint": "^8.0.0"
+    "@vitejs/plugin-react": "^4.3.4",
+    "autoprefixer": "^10.4.21",
+    "postcss": "^8.5.3",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5.8.3",
+    "vite": "^6.3.5"
   }
 }
