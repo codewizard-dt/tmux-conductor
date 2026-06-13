@@ -17,7 +17,11 @@ if [[ -z "${CONDUCTOR_DB:-}" ]]; then
     DB_PATH_FROM_CONF=$(bash -c "source \"$_db_conf\" 2>/dev/null && echo \"\${DB_PATH:-}\"")
   fi
   if [[ -n "${DB_PATH_FROM_CONF:-}" ]]; then
-    CONDUCTOR_DB="$(cd "$CONF_DIR/.." && realpath -m "${DB_PATH_FROM_CONF}")"
+    if [[ "${DB_PATH_FROM_CONF}" == /* ]]; then
+      CONDUCTOR_DB="${DB_PATH_FROM_CONF}"
+    else
+      CONDUCTOR_DB="$(cd "$CONF_DIR/.." && pwd)/${DB_PATH_FROM_CONF#./}"
+    fi
   else
     CONDUCTOR_DB="${CONF_DIR}/../data/conductor.db"
   fi
