@@ -14,8 +14,8 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
-lib64/
+/lib/
+/lib64/
 parts/
 sdist/
 var/
@@ -218,6 +218,7 @@ logs/*.jsonl
 logs/state/
 *.bak
 tmp/
+data/
 
 .devcontainer
 devcontainer-compose.yml
@@ -227,6 +228,7 @@ devcontainer-compose.yml
 .DS_Store
 Thumbs.db
 *~
+.obsidian/
 .idea/
 .vscode/*
 !.vscode/settings.json

@@ -1,5 +1,6 @@
 import { execSync } from 'child_process';
 import * as fs from 'fs/promises';
+import * as path from 'path';
 
 export interface AgentEntry {
   name: string;
@@ -7,19 +8,29 @@ export interface AgentEntry {
   launchCmd: string;
 }
 
+export type BgProcessEntry = AgentEntry;
+
 export interface ConductorConf {
   sessionName: string;
   taskQueue: string;
   stateDir: string;
+  logDir: string;
+  dbPath: string;
+  _confPath: string;
   idlePattern: string;
+  busyPattern: string;
   awaitingPattern: string;
   pollInterval: number;
   agents: AgentEntry[];
+  bgProcesses: BgProcessEntry[];
+  agentBgLinks: Record<string, string>;
 }
 
+// Single source of truth: the repo-root conductor.conf that monitor.sh and
+// conductor.sh also source. Overridable via CONDUCTOR_CONF.
 const confPath = {
   process: process.env['CONDUCTOR_CONF'],
-  meta: new URL('./conductor.conf', import.meta.url).pathname
+  meta: new URL('../conductor.conf', import.meta.url).pathname
 };
 console.log('confPath:', confPath);
 export const DEFAULT_CONF_PATH = confPath.process || confPath.meta;
@@ -125,19 +136,38 @@ export function readConductorConf(confPath: string = DEFAULT_CONF_PATH): Conduct
   // IDLE_PATTERN/AWAITING_PATTERN/POLL_INTERVAL settings: declare -p still
   // prints the variables that exist, and missing ones simply parse as empty
   // (pollInterval then falls back to 15, idlePattern to '' → regex skipped).
-  const cmd = `bash -c "source ${confPath} && declare -p AGENTS SESSION_NAME TASK_QUEUE STATE_DIR IDLE_PATTERN AWAITING_PATTERN POLL_INTERVAL 2>/dev/null || true"`;
+  const cmd = `bash -c "source ${confPath} && declare -p AGENTS BG_PROCESSES AGENT_BG_LINKS SESSION_NAME TASK_QUEUE STATE_DIR LOG_DIR DB_PATH IDLE_PATTERN BUSY_PATTERN AWAITING_PATTERN POLL_INTERVAL 2>/dev/null || true"`;
   const output = execSync(cmd, { encoding: 'utf8' });
 
+  // Relative paths in the conf (./tasks.txt, ./logs/state) are relative to the
+  // conf file's directory, NOT the backend process cwd — resolve them here so
+  // every consumer (and every spawned agent's env) gets an absolute path.
+  const confDir = path.dirname(path.resolve(confPath));
+  const resolveConfPath = (p: string): string => (p ? path.resolve(confDir, p) : p);
+
   const sessionName = parseScalar(parseDeclare(output, 'SESSION_NAME'));
-  const taskQueue = parseScalar(parseDeclare(output, 'TASK_QUEUE'));
-  const stateDir = parseScalar(parseDeclare(output, 'STATE_DIR'));
+  const taskQueue = resolveConfPath(parseScalar(parseDeclare(output, 'TASK_QUEUE')));
+  const stateDir = resolveConfPath(parseScalar(parseDeclare(output, 'STATE_DIR')));
+  const logDir = resolveConfPath(parseScalar(parseDeclare(output, 'LOG_DIR')) || './logs');
+  const dbPath = resolveConfPath(parseScalar(parseDeclare(output, 'DB_PATH')) || './data/conductor.db');
   const idlePattern = parseScalar(parseDeclare(output, 'IDLE_PATTERN'));
+  const busyPattern = parseScalar(parseDeclare(output, 'BUSY_PATTERN'));
   const awaitingPattern = parseScalar(parseDeclare(output, 'AWAITING_PATTERN'));
   const pollInterval = parseInt(parseScalar(parseDeclare(output, 'POLL_INTERVAL')), 10) || 15;
   const agentsRaw = parseArray(parseDeclare(output, 'AGENTS'));
   const agents = agentsRaw.map(parseAgentEntry);
+  const bgProcessesRaw = parseArray(parseDeclare(output, 'BG_PROCESSES'));
+  const bgProcesses = bgProcessesRaw.map(parseAgentEntry);
+  const bgLinksRaw = parseArray(parseDeclare(output, 'AGENT_BG_LINKS'));
+  const agentBgLinks: Record<string, string> = {};
+  for (const link of bgLinksRaw) {
+    const colon = link.indexOf(':');
+    if (colon > 0) {
+      agentBgLinks[link.slice(0, colon).trim()] = link.slice(colon + 1).trim();
+    }
+  }
 
-  cache = { sessionName, taskQueue, stateDir, idlePattern, awaitingPattern, pollInterval, agents };
+  cache = { sessionName, taskQueue, stateDir, logDir, dbPath, _confPath: path.resolve(confPath), idlePattern, busyPattern, awaitingPattern, pollInterval, agents, bgProcesses, agentBgLinks };
   cacheTime = now;
   return cache;
 }
@@ -231,6 +261,105 @@ export async function removeAgentFromConf(confPath: string, name: string): Promi
   if (entryIdx === -1) {
     throw new Error(`Agent '${name}' not found in AGENTS block of ${confPath}`);
   }
+
+  lines.splice(entryIdx, 1);
+  await fs.writeFile(confPath, lines.join('\n'), 'utf8');
+}
+
+export async function appendBgProcessToConf(confPath: string, name: string, workdir: string, launchCmd: string): Promise<void> {
+  const text = await fs.readFile(confPath, 'utf8');
+  const lines = text.split('\n');
+
+  let blockStart = -1;
+  for (let i = 0; i < lines.length; i++) {
+    if (/^BG_PROCESSES=\(/.test(lines[i] ?? '')) { blockStart = i; break; }
+  }
+  if (blockStart === -1) throw new Error(`BG_PROCESSES=( block not found in ${confPath}`);
+
+  let blockEnd = -1;
+  for (let i = blockStart + 1; i < lines.length; i++) {
+    if (/^\)/.test(lines[i] ?? '')) { blockEnd = i; break; }
+  }
+  if (blockEnd === -1) throw new Error(`Closing ) of BG_PROCESSES block not found in ${confPath}`);
+
+  lines.splice(blockEnd, 0, `  "${name}:${workdir}:${launchCmd}"`);
+  await fs.writeFile(confPath, lines.join('\n'), 'utf8');
+}
+
+export async function removeBgProcessFromConf(confPath: string, name: string): Promise<void> {
+  const text = await fs.readFile(confPath, 'utf8');
+  const lines = text.split('\n');
+
+  let blockStart = -1;
+  for (let i = 0; i < lines.length; i++) {
+    if (/^BG_PROCESSES=\(/.test(lines[i] ?? '')) { blockStart = i; break; }
+  }
+  if (blockStart === -1) throw new Error(`BG_PROCESSES=( block not found in ${confPath}`);
+
+  let blockEnd = -1;
+  for (let i = blockStart + 1; i < lines.length; i++) {
+    if (/^\)/.test(lines[i] ?? '')) { blockEnd = i; break; }
+  }
+  if (blockEnd === -1) throw new Error(`Closing ) of BG_PROCESSES block not found in ${confPath}`);
+
+  const entryRe = new RegExp(`^\\s*"${name}:`);
+  const entryIdx = lines.findIndex((line, i) => i > blockStart && i < blockEnd && entryRe.test(line));
+  if (entryIdx === -1) throw new Error(`BG process '${name}' not found in BG_PROCESSES block of ${confPath}`);
+
+  lines.splice(entryIdx, 1);
+  await fs.writeFile(confPath, lines.join('\n'), 'utf8');
+}
+
+export async function addBgLink(confPath: string, agentName: string, bgName: string): Promise<void> {
+  const text = await fs.readFile(confPath, 'utf8');
+  const lines = text.split('\n');
+
+  let blockStart = -1;
+  for (let i = 0; i < lines.length; i++) {
+    if (/^AGENT_BG_LINKS=\(/.test(lines[i] ?? '')) { blockStart = i; break; }
+  }
+  if (blockStart === -1) throw new Error(`AGENT_BG_LINKS=( block not found in ${confPath}`);
+
+  let blockEnd = -1;
+  for (let i = blockStart + 1; i < lines.length; i++) {
+    if (/^\)/.test(lines[i] ?? '')) { blockEnd = i; break; }
+  }
+  if (blockEnd === -1) throw new Error(`Closing ) of AGENT_BG_LINKS block not found in ${confPath}`);
+
+  // Remove any existing link for this agent first
+  const existingRe = new RegExp(`^\\s*"${agentName}:`);
+  const existingIdx = lines.findIndex((line, i) => i > blockStart && i < blockEnd && existingRe.test(line));
+  if (existingIdx !== -1) lines.splice(existingIdx, 1);
+
+  // Re-find blockEnd after possible splice
+  let newBlockEnd = -1;
+  for (let i = blockStart + 1; i < lines.length; i++) {
+    if (/^\)/.test(lines[i] ?? '')) { newBlockEnd = i; break; }
+  }
+
+  lines.splice(newBlockEnd, 0, `  "${agentName}:${bgName}"`);
+  await fs.writeFile(confPath, lines.join('\n'), 'utf8');
+}
+
+export async function removeBgLink(confPath: string, agentName: string): Promise<void> {
+  const text = await fs.readFile(confPath, 'utf8');
+  const lines = text.split('\n');
+
+  let blockStart = -1;
+  for (let i = 0; i < lines.length; i++) {
+    if (/^AGENT_BG_LINKS=\(/.test(lines[i] ?? '')) { blockStart = i; break; }
+  }
+  if (blockStart === -1) return; // no block → nothing to remove
+
+  let blockEnd = -1;
+  for (let i = blockStart + 1; i < lines.length; i++) {
+    if (/^\)/.test(lines[i] ?? '')) { blockEnd = i; break; }
+  }
+  if (blockEnd === -1) return;
+
+  const entryRe = new RegExp(`^\\s*"${agentName}:`);
+  const entryIdx = lines.findIndex((line, i) => i > blockStart && i < blockEnd && entryRe.test(line));
+  if (entryIdx === -1) return; // not found — nothing to do
 
   lines.splice(entryIdx, 1);
   await fs.writeFile(confPath, lines.join('\n'), 'utf8');

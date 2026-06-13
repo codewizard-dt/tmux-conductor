@@ -4,6 +4,13 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../conductor.conf"
 
+# Conf-relative paths (./logs, ./tasks.txt) resolve against the conf file's
+# directory (the repo root), never the caller's cwd.
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+case "$LOG_DIR"    in /*) ;; *) LOG_DIR="$REPO_ROOT/${LOG_DIR#./}" ;; esac
+case "$STATE_DIR"  in /*) ;; *) STATE_DIR="$REPO_ROOT/${STATE_DIR#./}" ;; esac
+case "$TASK_QUEUE" in /*) ;; *) TASK_QUEUE="$REPO_ROOT/${TASK_QUEUE#./}" ;; esac
+
 LOG_FILE="$LOG_DIR/monitor-$(date +%Y%m%d-%H%M%S).log"
 PAUSED_FILE="$LOG_DIR/.paused"
 DISPATCH_LOG="$LOG_DIR/dispatch.jsonl"
@@ -22,11 +29,13 @@ debug() { [ "${DEBUG:-0}" != "0" ] && echo "[$(date +%H:%M:%S)] DEBUG: $*" | tee
 rm -f "$PAUSED_FILE"
 mkdir -p "$STATE_DIR"
 
-# Build list of agent window names
+# Build list of agent window names and a name -> launch-command lookup
 declare -a AGENT_NAMES=()
+declare -A AGENT_CMDS=()
 for entry in "${AGENTS[@]}"; do
-  IFS=: read -r name _ _ <<< "$entry"
+  IFS=: read -r name _workdir cmd <<< "$entry"
   AGENT_NAMES+=("$name")
+  AGENT_CMDS["$name"]="$cmd"
 done
 
 # Build list of background-process window names (parallel to AGENT_NAMES)
@@ -157,6 +166,47 @@ pop_task() {
   return 0
 }
 
+# True for plain shell process names (what a pane shows after its agent exits)
+is_shell_cmd() {
+  case "$1" in
+    sh|bash|zsh|fish|dash|ksh) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+# First word of a launch command, skipping leading VAR=value env assignments
+launch_cmd_name() {
+  local w
+  for w in $1; do
+    case "$w" in
+      [A-Za-z_]*=*) continue ;;
+      *) printf '%s' "$w"; return 0 ;;
+    esac
+  done
+  return 0
+}
+
+# True when the pane has fallen back to a plain shell while the agent's launch
+# command is not itself a shell — i.e. the agent process exited or crashed.
+# Dispatching into a dead pane would execute the task as a shell command.
+pane_dead() {
+  local target="$1"
+  local name="$2"
+  local launch="${AGENT_CMDS[$name]:-}"
+  local cmd_name
+  cmd_name="$(launch_cmd_name "$launch")"
+  [ -z "$cmd_name" ] && return 1
+  is_shell_cmd "$cmd_name" && return 1   # shell agents are always "alive"
+  local cur
+  cur=$(tmux display-message -p -t "$target" '#{pane_current_command}' 2>/dev/null || echo "")
+  is_shell_cmd "$cur"
+}
+
+# Last 5 non-blank lines of a pane (regex matching input)
+pane_tail5() {
+  tmux capture-pane -t "$1" -p 2>/dev/null | grep -v '^[[:space:]]*$' | tail -5 || true
+}
+
 is_idle() {
   local target="$1"
   local name="${2:-}"
@@ -166,6 +216,13 @@ is_idle() {
   LAST_DETECTION=""
   LAST_STATE_VALUE=""
   LAST_STATE_AGE=""
+
+  # An exited agent is neither idle nor busy — never dispatch into its shell.
+  if [ -n "$name" ] && pane_dead "$target" "$name"; then
+    LAST_DETECTION="pane-dead"
+    debug "is_idle: target=$target agent process exited (pane shows a shell) — not idle"
+    return 1
+  fi
 
   # Primary: hook-written state file
   if [ -n "$name" ] && [ -f "$state_file" ]; then
@@ -180,12 +237,30 @@ is_idle() {
 
     case "$state" in
       busy)
-        # Always trust busy — not subject to max_age.
-        # on-stop.js clears this when the agent finishes; a long-running task must
-        # never be re-dispatched just because the state file is "stale".
+        # Trust busy by default — on-stop.js clears it when the agent finishes;
+        # a long-running task must never be re-dispatched just because the
+        # state file is "stale".
         LAST_DETECTION="state-file"
         LAST_STATE_VALUE="busy"
         LAST_STATE_AGE="$age"
+        # Hook-failure safety net: if the busy file is old enough to rule out
+        # the dispatch race (mark_busy fires right before send-keys) and the
+        # pane footer reads idle (IDLE_PATTERN matches, BUSY_PATTERN doesn't),
+        # the Stop hook never fired — recover the state file to idle.
+        local busy_min_age
+        busy_min_age=$(( POLL_INTERVAL * 2 ))
+        if [ "$age" -gt "$busy_min_age" ]; then
+          local tail_busy
+          tail_busy=$(pane_tail5 "$target")
+          if { [ -z "${BUSY_PATTERN:-}" ] || ! printf '%s\n' "$tail_busy" | grep -qE "$BUSY_PATTERN"; } \
+             && printf '%s\n' "$tail_busy" | grep -qE "$IDLE_PATTERN"; then
+            log "$name — busy state (age=${age}s) but pane reads idle; Stop hook likely missed — recovering to idle"
+            printf 'idle\n' > "$state_file" 2>/dev/null || true
+            LAST_DETECTION="busy-recovered"
+            LAST_STATE_VALUE="idle"
+            return 0
+          fi
+        fi
         # Secondary: check if the pane is awaiting interactive input
         if [ -n "${AWAITING_PATTERN:-}" ]; then
           local last_line
@@ -198,18 +273,23 @@ is_idle() {
         return 1
         ;;
       idle)
-        # Only trust idle when fresh; a stale idle could mean the agent crashed
-        # after going idle without a Stop hook firing.
-        local max_age
-        max_age=$(( POLL_INTERVAL * 2 ))
-        if [ "$age" -le "$max_age" ]; then
-          LAST_DETECTION="state-file"
-          LAST_STATE_VALUE="idle"
-          LAST_STATE_AGE="$age"
-          return 0
-        else
-          debug "is_idle: target=$target state-file stale (age=${age}s > ${max_age}s), falling back to regex"
+        # Trust idle regardless of age: an idle agent's state file is naturally
+        # old because nothing rewrites it while the agent waits for work. The
+        # crashed-agent case is covered by the pane_dead check above. Override
+        # to busy only when the pane shows the BUSY_PATTERN indicator (covers
+        # an agent relaunched without hook env on top of an old idle file).
+        LAST_DETECTION="state-file"
+        LAST_STATE_VALUE="idle"
+        LAST_STATE_AGE="$age"
+        if [ -n "${BUSY_PATTERN:-}" ]; then
+          local tail_lines
+          tail_lines=$(pane_tail5 "$target")
+          if printf '%s\n' "$tail_lines" | grep -qE "$BUSY_PATTERN"; then
+            debug "is_idle: target=$target state-file idle but BUSY_PATTERN matched — treating as busy"
+            return 1
+          fi
         fi
+        return 0
         ;;
       awaiting)
         # Agent is awaiting interactive input. Re-check the pane; if the prompt
@@ -234,10 +314,15 @@ is_idle() {
     esac
   fi
 
-  # Fallback: footer regex
+  # Fallback: footer regex. BUSY_PATTERN wins over IDLE_PATTERN because current
+  # Claude Code keeps the permission-mode footer visible while working.
   LAST_DETECTION="regex"
   local last_lines
-  last_lines=$(tmux capture-pane -t "$target" -p | grep -v '^[[:space:]]*$' | tail -5 || true)
+  last_lines=$(pane_tail5 "$target")
+  if [ -n "${BUSY_PATTERN:-}" ] && printf '%s\n' "$last_lines" | grep -qE "$BUSY_PATTERN"; then
+    debug "is_idle: target=$target BUSY_PATTERN matched — busy"
+    return 1
+  fi
   if printf '%s\n' "$last_lines" | grep -qE "$IDLE_PATTERN"; then
     debug "is_idle: target=$target regex MATCHED"
     return 0
@@ -403,7 +488,10 @@ while true; do
     bg_target="$SESSION_NAME:$bg_name"
     if ! tmux has-session -t "$bg_target" 2>/dev/null; then
       log "WARN: bg '$bg_name' — window not found"
+      echo "dead" > "$STATE_DIR/bg-$bg_name.state"
       move_to_backlog "$bg_name"
+    else
+      echo "alive" > "$STATE_DIR/bg-$bg_name.state"
     fi
   done
 

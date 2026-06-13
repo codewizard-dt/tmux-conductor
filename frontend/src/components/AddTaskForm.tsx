@@ -1,5 +1,4 @@
 import React from 'react';
-
 import { API_BASE } from '../lib/api';
 
 export interface AddTaskFormProps {
@@ -11,10 +10,18 @@ interface ApiErrorBody {
   error?: string;
 }
 
+interface AddTaskResponse {
+  ok: boolean;
+  line?: string;
+  task?: unknown;
+  dispatched?: boolean;
+}
+
 export default function AddTaskForm({ agentName, onAdded }: AddTaskFormProps) {
   const [value, setValue] = React.useState('');
   const [error, setError] = React.useState<string | null>(null);
   const [submitting, setSubmitting] = React.useState(false);
+  const [dispatched, setDispatched] = React.useState(false);
 
   async function handleSubmit(e: React.SyntheticEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -36,8 +43,15 @@ export default function AddTaskForm({ agentName, onAdded }: AddTaskFormProps) {
         throw new Error(body.error ?? `HTTP ${res.status.toString()}`);
       }
 
+      const body = await res.json().catch(() => ({})) as AddTaskResponse;
       setValue('');
-      onAdded(trimmed);
+
+      if (body.dispatched) {
+        setDispatched(true);
+        setTimeout(() => { setDispatched(false); }, 2000);
+      } else {
+        onAdded(trimmed);
+      }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Failed to add task';
       setError(msg);
@@ -46,57 +60,40 @@ export default function AddTaskForm({ agentName, onAdded }: AddTaskFormProps) {
     }
   }
 
-  const formStyle: React.CSSProperties = {
-    display: 'flex',
-    gap: '6px',
-    marginTop: '8px',
-    alignItems: 'center',
-  };
-
-  const inputStyle: React.CSSProperties = {
-    flex: 1,
-    padding: '4px 8px',
-    fontSize: '13px',
-    fontFamily: 'monospace',
-    border: '1px solid #ccc',
-    borderRadius: '4px',
-  };
-
-  const buttonStyle: React.CSSProperties = {
-    padding: '4px 12px',
-    fontSize: '13px',
-    border: 'none',
-    borderRadius: '4px',
-    background: '#3b82f6',
-    color: '#fff',
-    cursor: value.trim() ? 'pointer' : 'not-allowed',
-    opacity: value.trim() ? 1 : 0.5,
-  };
+  const hasValue = value.trim().length > 0;
 
   return (
-    <div>
-      <form onSubmit={(e) => { void handleSubmit(e); }} style={formStyle}>
+    <div className="mt-2">
+      <form onSubmit={(e) => { void handleSubmit(e); }} className="flex gap-1.5">
         <input
           type="text"
           placeholder="New task…"
           value={value}
           onChange={e => { setValue(e.target.value); setError(null); }}
-          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); void handleSubmit(e as unknown as React.SyntheticEvent<HTMLFormElement>); } }}
-          style={inputStyle}
+          onKeyDown={e => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              void handleSubmit(e as unknown as React.SyntheticEvent<HTMLFormElement>);
+            }
+          }}
+          className="flex-1 rounded-[7px] border border-line bg-white px-2.5 py-1 font-mono text-[12px] text-ink placeholder:text-muted-2 outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/10 disabled:opacity-40"
           disabled={submitting}
           aria-label="New task text"
         />
         <button
           type="submit"
-          disabled={!value.trim() || submitting}
-          style={buttonStyle}
+          disabled={!hasValue || submitting}
+          className="inline-flex h-7 cursor-pointer items-center rounded-[7px] bg-ink px-3 text-[12px] font-medium text-white transition hover:bg-ink-2 active:scale-[0.985] disabled:pointer-events-none disabled:opacity-40"
           aria-label="Add task"
         >
           {submitting ? '…' : 'Add'}
         </button>
       </form>
       {error && (
-        <p style={{ color: 'red', fontSize: '12px', margin: '4px 0 0' }}>{error}</p>
+        <p className="mt-1 text-[11px] text-accent-red">{error}</p>
+      )}
+      {dispatched && (
+        <p className="mt-1 text-[11px] text-green-600">Started immediately</p>
       )}
     </div>
   );

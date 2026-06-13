@@ -2,7 +2,14 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 source "$SCRIPT_DIR/../conductor.conf"
+
+# Conf-relative paths resolve against the repo root — exported into each
+# agent's environment, so they must be absolute.
+case "$LOG_DIR"    in /*) ;; *) LOG_DIR="$REPO_ROOT/${LOG_DIR#./}" ;; esac
+case "$STATE_DIR"  in /*) ;; *) STATE_DIR="$REPO_ROOT/${STATE_DIR#./}" ;; esac
+case "$TASK_QUEUE" in /*) ;; *) TASK_QUEUE="$REPO_ROOT/${TASK_QUEUE#./}" ;; esac
 
 mkdir -p "$LOG_DIR"
 
@@ -24,14 +31,36 @@ echo "Agents:   ${#AGENTS[@]}"
 echo "Queue:    $TASK_QUEUE ($(wc -l < "$TASK_QUEUE" 2>/dev/null || echo 0) tasks)"
 echo ""
 
+# Validate all agent workdirs are git repo roots
+for _entry in "${AGENTS[@]}"; do
+  IFS=: read -r _name _workdir _ <<< "$_entry"
+  if [ ! -e "$_workdir/.git" ]; then
+    echo "Error: workdir '$_workdir' for agent '$_name' is not the root of a git repository (no .git found)" >&2
+    exit 1
+  fi
+done
+unset _entry _name _workdir
+
 # Kill existing session if present
 tmux kill-session -t "$SESSION_NAME" 2>/dev/null || true
+
+# Build agent → linked-bg lookup from AGENT_BG_LINKS
+declare -A _bg_link
+for _link in "${AGENT_BG_LINKS[@]:-}"; do
+  IFS=: read -r _aname _bgname <<< "$_link"
+  _bg_link["$_aname"]="$_bgname"
+done
 
 # Create session with first agent
 IFS=: read -r name workdir launch_cmd <<< "${AGENTS[0]}"
 tmux new-session -d -s "$SESSION_NAME" -c "$workdir"
 
-env_prefix="CONDUCTOR_AGENT_NAME='$name' CONDUCTOR_STATE_DIR='$STATE_DIR'"
+_linked_bg="${_bg_link[$name]:-}"
+_bg_env=""
+if [ -n "$_linked_bg" ]; then
+  _bg_env=" CONDUCTOR_BG_NAME='$_linked_bg' CONDUCTOR_BG_LOG='$LOG_DIR/bg-$_linked_bg.log' CONDUCTOR_BG_STATE='$STATE_DIR/bg-$_linked_bg.state'"
+fi
+env_prefix="CONDUCTOR_AGENT_NAME='$name' CONDUCTOR_STATE_DIR='$STATE_DIR' CONDUCTOR_LOG_DIR='$LOG_DIR'$_bg_env"
 tmux send-keys -t "$SESSION_NAME" "$env_prefix $launch_cmd" Enter
 
 echo "Spawned: $name ($launch_cmd) in $workdir"
@@ -41,7 +70,12 @@ for (( i=1; i<${#AGENTS[@]}; i++ )); do
   IFS=: read -r name workdir launch_cmd <<< "${AGENTS[$i]}"
   tmux split-window -t "$SESSION_NAME" -c "$workdir"
 
-  env_prefix="CONDUCTOR_AGENT_NAME='$name' CONDUCTOR_STATE_DIR='$STATE_DIR'"
+  _linked_bg="${_bg_link[$name]:-}"
+  _bg_env=""
+  if [ -n "$_linked_bg" ]; then
+    _bg_env=" CONDUCTOR_BG_NAME='$_linked_bg' CONDUCTOR_BG_LOG='$LOG_DIR/bg-$_linked_bg.log' CONDUCTOR_BG_STATE='$STATE_DIR/bg-$_linked_bg.state'"
+  fi
+  env_prefix="CONDUCTOR_AGENT_NAME='$name' CONDUCTOR_STATE_DIR='$STATE_DIR' CONDUCTOR_LOG_DIR='$LOG_DIR'$_bg_env"
   tmux send-keys -t "$SESSION_NAME" "$env_prefix $launch_cmd" Enter
   tmux select-layout -t "$SESSION_NAME" tiled  # rebalance after each split
 
@@ -54,8 +88,9 @@ if [ "${#BG_PROCESSES[@]}" -gt 0 ]; then
     IFS=: read -r name workdir launch_cmd <<< "$entry"
     tmux split-window -t "$SESSION_NAME" -c "$workdir"
     tmux send-keys -t "$SESSION_NAME" "$launch_cmd" Enter
+    tmux pipe-pane -t "$SESSION_NAME" -o "cat >> '$LOG_DIR/bg-$name.log'"
     tmux select-layout -t "$SESSION_NAME" tiled
-    echo "Spawned bg: $name ($launch_cmd) in $workdir"
+    echo "Spawned bg: $name ($launch_cmd) in $workdir (logging to $LOG_DIR/bg-$name.log)"
   done
 fi
 
