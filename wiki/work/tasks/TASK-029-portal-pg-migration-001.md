@@ -95,9 +95,9 @@ Cross-link: this schema is consumed by `wiki/work/tasks/TASK-030-…` (Google OI
 
 ### 1. Verify the TASK-027 runner contract & migrations layout  <!-- agent: general-purpose -->
 
-- [ ] Confirm TASK-027 has shipped: `portal/migrate.ts` exists and `portal/migrations/` is the directory it scans. Use Serena (`mcp__serena__find_file` for `migrate.ts` under `portal/`, `mcp__serena__get_symbols_overview` on it) — do NOT use `find`/`cat`/`grep`.
-- [ ] Read `portal/migrate.ts` to confirm: (a) the filename pattern / ordering it expects (so `001_init.sql` is named to match), (b) that it wraps each file in a transaction, (c) how it records applied versions, and (d) whether it expects any in-file sentinel (e.g. `-- migrate:up` / a statement delimiter). Adapt the SQL file name and any required header comment to the actual runner.
-- [ ] Confirm the `pg` `Pool` is the connection used and that the target is Postgres (so `bytea`, `timestamptz`, `gen_random_uuid()`, partial indexes are all valid). If TASK-027 is NOT yet present, STOP and surface that the dependency is unmet (this task is blocked on TASK-027).
+- [x] Confirm TASK-027 has shipped: `portal/migrate.ts` exists and `portal/migrations/` is the directory it scans. Use Serena (`mcp__serena__find_file` for `migrate.ts` under `portal/`, `mcp__serena__get_symbols_overview` on it) — do NOT use `find`/`cat`/`grep`. <!-- Completed: 2026-06-13 -->
+- [x] Read `portal/migrate.ts` to confirm: (a) the filename pattern / ordering it expects (so `001_init.sql` is named to match), (b) that it wraps each file in a transaction, (c) how it records applied versions, and (d) whether it expects any in-file sentinel (e.g. `-- migrate:up` / a statement delimiter). Adapt the SQL file name and any required header comment to the actual runner. <!-- Completed: 2026-06-13 — plain SQL, no sentinel, filename used as version key, lexical sort, each file in a transaction -->
+- [x] Confirm the `pg` `Pool` is the connection used and that the target is Postgres (so `bytea`, `timestamptz`, `gen_random_uuid()`, partial indexes are all valid). If TASK-027 is NOT yet present, STOP and surface that the dependency is unmet (this task is blocked on TASK-027). <!-- Completed: 2026-06-13 — pg.Pool confirmed, advisory lock on 4711n, migrations/ has only .gitkeep -->
 
 ### 2. Write portal/migrations/001_init.sql  <!-- agent: general-purpose -->
 

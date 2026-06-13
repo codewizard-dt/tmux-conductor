@@ -7,7 +7,7 @@ updated: 2026-06-12
 depends_on: [TASK-006]
 blocks: []
 parallel_safe_with: [TASK-001, TASK-011, TASK-012]
-uat: "../../uat/completed/UAT-015-frontend-id-based-tasks.md"
+uat: "../../uat/UAT-015-frontend-id-based-tasks.md"
 tags: [frontend, react, api]
 ---
 

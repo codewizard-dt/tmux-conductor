@@ -197,7 +197,7 @@ export async function listSchedules(): Promise<Schedule[]> {
   if (!res.ok) {
     throw new Error(`HTTP ${res.status.toString()}`);
   }
-  return res.json();
+  return res.json() as Promise<Schedule[]>;
 }
 
 /** POST /api/schedules — create a schedule. Returns the created schedule. */
@@ -211,7 +211,7 @@ export async function createSchedule(input: CreateScheduleInput): Promise<Schedu
     const body = (await res.json().catch(() => ({}))) as { error?: string };
     throw new Error(body.error ?? `HTTP ${res.status.toString()}`);
   }
-  return res.json();
+  return res.json() as Promise<Schedule>;
 }
 
 /** DELETE /api/schedules/:id — delete a schedule (204, no body). */

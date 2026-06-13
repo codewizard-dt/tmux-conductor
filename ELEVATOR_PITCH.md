@@ -13,7 +13,7 @@ Developers running one agent per service or one per test suite get deterministic
 ### Three concrete features
 
 - **Race-free dispatch.** The monitor writes `busy` to the agent's state file immediately before `send-keys`, closing the window between dispatch and the agent's first hook fire, which means the queue never double-dispatches to a busy agent.
-- **Scoped task queue with a live dashboard.** `tasks.txt` uses `agentname: command` prefix syntax so tasks route to specific agents. An Astro+React dashboard on port 4321, backed by Fastify on 8788, shows live state and lets you drag-reorder tasks per agent.
+- **Scoped task queue with a live dashboard.** Tasks stored in SQLite support `agentname: command` scoping so tasks route to specific agents. An Astro+React dashboard on port 4321, backed by Fastify on 8788, shows live state and lets you drag-reorder tasks per agent.
 - **Usage limit auto-teardown.** `USAGE_CHECK_CMD` runs before every dispatch. When all agents hit their limits simultaneously, the conductor sends `/exit` to each, `C-c` to background processes, and kills the session cleanly.
 
 ### Hook failures are invisible to the running agent

@@ -239,7 +239,6 @@ function seedFromLegacy(db: Database.Database): void {
     return;
   }
 
-  let taskCount = 0;
   const insertAgent = db.prepare(`INSERT OR IGNORE INTO agents (name, workdir, launch_cmd) VALUES (?, ?, ?)`);
   const insertBg = db.prepare(`INSERT OR IGNORE INTO bg_processes (name, workdir, launch_cmd) VALUES (?, ?, ?)`);
   const linkBg = db.prepare(`UPDATE bg_processes SET linked_agent_id=(SELECT id FROM agents WHERE name=?) WHERE name=?`);
@@ -255,68 +254,11 @@ function seedFromLegacy(db: Database.Database): void {
       linkBg.run(agentName, bgName);
     }
 
-    // Import tasks.txt
-    if (conf.taskQueue) {
-      let tasksContent = '';
-      try { tasksContent = fs.readFileSync(conf.taskQueue, 'utf8'); } catch { /* no tasks.txt */ }
-      taskCount += importTaskLines(db, tasksContent, 'queued');
-    }
-
-    // Import tasks.backlog.txt
-    if (conf.taskQueue) {
-      const backlogPath = conf.taskQueue.replace(/\.txt$/, '.backlog.txt');
-      let backlogContent = '';
-      try { backlogContent = fs.readFileSync(backlogPath, 'utf8'); } catch { /* no backlog */ }
-      taskCount += importTaskLines(db, backlogContent, 'backlog');
-    }
-
     db.prepare(`INSERT INTO meta VALUES ('legacy_import', '1')`).run();
   });
 
   seedTx();
-  console.log(`[conductor] Legacy import complete — agents: ${String(conf.agents.length)}, tasks: ${String(taskCount)}`);
-}
-
-function importTaskLines(db: Database.Database, content: string, status: 'queued' | 'backlog'): number {
-  const lines = content.split('\n').filter(l => l.trim() !== '');
-  let position = 1.0;
-  let count = 0;
-  const insert = db.prepare(
-    `INSERT INTO tasks (command, agent_id, position, status) VALUES (?, ?, ?, ?)`
-  );
-  const findAgent = db.prepare(`SELECT id FROM agents WHERE name=?`);
-
-  for (const line of lines) {
-    const colonIdx = line.indexOf(': ');
-    let command: string;
-    let agentId: number | null = null;
-
-    if (colonIdx > 0) {
-      const prefix = line.slice(0, colonIdx).trim();
-      const cmd = line.slice(colonIdx + 2).trim();
-      // Only treat as scoped if prefix has no spaces (looks like an agent name)
-      if (!prefix.includes(' ')) {
-        const agentRow = findAgent.get(prefix) as { id: number } | undefined;
-        if (agentRow) {
-          agentId = agentRow.id;
-          command = cmd;
-        } else {
-          command = line.trim(); // unknown scope prefix — treat as global
-        }
-      } else {
-        command = line.trim();
-      }
-    } else {
-      command = line.trim();
-    }
-
-    if (command) {
-      insert.run(command, agentId, position, status);
-      position += 1.0;
-      count++;
-    }
-  }
-  return count;
+  console.log(`[conductor] Legacy import complete — agents: ${String(conf.agents.length)}`);
 }
 
 // ─── Projects CRUD ────────────────────────────────────────────────────────────

@@ -10,9 +10,9 @@ export default function ProjectList() {
   const [rowErrorMsg, setRowErrorMsg] = useState<string | null>(null);
 
   async function refetch() {
-    setError(null);
     try {
       const list = await listProjects();
+      setError(null);
       setProjects(list);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to load projects');
@@ -22,6 +22,7 @@ export default function ProjectList() {
   }
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void refetch();
   }, []);
 

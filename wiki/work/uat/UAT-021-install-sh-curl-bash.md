@@ -11,7 +11,7 @@ updated: 2026-06-12
 
 implements::[[TASK-021]]
 
-> **Source task**: [`wiki/work/tasks/TASK-021-install-sh-curl-bash.md`](../../tasks/completed/TASK-021-install-sh-curl-bash.md)
+> **Source task**: [`wiki/work/tasks/TASK-021-install-sh-curl-bash.md`](../../tasks/TASK-021-install-sh-curl-bash.md)
 > **Generated**: 2026-06-12
 
 ---

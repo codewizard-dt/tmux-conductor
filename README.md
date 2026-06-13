@@ -10,7 +10,7 @@ tmux-conductor solves the coordination problem that emerges when you want to run
 
 The project is structured in three layers. The shell layer (bash scripts + tmux) handles agent lifecycle and task dispatch. The dashboard layer (Fastify HTTP server + Astro/React UI) provides real-time visibility and a task-queue editor accessible from the browser. The daemon layer (a persistent Unix-socket server and `bin/conductor` CLI) enables on-demand session creation across multiple repos without manual shell invocation — you run `conductor connect /path/to/project` from anywhere and it starts or reattaches to the right session.
 
-Tasks are stored in a plain-text file (`tasks.txt`), one per line, optionally prefixed with an agent name for scoped dispatch. The monitor pops tasks from the top, pre-writes `busy` to the agent's state file to close the dispatch race window, sends the command via `tmux send-keys`, and then waits for the hook-written `idle` signal before dispatching the next task.
+Tasks are stored in SQLite (at `DB_PATH`, default `data/conductor.db`), optionally scoped to a specific agent. The monitor pops tasks from the DB, pre-writes `busy` to the agent's state file to close the dispatch race window, sends the command via `tmux send-keys`, and then waits for the hook-written `idle` signal before dispatching the next task.
 
 ## Architecture
 
@@ -24,7 +24,7 @@ tmux-conductor is a layered orchestration system built on tmux as the process su
 
 - **Responsibility:** Create and tear down the tmux session, spawn agent windows, and run the monitor dispatch loop.
 - **Tech:** bash 4+, tmux 3+
-- **Inputs:** `conductor.conf` (AGENTS array, BG_PROCESSES, POLL_INTERVAL, TASK_QUEUE), `tasks.txt` queue file, per-agent state files
+- **Inputs:** `conductor.conf` (BG_PROCESSES, POLL_INTERVAL, tuning settings), SQLite DB (agents, task queue), per-agent state files
 - **Outputs:** tmux windows, dispatched `send-keys` commands, JSONL dispatch log at `$LOG_DIR/dispatch.jsonl`
 - **Depends on:** tmux, Claude Code hooks (for state files), bash 4+
 
@@ -40,7 +40,7 @@ tmux-conductor is a layered orchestration system built on tmux as the process su
 
 - **Responsibility:** Serve an HTTP API for agent status, task-queue CRUD, and live state updates via Server-Sent Events.
 - **Tech:** Node.js 22, TypeScript, Fastify 5, tsx
-- **Inputs:** HTTP requests on port 8788; `conductor.conf` (parsed via bash `declare -p`); state files and `tasks.txt` (read on each request)
+- **Inputs:** HTTP requests on port 8788; `conductor.conf` (parsed via bash `declare -p`); SQLite DB (agents, task queue); state files
 - **Outputs:** JSON responses, SSE stream (`/api/events`) diff-broadcasting agent and session state changes every 2 seconds
 - **Depends on:** tmux (for `has-session` and `capture-pane` checks), `conductor.conf`, state files
 
@@ -90,7 +90,7 @@ flowchart LR
   end
   subgraph State["Shared State (host filesystem)"]
     STATEFILES["logs/state/*.state\nidle / busy"]
-    QUEUE["tasks.txt\ntask queue"]
+    QUEUE[("tasks table\n(SQLite DB)")]
     CONF["conductor.conf\nconfiguration"]
   end
   subgraph Hooks["Claude Code Hooks"]
@@ -187,7 +187,7 @@ sequenceDiagram
 ## Use Cases
 
 - **Parallelizing AI coding work across multiple agents** — configure several Claude Code or Aider instances, each pointed at a different part of the codebase, and let the monitor keep them all fed from a shared task queue.
-- **Automated batch task execution** — preload `tasks.txt` with dozens of prompts (tests to write, refactors to apply, docs to generate) and let the conductor run them unattended, respecting usage limits and cleaning up when done.
+- **Automated batch task execution** — enqueue dozens of prompts (tests to write, refactors to apply, docs to generate) via the dashboard or `scripts/add-task.sh`, and let the conductor run them unattended, respecting usage limits and cleaning up when done.
 - **On-demand session management** — run `conductor connect .` from any project directory to start (or reattach to) an existing conductor session without manually sourcing config or remembering tmux session names.
 - **Multi-vendor agent orchestration** — mix Claude Code, Codex, and Aider in the same session; hook-based idle detection handles Claude natively and `IDLE_PATTERN` regex handles everything else.
 
@@ -215,7 +215,7 @@ The dashboard (Fastify backend + bundled Astro UI) ships as a single Docker imag
 **For the dashboard container:**
 - Docker 24+ and Docker Compose v2
 - Access to GHCR (public image, no auth required for pull)
-- A host running the tmux conductor session (the container mounts `conductor.conf`, `logs/state/`, and `tasks.txt` from the host)
+- A host running the tmux conductor session (the container mounts `conductor.conf`, `logs/state/`, and `data/` from the host)
 
 **For local orchestration:**
 - tmux >= 3.0 (`brew install tmux` on macOS)
@@ -294,17 +294,17 @@ docker compose pull
 docker compose up -d --wait
 ```
 
-The `dashboard` service mounts `conductor.conf`, `logs/state/`, and `tasks.txt` from the host so the container reads live agent state without needing access to the tmux session itself.
+The `dashboard` service mounts `conductor.conf`, `logs/state/`, and `data/` from the host so the container reads live agent state and the SQLite task queue without needing access to the tmux session itself.
 
 ### Data & Migrations
 
-No database. All state is plain-text files on the host filesystem:
-- `tasks.txt` — task queue (one line per task)
+State is stored in a mix of SQLite and plain-text files on the host filesystem:
+- `data/conductor.db` — SQLite database: agents, background processes, agent↔bg links, task queue
 - `logs/state/<agent>.state` — per-agent idle/busy state
 - `logs/dispatch.jsonl` — append-only dispatch audit log
 - `~/.local/share/tmux-conductor/registry.json` — daemon session registry (auto-reconciled against `tmux ls` on startup)
 
-No migrations required. To reset state: truncate `tasks.txt` and delete `logs/state/*.state`.
+To reset the task queue: delete or clear the tasks table in `data/conductor.db`. To reset agent state: delete `logs/state/*.state`.
 
 ### Health Checks & Smoke Tests
 

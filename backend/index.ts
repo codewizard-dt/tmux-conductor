@@ -7,7 +7,7 @@ import fastifyCors from '@fastify/cors';
 import fastifyStatic from '@fastify/static';
 import { readConductorConf, DEFAULT_CONF_PATH, appendBgProcessToConf, removeBgProcessFromConf, removeBgLink, addBgLink, clearConfCache } from './config.ts';
 import { openDb, getDbPath, listAgents, createAgent, deleteAgent, addTask, deleteTask, reorderTasks, jumpTaskToHead, listTasksForAgent, listProjects, createProject, updateProject, deleteProject, nextAgentName, listSchedules, createSchedule, updateSchedule, deleteSchedule, dueSchedules, fireSchedule } from './db.ts';
-import { detectAgentStatus, detectAgentMode, countQueuedTasks, isTmuxWindowPresent, readQueue, writeQueue, getAgentLines, getActiveTask, capturePaneTail, capturePaneTailRaw, sendTextToPane, type AgentMode } from './state.ts';
+import { detectAgentStatus, detectAgentMode, isTmuxWindowPresent, getActiveTask, capturePaneTail, capturePaneTailRaw, sendTextToPane, type AgentMode } from './state.ts';
 import { getAgentContext, type AgentContext } from './context.ts';
 import dotenv from 'dotenv';
 import { getUserSkills, getPluginSkills, getProjectSkills } from './skills.ts';
@@ -183,7 +183,7 @@ await fastify.register((api) => {
 
   api.get('/status', async (_req, reply) => {
     const conf = readConductorConf();
-    const { sessionName, taskQueue, agentBgLinks } = conf;
+    const { sessionName, agentBgLinks } = conf;
     const agents = listAgents(db);
 
     const sessionExists = tmuxSessionExists(sessionName);
@@ -202,7 +202,7 @@ await fastify.register((api) => {
         state,
         mode: windowPresent ? detectAgentMode(conf, agent.name, tail15) : 'unknown',
         windowPresent,
-        queuedTasks: countQueuedTasks(taskQueue, agent.name),
+        queuedTasks: listTasksForAgent(db, agent.name).length,
         launchCmd: agent.launchCmd,
         workdir: agent.workdir,
         linkedBg: agentBgLinks[agent.name] ?? null,
@@ -266,98 +266,6 @@ await fastify.register((api) => {
     const { agent } = req.params;
     const tasks = listTasksForAgent(db, agent);
     reply.send({ agent, tasks });
-  });
-
-  api.post<{ Params: { agent: string }; Body: { task?: string } }>('/queue/:agent', async (req, reply) => {
-    const { agent } = req.params;
-    const { task } = req.body;
-    if (!task || typeof task !== 'string' || task.trim() === '') {
-      return reply.status(400).send({ error: 'task is required and must be a non-empty string' });
-    }
-    const conf = readConductorConf();
-    const lines = readQueue(conf.taskQueue);
-    const agentTasks = getAgentLines(lines, agent).tasks;
-
-    // Fast-path: agent is idle and has no queued tasks — dispatch immediately.
-    if (detectAgentStatus(conf, agent) === 'idle' && agentTasks.length === 0) {
-      const command = task.trim();
-      writeFileSync(
-        `${conf.stateDir}/${agent}.state`,
-        'busy\n',
-        'utf8',
-      );
-      const paneTail = capturePaneTail(conf.sessionName, agent, 5);
-      const dispatchRecord = {
-        ts: new Date().toISOString(),
-        agent,
-        command,
-        state: 'idle',
-        state_age_s: 0,
-        detection: 'immediate-enqueue',
-        queue: 'none',
-        queue_remaining: 0,
-        pane_tail: paneTail,
-      };
-      appendFileSync(`${conf.logDir}/dispatch.jsonl`, JSON.stringify(dispatchRecord) + '\n', 'utf8');
-      sendTextToPane(conf.sessionName, agent, command);
-      broadcastSSE('snapshot', buildSnapshot());
-      return reply.send({ ok: true, dispatched: true });
-    }
-
-    // Slow path: queue the task normally.
-    const newLine = `${agent}: ${task.trim()}`;
-    lines.push(newLine);
-    await writeQueue(conf.taskQueue, lines);
-    reply.send({ ok: true, dispatched: false, line: newLine });
-  });
-
-  api.put<{ Params: { agent: string }; Body: { order?: unknown } }>('/queue/:agent/reorder', async (req, reply) => {
-    const { agent } = req.params;
-    const { order } = req.body;
-    const conf = readConductorConf();
-    const lines = readQueue(conf.taskQueue);
-    const { indices } = getAgentLines(lines, agent);
-
-    if (
-      !Array.isArray(order) ||
-      order.length !== indices.length ||
-      !order.every((i) => Number.isInteger(i) && i >= 0 && i < indices.length)
-    ) {
-      return reply.status(400).send({
-        error: `order must be an array of ${String(indices.length)} valid indices (0–${String(indices.length - 1)})`,
-      });
-    }
-
-    const agentLines: (string | undefined)[] = indices.map((gi) => lines[gi]);
-    const reordered: (string | undefined)[] = (order as number[]).map((i) => agentLines[i]);
-    for (let i = 0; i < indices.length; i++) {
-      const r = reordered[i];
-      const idx = indices[i];
-      if (r !== undefined && idx !== undefined) {
-        lines[idx] = r;
-      }
-    }
-    await writeQueue(conf.taskQueue, lines);
-    reply.send({ ok: true });
-  });
-
-  api.delete<{ Params: { agent: string; index: string } }>('/queue/:agent/:index', async (req, reply) => {
-    const { agent } = req.params;
-    const idx = parseInt(req.params.index, 10);
-    const conf = readConductorConf();
-    const lines = readQueue(conf.taskQueue);
-    const { indices } = getAgentLines(lines, agent);
-
-    if (isNaN(idx) || idx < 0 || idx >= indices.length) {
-      return reply.status(404).send({ error: `index ${String(idx)} out of range (agent has ${String(indices.length)} tasks)` });
-    }
-
-    const globalIdx = indices[idx];
-    if (globalIdx !== undefined) {
-      lines.splice(globalIdx, 1);
-    }
-    await writeQueue(conf.taskQueue, lines);
-    reply.send({ ok: true });
   });
 
   // ── Task Queue CRUD (DB-backed /api/tasks) ───────────────────────────────
@@ -1215,7 +1123,7 @@ const focusedAgents = new Set<string>();
 
 function buildSnapshot(): Snapshot {
   const conf = readConductorConf();
-  const { sessionName, taskQueue } = conf;
+  const { sessionName } = conf;
   const agents = listAgents(db);
   const sessionExists = tmuxSessionExists(sessionName);
   const sessionAlive = sessionExists && isTmuxWindowPresent(sessionName, 'monitor');
@@ -1231,7 +1139,7 @@ function buildSnapshot(): Snapshot {
       state,
       mode: windowPresent ? detectAgentMode(conf, agent.name, tail15) : 'unknown',
       windowPresent,
-      queuedTasks: countQueuedTasks(taskQueue, agent.name),
+      queuedTasks: listTasksForAgent(db, agent.name).length,
       launchCmd: agent.launchCmd,
       workdir: agent.workdir,
       activeTask: getActiveTask(conf, agent.name, state),

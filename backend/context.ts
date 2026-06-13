@@ -140,11 +140,12 @@ function readTranscriptInfo(transcriptPath: string): TranscriptInfo | null {
     for (let i = lines.length - 1; i >= 0; i--) {
       const line = lines[i];
       if (!line || line.indexOf('"usage"') === -1) continue;
-      let rec: any;
-      try { rec = JSON.parse(line); } catch { continue; }
-      if (rec?.type !== 'assistant' || rec?.isSidechain) continue;
-      const usage = rec?.message?.usage;
-      const modelId = rec?.message?.model ?? null;
+      interface TranscriptRec { type?: string; isSidechain?: boolean; message?: { usage?: { input_tokens?: number; cache_creation_input_tokens?: number; cache_read_input_tokens?: number }; model?: string } }
+      let rec: TranscriptRec;
+      try { rec = JSON.parse(line) as TranscriptRec; } catch { continue; }
+      if (rec.type !== 'assistant' || rec.isSidechain) continue;
+      const usage = rec.message?.usage;
+      const modelId = rec.message?.model ?? null;
       if (!usage || modelId === '<synthetic>') continue;
       const tokens =
         (usage.input_tokens || 0) +
@@ -180,9 +181,9 @@ export function modelDisplayName(modelId: string | null): string | null {
   // family-major-minor (claude-opus-4-8) or major-minor-family (claude-3-5-sonnet)
   const mm = id.match(/(?:opus|sonnet|haiku|fable)-(\d+)-(\d+)/) ||
              id.match(/(\d+)-(\d+)-(?:opus|sonnet|haiku|fable)/);
-  if (mm) return `${fam} ${mm[1]}.${mm[2]}`;
+  if (mm) return `${fam} ${mm[1] ?? ''}.${mm[2] ?? ''}`;
   const single = id.match(/(?:opus|sonnet|haiku|fable)-(\d+)/);
-  if (single) return `${fam} ${single[1]}`;
+  if (single) return `${fam} ${single[1] ?? ''}`;
   return fam;
 }
 

@@ -11,7 +11,7 @@ updated: 2026-06-12
 
 implements::[[TASK-018]]
 
-> **Source task**: [`wiki/work/tasks/completed/TASK-018-frontend-agentlist-grouping.md`](../../tasks/completed/TASK-018-frontend-agentlist-grouping.md)
+> **Source task**: [`wiki/work/tasks/TASK-018-frontend-agentlist-grouping.md`](../../tasks/TASK-018-frontend-agentlist-grouping.md)
 > **Generated**: 2026-06-12
 
 This UAT covers only what TASK-018 changed: the `AgentList` component's per-project

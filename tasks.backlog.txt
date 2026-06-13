@@ -1,2 +1,0 @@
-bootstrap: THROWAWAY-delete-me-1
-bootstrap: THROWAWAY-delete-me-2

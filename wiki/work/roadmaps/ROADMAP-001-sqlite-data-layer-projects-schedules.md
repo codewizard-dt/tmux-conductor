@@ -1,7 +1,7 @@
 ---
 id: ROADMAP-001
 title: SQLite data layer, Projects, and recurring schedules
-status: active
+status: done
 created: 2026-06-12
 updated: 2026-06-12
 owner: David
@@ -41,17 +41,17 @@ Design reference: implementation plan at `/Users/davidtaylor/.claude/plans/let-s
 
 ## Phase 4: Frontend
 
-- [x] [TASK-015: Update lib/api.ts types and TaskList/AddTaskForm to ID-based tasks with per-row delete and jump-to-head](../tasks/completed/TASK-015-frontend-id-based-tasks.md) <!-- Completed: 2026-06-12 -->
-- [x] [TASK-016: Make AddAgentForm project-aware and add ProjectList/AddProjectForm components](../tasks/completed/TASK-016-frontend-projects-ui.md) <!-- Completed: 2026-06-12 -->
-- [x] [TASK-017: Add ScheduleList/ScheduleForm components with live schedule-fired updates](../tasks/completed/TASK-017-frontend-schedules-ui.md) <!-- Completed: 2026-06-12 -->
-- [x] [TASK-018: Group AgentList by project and handle the new task SSE events](../tasks/completed/TASK-018-frontend-agentlist-grouping.md) <!-- Completed: 2026-06-12 -->
+- [x] [TASK-015: Update lib/api.ts types and TaskList/AddTaskForm to ID-based tasks with per-row delete and jump-to-head](../tasks/TASK-015-frontend-id-based-tasks.md) <!-- Completed: 2026-06-12 -->
+- [x] [TASK-016: Make AddAgentForm project-aware and add ProjectList/AddProjectForm components](../tasks/TASK-016-frontend-projects-ui.md) <!-- Completed: 2026-06-12 -->
+- [x] [TASK-017: Add ScheduleList/ScheduleForm components with live schedule-fired updates](../tasks/TASK-017-frontend-schedules-ui.md) <!-- Completed: 2026-06-12 -->
+- [x] [TASK-018: Group AgentList by project and handle the new task SSE events](../tasks/TASK-018-frontend-agentlist-grouping.md) <!-- Completed: 2026-06-12 -->
 
 ## Phase 5: Cutover
 
-- [ ] [TASK-023: Remove legacy conf-splice and file-queue code from backend/config.ts and backend/state.ts](../tasks/TASK-023-remove-legacy-conf-queue-code-backend.md)
-- [ ] [TASK-024: Strip AGENTS/BG_PROCESSES/AGENT_BG_LINKS/TASK_QUEUE from conductor.conf and retire tasks.txt](../tasks/TASK-024-strip-legacy-conf-keys-retire-tasks-txt.md)
-- [ ] [TASK-025: Update docker-compose mounts, Dockerfile native-build step, and docs](../tasks/TASK-025-update-docker-dockerfile-docs.md)
-- [ ] [TASK-026: Run the end-to-end SQLite-migration verification suite](../tasks/TASK-026-e2e-verification-suite.md)
+- [x] [TASK-023: Remove legacy conf-splice and file-queue code from backend/config.ts and backend/state.ts](../tasks/TASK-023-remove-legacy-conf-queue-code-backend.md) <!-- Completed: 2026-06-13 -->
+- [x] [TASK-024: Strip AGENTS/BG_PROCESSES/AGENT_BG_LINKS/TASK_QUEUE from conductor.conf and retire tasks.txt](../tasks/TASK-024-strip-legacy-conf-keys-retire-tasks-txt.md) <!-- Completed: 2026-06-13 -->
+- [x] [TASK-025: Update docker-compose mounts, Dockerfile native-build step, and docs](../tasks/TASK-025-update-docker-dockerfile-docs.md)
+- [x] [TASK-026: Run the end-to-end SQLite-migration verification suite](../tasks/TASK-026-e2e-verification-suite.md) <!-- Completed: 2026-06-13 -->
 
 ## Notes
 

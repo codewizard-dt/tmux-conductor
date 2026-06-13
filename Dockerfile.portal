@@ -1,0 +1,56 @@
+# Dockerfile.portal — portal service image (DISTINCT from Dockerfile.prod)
+#
+# Stage 1 (frontend-build): Builds the Astro/React frontend with PUBLIC_PORTAL_MODE=1
+#   so it emits relay-mode assets into frontend/dist.
+# Final stage: node:22-alpine — installs portal dependencies, copies portal/ source,
+#   copies built frontend assets into portal/ui/dist (served later via @fastify/static
+#   SPA fallback — that route is implemented in a later task; this stage only stages
+#   the assets). Exposes PORT 8080 for DO App Platform routing.
+#
+# NOTE: Dockerfile.prod (also at repo root) is a separate image (frontend+backend only);
+#   it must remain UNTOUCHED.
+
+# ── Stage 1: Build frontend ────────────────────────────────────────────────────
+FROM node:22-alpine AS frontend-build
+
+WORKDIR /app/frontend
+
+# Copy lockfile + manifest first for layer caching
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
+
+# Copy the rest of the frontend source
+COPY frontend/ ./
+
+# Build with relay-mode flag so Vite emits relay-mode assets
+# If the frontend does not yet read PUBLIC_PORTAL_MODE, this env var is harmless
+ENV PUBLIC_PORTAL_MODE=1
+RUN npm run build
+# Output: /app/frontend/dist
+
+# ── Final stage: Portal service ────────────────────────────────────────────────
+FROM node:22-alpine
+
+WORKDIR /app/portal
+
+# Copy lockfile + manifest first for layer caching
+COPY portal/package.json portal/package-lock.json ./
+
+# Install ALL deps (not --omit=dev) because tsx is a devDependency but is required
+# at runtime: the portal start command is `node --import tsx/esm index.ts`.
+# Once a compiled build step is added, this can switch to --omit=dev.
+RUN npm ci
+
+# Copy the portal source
+COPY portal/ ./
+
+# TODO (Phase 4): COPY shared/ once relay-protocol lands and portal imports it
+# COPY shared/ /app/shared/
+
+# Copy built frontend assets so the eventual @fastify/static SPA route has files to serve
+COPY --from=frontend-build /app/frontend/dist ./ui/dist
+
+ENV PORT=8080
+EXPOSE 8080
+
+CMD ["node", "--import", "tsx/esm", "index.ts"]

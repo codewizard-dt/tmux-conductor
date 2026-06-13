@@ -50,11 +50,13 @@ function mapKey(e: KeyboardEvent<HTMLDivElement>): KeysPayload | null {
 
 const pendingDeletes = new Map<string, ReturnType<typeof setTimeout>>()
 
-export default function LogTail({ agentName, maxHeightClass, focused, interactSignal, onInteractChange }: {
+export default function LogTail({ agentName, maxHeightClass, focused, fillContainer, interactSignal, onInteractChange }: {
   agentName: string
   maxHeightClass?: string | undefined
   /** When true, registers with the backend focus endpoint so the agent gets 200 ms SSE pushes instead of 2 s. */
   focused?: boolean | undefined
+  /** When true, the component grows to fill its flex parent and the <pre> scrolls internally. */
+  fillContainer?: boolean | undefined
   /** Increment to (re)enable Direct Input mode from outside (banner button, needs-attention CTA). */
   interactSignal?: number | undefined
   /** Notifies the parent (e.g. a modal that closes on Escape) when Direct Input toggles. */
@@ -71,6 +73,9 @@ export default function LogTail({ agentName, maxHeightClass, focused, interactSi
   // Serializes POSTs so keystroke order survives key repeat; .catch keeps the chain alive.
   const queueRef = useRef<Promise<void>>(Promise.resolve())
   const captureRef = useRef<HTMLDivElement>(null)
+  const preRef = useRef<HTMLPreElement>(null)
+  // When true, the next tail update should scroll to bottom (initial load or after lines change).
+  const scrollToBottomRef = useRef(true)
 
   // One-shot backfill on mount/lines change; live updates arrive via the SSE subscription below.
   useEffect(() => {
@@ -93,12 +98,12 @@ export default function LogTail({ agentName, maxHeightClass, focused, interactSi
       clearTimeout(pending)
       pendingDeletes.delete(agentName)
     } else {
-      fetch(`${API_BASE}/agents/${encodeURIComponent(agentName)}/focus`, { method: 'POST' }).catch(() => {})
+      fetch(`${API_BASE}/agents/${encodeURIComponent(agentName)}/focus`, { method: 'POST' }).catch(() => { })
     }
     return () => {
       pendingDeletes.set(agentName, setTimeout(() => {
         pendingDeletes.delete(agentName)
-        fetch(`${API_BASE}/agents/${encodeURIComponent(agentName)}/focus`, { method: 'DELETE' }).catch(() => {})
+        fetch(`${API_BASE}/agents/${encodeURIComponent(agentName)}/focus`, { method: 'DELETE' }).catch(() => { })
       }, 0))
     }
   }, [agentName, focused])
@@ -110,6 +115,19 @@ export default function LogTail({ agentName, maxHeightClass, focused, interactSi
       setTail({ agent: agentName, lines: payload.lines, windowPresent: true, text: payload.text })
     },
   )
+
+  // On lines change, mark that the next tail load should scroll to bottom.
+  useEffect(() => {
+    scrollToBottomRef.current = true
+  }, [lines])
+
+  // Scroll to bottom only on initial load and after a lines change — not on every SSE update.
+  useEffect(() => {
+    if (tail !== null && scrollToBottomRef.current && preRef.current) {
+      preRef.current.scrollTop = preRef.current.scrollHeight
+      scrollToBottomRef.current = false
+    }
+  }, [tail])
 
   useEffect(() => {
     if (interactSignal !== undefined && interactSignal > 0) {
@@ -202,8 +220,8 @@ export default function LogTail({ agentName, maxHeightClass, focused, interactSi
   const windowPresent = tail?.windowPresent ?? false
 
   return (
-    <div>
-      <div className="mb-1.5 flex items-center justify-between gap-2">
+    <div className={fillContainer ? 'flex flex-col flex-1 min-h-0' : undefined}>
+      <div className={`mb-1.5 flex items-center justify-between gap-2${fillContainer ? ' flex-shrink-0' : ''}`}>
         <p className="m-0 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-2">
           Log output
           {uploading && <span className="ml-2 normal-case tracking-normal text-accent-blue">uploading image…</span>}
@@ -234,11 +252,11 @@ export default function LogTail({ agentName, maxHeightClass, focused, interactSi
           onDragOver={handleDragOver}
           onDragLeave={() => { setDragOver(false) }}
           onDrop={handleDrop}
-          className={dragOver
+          className={`${fillContainer ? 'flex flex-col flex-1 min-h-0 ' : ''}${dragOver
             ? 'rounded-[10px] outline-none ring-[3px] ring-accent-blue'
             : interacting
               ? 'rounded-[10px] outline-none ring-[3px] ring-[#e0901a]'
-              : 'outline-none'}
+              : 'outline-none'}`}
         >
           {interacting && (
             <div className="flex items-center gap-2 rounded-t-[10px] bg-[#e0901a] px-3 py-1 text-[10px] font-bold uppercase tracking-[0.06em] text-white">
@@ -252,7 +270,8 @@ export default function LogTail({ agentName, maxHeightClass, focused, interactSi
             </div>
           )}
           <pre
-            className={`scrollbar-none m-0 overflow-auto whitespace-pre ${interacting ? 'rounded-b-[10px]' : 'rounded-[10px]'} bg-[#0b0b0d] p-3 font-mono text-[11px] leading-[1.3] text-[#e7e8ea] ${maxHeightClass ?? ''} ${!interacting && onInteractChange !== undefined ? 'cursor-text' : ''}`}
+            ref={preRef}
+            className={`${fillContainer ? 'scrollbar-dark' : 'scrollbar-none'} m-0 overflow-auto whitespace-pre ${interacting ? 'rounded-b-[10px]' : 'rounded-[10px]'} bg-[#0b0b0d] p-3 font-mono text-[11px] leading-[1.3] text-[#e7e8ea] ${fillContainer ? 'flex-1 min-h-0' : (maxHeightClass ?? '')} ${!interacting && onInteractChange !== undefined ? 'cursor-text' : ''}`}
             onClick={!interacting && onInteractChange !== undefined ? () => { setInteracting(true); captureRef.current?.focus() } : undefined}
           >{tail.text || ' '}</pre>
         </div>

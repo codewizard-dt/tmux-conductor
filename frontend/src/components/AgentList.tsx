@@ -123,7 +123,7 @@ function contextColor(pct: number): string {
 
 /** Compact token count, e.g. 55336 → "55k". */
 function formatTokens(n: number): string {
-  if (n >= 1000) return `${Math.round(n / 1000)}k`
+  if (n >= 1000) return `${String(Math.round(n / 1000))}k`
   return String(n)
 }
 
@@ -135,7 +135,7 @@ function ContextMeter({ agent, detailed = false }: { agent: Agent; detailed?: bo
   const limit = agent.contextLimit ?? 200000
   const tokenLabel =
     agent.contextTokens != null ? `${formatTokens(agent.contextTokens)} / ${formatTokens(limit)}` : null
-  const title = `${pct}% of context window used${tokenLabel ? ` (${tokenLabel})` : ''}`
+  const title = `${String(pct)}% of context window used${tokenLabel ? ` (${tokenLabel})` : ''}`
   return (
     <div className="flex items-center gap-1.5" title={title} aria-label={title}>
       {agent.model && (
@@ -145,7 +145,7 @@ function ContextMeter({ agent, detailed = false }: { agent: Agent; detailed?: bo
       )}
       <div className="flex items-center gap-1">
         <div className="h-1.5 w-12 overflow-hidden rounded-full bg-[#e8e9ec]">
-          <div className="h-full rounded-full" style={{ width: `${pct}%`, background: color }} />
+          <div className="h-full rounded-full" style={{ width: `${String(pct)}%`, background: color }} />
         </div>
         <span className="text-[10px] font-semibold tabular-nums" style={{ color }}>
           {pct}%
@@ -239,6 +239,12 @@ function AgentDetailModal({ agent, status, onClose, armInteract }: {
   const [interactSignal, setInteractSignal] = useState(armInteract ? 1 : 0)
   const [skills, setSkills] = useState<SkillsResponse | null>(null)
   const [queuedSkill, setQueuedSkill] = useState<string | null>(null)
+
+  useEffect(() => {
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => { document.body.style.overflow = prev }
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -347,8 +353,8 @@ function AgentDetailModal({ agent, status, onClose, armInteract }: {
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-5">
-          <div className="grid grid-cols-1 gap-5 md:grid-cols-[1fr_1.5fr]">
+        <div className="flex flex-col flex-1 overflow-hidden p-5">
+          <div className="grid grid-cols-1 gap-5 md:grid-cols-[1fr_1.5fr] flex-shrink-0">
             <div>
               <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-2">Details</p>
               <dl className="mb-4 grid grid-cols-[max-content_1fr] gap-x-3 gap-y-1 text-[11px]">
@@ -410,7 +416,7 @@ function AgentDetailModal({ agent, status, onClose, armInteract }: {
             </div>
           </div>
 
-          <div className="mt-5 border-t border-line pt-4">
+          <div className="flex flex-col flex-1 min-h-0 mt-5 border-t border-line pt-4">
             {needsAttention(status) && (
               <div
                 className="mb-3 flex flex-col gap-3 rounded-[10px] border px-4 py-3 text-[13px] font-medium sm:flex-row sm:items-center"
@@ -434,12 +440,12 @@ function AgentDetailModal({ agent, status, onClose, armInteract }: {
                 </button>
               </div>
             )}
-            <LogTail agentName={agent.name} focused interactSignal={interactSignal} onInteractChange={setInteracting} />
+            <LogTail agentName={agent.name} focused fillContainer interactSignal={interactSignal} onInteractChange={setInteracting} />
           </div>
 
           {/* Skills section */}
           {skills && (
-            <details className="mt-3">
+            <details className="mt-3 flex-shrink-0">
               <summary className="cursor-pointer text-[11px] font-semibold uppercase tracking-[0.08em] text-muted select-none">
                 Skills ({skills.project.length + skills.user.length})
               </summary>
@@ -865,8 +871,8 @@ function playDoorbell(ctx: AudioContext): void {
   master.connect(ctx.destination)
 
   const notes = [
-    { freq: 1318.5, start: 0,    dur: 0.55 },  // E6 — "ding"
-    { freq:  880.0, start: 0.45, dur: 0.75 },  // A5 — "dong"
+    { freq: 1318.5, start: 0, dur: 0.55 },  // E6 — "ding"
+    { freq: 880.0, start: 0.45, dur: 0.75 },  // A5 — "dong"
   ]
 
   const now = ctx.currentTime
@@ -907,7 +913,7 @@ export default function AgentList() {
   const [expandedAgent, setExpandedAgent] = useState<{ name: string; armInteract: boolean } | null>(null)
   const [openByColumn, setOpenByColumn] = useState<Record<string, string | null>>({})
   const prevStatusRef = useRef<Map<string, AgentStatus>>(new Map())
-  const audioCtxRef   = useRef<AudioContext | null>(null)
+  const audioCtxRef = useRef<AudioContext | null>(null)
 
   useEffect(() => {
     // Reusable membership refresh — re-invoked by SSE handlers when a brand-new

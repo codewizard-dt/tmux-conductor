@@ -97,6 +97,7 @@ function subscribe(eventName: string, cb: Subscriber): () => void {
  *   if (payload.agent === agentName) setText(payload.text)
  * })
  */
+// eslint-disable-next-line @typescript-eslint/no-unnecessary-type-parameters
 export function useSSEEvent<T = unknown>(
   eventName: string,
   callback: (payload: T) => void,
@@ -104,6 +105,7 @@ export function useSSEEvent<T = unknown>(
   // Keep a ref to the latest callback so callers can pass an inline closure
   // without re-subscribing (and bouncing the shared connection) every render.
   const callbackRef = useRef(callback)
+  // eslint-disable-next-line react-hooks/refs
   callbackRef.current = callback
 
   useEffect(() => {

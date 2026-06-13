@@ -8,7 +8,7 @@ flowchart TD
     AddTaskSh["add-task.sh\n(from project dir)"]
 
     subgraph Setup ["One-time Setup"]
-        ConfFile["conductor.conf\n(AGENTS · BG_PROCESSES · TASK_QUEUE)"]
+        ConfFile["conductor.conf\n(BG_PROCESSES · tuning settings)"]
         InstallHooks["install-hooks.sh\n(JS hook registration)"]
     end
 
@@ -23,7 +23,7 @@ flowchart TD
         IdleCheck{"is_idle?"}
         StateFile[("state/{agent}.state\nidle · busy")]
         IdlePattern["IDLE_PATTERN regex\n(capture-pane fallback)"]
-        Queue[(tasks.txt)]
+        Queue[("tasks table\n(SQLite DB)")]
         UsageCheck{"usage OK?"}
         DispatchSh["dispatch.sh\n(send-keys -l + Enter)"]
         TeardownSh["teardown.sh"]
@@ -36,12 +36,12 @@ flowchart TD
     end
 
     %% ── One-time setup ─────────────────────────────────
-    User -->|"1. edit AGENTS + queue path"| ConfFile
+    User -->|"1. edit tuning settings"| ConfFile
     User -->|"2. one-time per machine"| InstallHooks
 
     %% ── Session launch ─────────────────────────────────
     User -->|"3. start session"| ConductorSh
-    ConfFile -->|"AGENTS · BG_PROCESSES"| ConductorSh
+    ConfFile -->|"BG_PROCESSES · settings"| ConductorSh
     ConductorSh -->|"launch agent"| AgentPane
     ConductorSh -->|"per BG_PROCESSES entry"| BgPane
     ConductorSh -->|"launches monitor window"| MonitorSh
@@ -67,12 +67,12 @@ flowchart TD
     StopHook --> StateFile
     SessionHook --> StateFile
 
-    %% ── Add a new agent (config change + restart) ──────
-    User -->|"add agent: append name:dir:cmd to AGENTS"| ConfFile
+    %% ── Add a new agent (dashboard or API + restart) ──────
+    User -->|"add agent via dashboard/API"| ConductorSh
 
     %% ── Add a new task (runtime enqueue) ───────────────
     User -->|"add task"| AddTaskSh
-    AddTaskSh -->|"appends agent: cmd"| Queue
+    AddTaskSh -->|"write agent: cmd"| Queue
 
     %% ── Styling ────────────────────────────────────────
     classDef setup fill:#e8f4ff,stroke:#3b82f6,color:#0b3a7a;
@@ -88,7 +88,7 @@ flowchart TD
 
 ## Notes
 
-- **Adding a new agent**: add one line to the `AGENTS` array in `conductor.conf` using the format `name:workdir:launch_cmd`, then restart the conductor session (`teardown.sh` → `conductor.sh`).
-- **Adding a new task**: run `add-task.sh <command>` from inside the target project directory — it prefixes the line with the project name as scope. Alternatively, manually append `agentname: command` (scoped) or a bare command (global) to `tasks.txt`. The monitor picks it up on the next poll.
+- **Adding a new agent**: use the dashboard's "Add Agent" form or the `POST /agents` API endpoint, then restart the conductor session (`teardown.sh` → `conductor.sh`).
+- **Adding a new task**: run `add-task.sh <command>` from inside the target project directory — it scopes the task to the project agent and writes it to the SQLite DB. Alternatively, use the dashboard's queue editor. The monitor picks it up on the next poll.
 - The dashed edges from `StateFile` → `IdlePattern` → `IdleCheck` represent the fallback path: it only activates when the state file is absent or older than `2 × POLL_INTERVAL` (covers non-Claude agents like Aider, or the Esc-interrupt case).
 - `BgPane` windows receive no queue dispatches and do not affect the `all_idle` / shutdown decision — they are only terminated via `C-c` during `teardown.sh`.

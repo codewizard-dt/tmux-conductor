@@ -138,10 +138,10 @@ export function readConductorConf(confPath: string = DEFAULT_CONF_PATH): Conduct
   // IDLE_PATTERN/AWAITING_PATTERN/POLL_INTERVAL settings: declare -p still
   // prints the variables that exist, and missing ones simply parse as empty
   // (pollInterval then falls back to 15, idlePattern to '' → regex skipped).
-  const cmd = `bash -c "source ${confPath} && declare -p AGENTS BG_PROCESSES AGENT_BG_LINKS SESSION_NAME TASK_QUEUE STATE_DIR LOG_DIR DB_PATH IDLE_PATTERN BUSY_PATTERN AWAITING_PATTERN POLL_INTERVAL CONTEXT_WINDOW 2>/dev/null || true"`;
+  const cmd = `bash -c "source ${confPath} && declare -p BG_PROCESSES AGENT_BG_LINKS SESSION_NAME STATE_DIR LOG_DIR DB_PATH IDLE_PATTERN BUSY_PATTERN AWAITING_PATTERN POLL_INTERVAL CONTEXT_WINDOW 2>/dev/null || true"`;
   const output = execSync(cmd, { encoding: 'utf8' });
 
-  // Relative paths in the conf (./tasks.txt, ./logs/state) are relative to the
+  // Relative paths in the conf (./logs/state, ./data/conductor.db) are relative to the
   // conf file's directory, NOT the backend process cwd — resolve them here so
   // every consumer (and every spawned agent's env) gets an absolute path.
   const confDir = path.dirname(path.resolve(confPath));
@@ -174,100 +174,6 @@ export function readConductorConf(confPath: string = DEFAULT_CONF_PATH): Conduct
   cache = { sessionName, taskQueue, stateDir, logDir, dbPath, _confPath: path.resolve(confPath), idlePattern, busyPattern, awaitingPattern, pollInterval, stallTimeout, contextWindow, agents, bgProcesses, agentBgLinks };
   cacheTime = now;
   return cache;
-}
-
-/**
- * Append a new agent entry to the AGENTS=(...) array in conductor.conf.
- * Reads the file as text, finds the closing `)` of the AGENTS block, inserts
- * the new entry line before it, and writes the file back.
- *
- * @param {string} confPath - Absolute path to conductor.conf
- * @param {string} name - Agent name (used as tmux window name)
- * @param {string} workdir - Absolute working directory path
- * @param {string} launchCmd - Shell command to start the agent
- * @returns {Promise<void>}
- * @throws {Error} If the AGENTS=( block is not found
- */
-export async function appendAgentToConf(confPath: string, name: string, workdir: string, launchCmd: string): Promise<void> {
-  const text = await fs.readFile(confPath, 'utf8');
-  const lines = text.split('\n');
-
-  // Find the start of the AGENTS=( block
-  let blockStart = -1;
-  for (let i = 0; i < lines.length; i++) {
-    if (/^AGENTS=\(/.test(lines[i] ?? '')) {
-      blockStart = i;
-      break;
-    }
-  }
-  if (blockStart === -1) {
-    throw new Error(`AGENTS=( block not found in ${confPath}`);
-  }
-
-  // Find the closing ) of the AGENTS block (first line that is just ")")
-  let blockEnd = -1;
-  for (let i = blockStart + 1; i < lines.length; i++) {
-    if (/^\)/.test(lines[i] ?? '')) {
-      blockEnd = i;
-      break;
-    }
-  }
-  if (blockEnd === -1) {
-    throw new Error(`Closing ) of AGENTS block not found in ${confPath}`);
-  }
-
-  // Insert the new entry before the closing )
-  const newEntry = `  "${name}:${workdir}:${launchCmd}"`;
-  lines.splice(blockEnd, 0, newEntry);
-
-  await fs.writeFile(confPath, lines.join('\n'), 'utf8');
-}
-
-/**
- * Remove an agent entry from the AGENTS=(...) array in conductor.conf.
- * Matches the entry line by its `"name:` prefix inside the AGENTS block.
- *
- * @param {string} confPath - Absolute path to conductor.conf
- * @param {string} name - Agent name to remove
- * @returns {Promise<void>}
- * @throws {Error} If the AGENTS=( block or the agent's entry is not found
- */
-export async function removeAgentFromConf(confPath: string, name: string): Promise<void> {
-  const text = await fs.readFile(confPath, 'utf8');
-  const lines = text.split('\n');
-
-  let blockStart = -1;
-  for (let i = 0; i < lines.length; i++) {
-    if (/^AGENTS=\(/.test(lines[i] ?? '')) {
-      blockStart = i;
-      break;
-    }
-  }
-  if (blockStart === -1) {
-    throw new Error(`AGENTS=( block not found in ${confPath}`);
-  }
-
-  let blockEnd = -1;
-  for (let i = blockStart + 1; i < lines.length; i++) {
-    if (/^\)/.test(lines[i] ?? '')) {
-      blockEnd = i;
-      break;
-    }
-  }
-  if (blockEnd === -1) {
-    throw new Error(`Closing ) of AGENTS block not found in ${confPath}`);
-  }
-
-  const entryRe = new RegExp(`^\\s*"${name}:`);
-  const entryIdx = lines.findIndex(
-    (line, i) => i > blockStart && i < blockEnd && entryRe.test(line),
-  );
-  if (entryIdx === -1) {
-    throw new Error(`Agent '${name}' not found in AGENTS block of ${confPath}`);
-  }
-
-  lines.splice(entryIdx, 1);
-  await fs.writeFile(confPath, lines.join('\n'), 'utf8');
 }
 
 export async function appendBgProcessToConf(confPath: string, name: string, workdir: string, launchCmd: string): Promise<void> {

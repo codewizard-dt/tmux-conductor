@@ -7,7 +7,7 @@ updated: 2026-06-12
 depends_on: [TASK-020]
 blocks: [TASK-022]
 parallel_safe_with: []
-uat: "../../uat/completed/UAT-021-install-sh-curl-bash.md"
+uat: "../../uat/UAT-021-install-sh-curl-bash.md"
 tags: [installer, bash, daemon, devops, roadmap-002]
 ---
 

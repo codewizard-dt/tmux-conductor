@@ -27,11 +27,11 @@ Source: `/Users/davidtaylor/Repositories/tmux-conductor`
 |--------|---------|----------------|
 | `scripts/conductor.sh` | **Entry point.** Creates the tmux session named `$SESSION_NAME`, spawns one window per `AGENTS` entry, spawns one window per `BG_PROCESSES` entry (host-side, no env prefix), then opens the `monitor` window. | **Essential** |
 | `scripts/spawn.sh` | **Split-pane layout alternative.** Identical to `conductor.sh` except agents and BG_PROCESSES share a single window with `split-window` + `select-layout tiled` instead of separate windows. | **Essential** |
-| `scripts/monitor.sh` | **Main polling loop.** Every `POLL_INTERVAL` seconds: reads each agent's state file (`$STATE_DIR/<agent>.state`); falls back to `IDLE_PATTERN` regex when the file is missing or stale. On idle: checks usage, pops a task from `TASK_QUEUE` (scoped first, then global), writes `busy` to the state file, calls `dispatch.sh`. Emits one JSONL record to `dispatch.jsonl` per dispatch. Triggers `teardown.sh` when all agents are idle and all usage limits are hit. | **Essential** |
+| `scripts/monitor.sh` | **Main polling loop.** Every `POLL_INTERVAL` seconds: reads each agent's state file (`$STATE_DIR/<agent>.state`); falls back to `IDLE_PATTERN` regex when the file is missing or stale. On idle: checks usage, pops the next task from SQLite (scoped first, then global), writes `busy` to the state file, calls `dispatch.sh`. Emits one JSONL record to `dispatch.jsonl` per dispatch. Triggers `teardown.sh` when all agents are idle and all usage limits are hit. | **Essential** |
 | `scripts/dispatch.sh` | **Low-level pane sender.** Accepts `<target> <command>`. Uses `tmux send-keys -l` (literal mode) to type the command, then a separate `Enter` keypress. Called by `monitor.sh`, `broadcast.sh`, and `teardown.sh`. | **Essential** |
 | `scripts/broadcast.sh` | **Fan-out helper.** Iterates over every `AGENTS` entry and calls `dispatch.sh` for each pane that currently exists. Useful for sending `/clear`, `/status`, or any command to all agents at once. | **Useful** |
 | `scripts/teardown.sh` | **Graceful shutdown.** Sends `/exit` to each agent via `dispatch.sh`, sends `C-c` to each `BG_PROCESSES` window, sleeps ~10 seconds, then runs `tmux kill-session`. | **Essential** |
-| `scripts/add-task.sh` | **Queue enqueuer.** Appends `<cwd-basename>: <cmd>` to `tasks.txt`. Prompts to register the agent in `conductor.conf` if not already present. Intended to be run (or aliased) from within the target project directory. | **Useful** |
+| `scripts/add-task.sh` | **Queue enqueuer.** Writes a scoped task (`<cwd-basename>: <cmd>`) to the SQLite DB. Intended to be run (or aliased) from within the target project directory. | **Useful** |
 
 ### Dashboard server (`backend/`)
 

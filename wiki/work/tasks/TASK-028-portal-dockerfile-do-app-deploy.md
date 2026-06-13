@@ -58,28 +58,30 @@ These deferred actions are captured verbatim in the Acceptance Criteria below, e
 
 ### 1. Confirm the TASK-027 portal layout (dependency probe)  <!-- agent: general-purpose -->
 
-- [ ] Use Serena `list_dir` on `portal/` (repo root) to see whether TASK-027 has produced the scaffold yet.
+- [x] Use Serena `list_dir` on `portal/` (repo root) to see whether TASK-027 has produced the scaffold yet. <!-- Completed: 2026-06-13 -->
   - If present: note the entry point file (e.g. `portal/index.ts`), the `package.json` location (`portal/package.json`), and whether `portal/db.ts` exists with the `ssl: { rejectUnauthorized: false }` Pool config.
   - If absent: proceed to author the Dockerfile/spec against the **documented** TASK-027 layout (Fastify server, `portal/package.json`, `portal/db.ts`, boot-time migrations, `/healthz` route) and record that the image cannot build until TASK-027 lands.
-- [ ] Use Serena `find_file` for `Dockerfile.prod` at the repo root to confirm it exists and note its multi-stage shape (reference only — do NOT modify it).
-- [ ] Use Serena `list_dir` on `frontend/` to confirm the Astro+React app and its `package.json` build script; note the build command (`npm run build`) and output dir (`dist`).
+  - **FINDINGS**: `portal/` EXISTS — `index.ts`, `db.ts`, `env.ts`, `migrate.ts`, `migrations/`, `package.json`, `package-lock.json`. `db.ts` has `ssl: { rejectUnauthorized: false }`. Runtime start: `node --import tsx/esm index.ts` (tsx is devDependency — Dockerfile must install devDeps or switch CMD). Portal does NOT import `shared/` — omit COPY, leave TODO comment.
+- [x] Use Serena `find_file` for `Dockerfile.prod` at the repo root to confirm it exists and note its multi-stage shape (reference only — do NOT modify it). <!-- Completed: 2026-06-13 -->
+  - **FINDINGS**: Exists, 3-stage (ui-builder / server-deps / runtime), bundles frontend+backend only, no portal. Must NOT be modified.
+- [x] Use Serena `list_dir` on `frontend/` to confirm the Astro+React app and its `package.json` build script; note the build command (`npm run build`) and output dir (`dist`). <!-- Completed: 2026-06-13 -->
+  - **FINDINGS**: Vite+React app. Build: `tsc && vite build`. Output: `dist/` (Vite default). Node engine `>=22.12.0`. Lockfile: `package-lock.json`.
 
 ### 2. Author `Dockerfile.portal` (repo root)  <!-- agent: general-purpose -->
 
-- [ ] Create a NEW file `Dockerfile.portal` at the repo root (leave `Dockerfile.prod` untouched).
-- [ ] **Stage 1 — frontend build** (`AS frontend-build`):
+- [x] Create a NEW file `Dockerfile.portal` at the repo root (leave `Dockerfile.prod` untouched). <!-- Completed: 2026-06-13 -->
+- [x] **Stage 1 — frontend build** (`AS frontend-build`): <!-- Completed: 2026-06-13 -->
   - Base on a Node image matching the frontend engine floor (`node:22-alpine` is fine; frontend declares `node >=22.12.0`).
   - `WORKDIR /app/frontend`; copy `frontend/package.json` (+ lockfile if present) and `npm ci`; then copy the rest of `frontend/`.
   - Set `ENV PUBLIC_PORTAL_MODE=1` (so the build emits relay-mode assets) and run `npm run build` → produces `/app/frontend/dist`.
-- [ ] **Final stage** — `FROM node:22-alpine`:
+- [x] **Final stage** — `FROM node:22-alpine`: <!-- Completed: 2026-06-13 -->
   - `WORKDIR /app/portal`.
-  - Copy `portal/package.json` (+ lockfile) and run `npm ci --omit=dev` for portal deps. (If the portal runs TypeScript directly via `tsx`, ensure `tsx` is a non-dev dependency OR adjust the CMD to a built entry — decide based on TASK-027's `package.json`; see CMD step.)
-  - Copy the rest of `portal/` into `/app/portal`.
-  - Copy `shared/` into the image **only if** the portal at this phase imports it (Phase 4 artefact). If not yet needed, omit and leave a `# TODO (Phase 4): COPY shared/ once relay-protocol lands` comment so a not-yet-existing dir does not break the build.
-  - Copy the built frontend from stage 1 into `portal/ui/dist`: `COPY --from=frontend-build /app/frontend/dist ./ui/dist`.
-  - `ENV PORT=8080` and `EXPOSE 8080` (DO App Platform routes to the container's `PORT`; 8080 matches the spec).
-  - `CMD`: run the portal. If TASK-027 ships a TS entry run via tsx, use `CMD ["node", "--import", "tsx/esm", "index.ts"]` (with `tsx` present as a runtime dep); if it ships a built JS entry (e.g. `dist/index.js`), use `CMD ["node", "dist/index.js"]`. Pick the form that matches `portal/package.json` from Step 1; if `portal/` is absent, default to the `tsx/esm` form and add a comment to revisit once TASK-027 is final.
-- [ ] Add a top-of-file comment noting: serves `ui/dist` via `@fastify/static` SPA fallback (route implemented in a later task — image only stages the assets), and that this image is distinct from `Dockerfile.prod`.
+  - Uses plain `npm ci` (NOT `--omit=dev`) because `tsx` is a devDep but required at runtime for `node --import tsx/esm index.ts`.
+  - Omits `COPY shared/` (portal doesn't import shared/ yet) with `# TODO (Phase 4)` comment.
+  - `COPY --from=frontend-build /app/frontend/dist ./ui/dist`.
+  - `ENV PORT=8080` and `EXPOSE 8080`.
+  - `CMD ["node", "--import", "tsx/esm", "index.ts"]` (matches portal/package.json start script).
+- [x] Add a top-of-file comment noting: serves `ui/dist` via `@fastify/static` SPA fallback (route implemented in a later task — image only stages the assets), and that this image is distinct from `Dockerfile.prod`. <!-- Completed: 2026-06-13 -->
 
 ### 3. Author `deploy/do-app.yaml` (App Platform spec)  <!-- agent: general-purpose -->
 

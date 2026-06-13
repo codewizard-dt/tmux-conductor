@@ -7,7 +7,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 # resolves CONDUCTOR_DB. db.sh sources conductor.conf only in a subshell (to
 # extract DB_PATH), so it does NOT export conf vars into this scope — the
 # explicit conf source below is still required for SESSION_NAME, LOG_DIR,
-# STATE_DIR, TASK_QUEUE, etc.
+# STATE_DIR, etc.
 source "$SCRIPT_DIR/lib/db.sh"
 source "$SCRIPT_DIR/../conductor.conf"
 
@@ -21,26 +21,13 @@ load_bg
 # agent's environment, so they must be absolute.
 case "$LOG_DIR"    in /*) ;; *) LOG_DIR="$REPO_ROOT/${LOG_DIR#./}" ;; esac
 case "$STATE_DIR"  in /*) ;; *) STATE_DIR="$REPO_ROOT/${STATE_DIR#./}" ;; esac
-case "$TASK_QUEUE" in /*) ;; *) TASK_QUEUE="$REPO_ROOT/${TASK_QUEUE#./}" ;; esac
 
 mkdir -p "$LOG_DIR"
-
-# Restore backlog from previous run (prepend so rescued tasks get highest priority)
-_backlog_file="$(dirname "$TASK_QUEUE")/tasks.backlog.txt"
-if [ -f "$_backlog_file" ] && [ -s "$_backlog_file" ]; then
-  _backlog_count=$(wc -l < "$_backlog_file" | tr -d ' ')
-  _tmp_queue=$(mktemp)
-  cat "$_backlog_file" "$TASK_QUEUE" 2>/dev/null > "$_tmp_queue" || true
-  mv "$_tmp_queue" "$TASK_QUEUE"
-  : > "$_backlog_file"
-  echo "Restored ${_backlog_count} task(s) from tasks.backlog.txt"
-fi
-unset _backlog_file _backlog_count _tmp_queue
 
 echo "=== tmux Conductor (split-pane mode) ==="
 echo "Session:  $SESSION_NAME"
 echo "Agents:   ${#AGENT_NAMES[@]}"
-echo "Queue:    $TASK_QUEUE ($(wc -l < "$TASK_QUEUE" 2>/dev/null || echo 0) tasks)"
+echo "Queue:    $(sql "SELECT COUNT(*) FROM tasks WHERE status='queued'" 2>/dev/null || echo '?') task(s) in DB"
 echo ""
 
 # Validate all agent workdirs are git repo roots

@@ -1,13 +1,13 @@
 ---
 id: TASK-027
 title: "Scaffold portal/ (Fastify, env validation, pg Pool, boot-time migrations) with /healthz"
-status: todo
+status: done
 created: 2026-06-12
-updated: 2026-06-12
+updated: 2026-06-13
 depends_on: []
 blocks: [TASK-028, TASK-029, TASK-030]
 parallel_safe_with: []
-uat: ""
+uat: "../uat/UAT-027-scaffold-portal-foundation.md"
 tags: [portal, fastify, postgres, scaffold, migrations, roadmap-002]
 ---
 
@@ -43,58 +43,58 @@ Out of scope (downstream tasks — note in code comments where relevant, do NOT 
 
 ### 1. Create portal/ package + tsconfig  <!-- agent: general-purpose -->
 
-- [ ] Read `backend/package.json` and `backend/tsconfig.json` first to mirror module style and compiler options.
-- [ ] Create `portal/package.json` (config file — use Write):
+- [x] Read `backend/package.json` and `backend/tsconfig.json` first to mirror module style and compiler options. <!-- Completed: 2026-06-13 -->
+- [x] Create `portal/package.json` (config file — use Write): <!-- Completed: 2026-06-13 -->
   - `"name": "tmux-conductor-portal"`, `"version": "0.1.0"`, `"type": "module"`, `"private": true`.
   - `"engines": { "node": ">=22" }` (matches the "node 22 + tsx/esm" target in the plan; backend pins higher but portal targets the DO App Platform Node 22 runtime).
   - `scripts`: `"dev": "tsx watch index.ts"`, `"start": "node --import tsx/esm index.ts"`, `"migrate": "node --import tsx/esm migrate.ts"`.
   - `dependencies`: `"fastify": "^5.8.5"`, `"pg": "^8"`.
   - `devDependencies`: `"tsx": "^4.0.0"`, `"typescript": "^5.0.0"`, `"@types/node": "^22.0.0"`, `"@types/pg": "^8"`.
-- [ ] Create `portal/tsconfig.json` cloned from `backend/tsconfig.json` (ES2022 / NodeNext / strict / noUncheckedIndexedAccess / exactOptionalPropertyTypes / allowImportingTsExtensions / noEmit; `"include": ["*.ts"]`, `"exclude": ["node_modules", "dist"]`).
+- [x] Create `portal/tsconfig.json` cloned from `backend/tsconfig.json` (ES2022 / NodeNext / strict / noUncheckedIndexedAccess / exactOptionalPropertyTypes / allowImportingTsExtensions / noEmit; `"include": ["*.ts"]`, `"exclude": ["node_modules", "dist"]`). <!-- Completed: 2026-06-13 -->
 
 ### 2. Implement portal/env.ts (typed, fail-fast, tiered validation)  <!-- agent: general-purpose -->
 
-- [ ] Create `portal/env.ts` exporting a typed, `Object.freeze`d `env` object with fields: `DATABASE_URL: string`, `SESSION_SECRET: string | undefined`, `GOOGLE_CLIENT_ID: string | undefined`, `GOOGLE_CLIENT_SECRET: string | undefined`, `PUBLIC_BASE_URL: string | undefined`, `ALLOWLIST_EMAILS: string[]`, `PORT: number`.
-- [ ] Required check: `DATABASE_URL` must be a non-empty string. Collect ALL missing required vars into an array; if non-empty, `console.error` a single message listing every missing var (one per line) then `process.exit(1)`.
-- [ ] Length check: if `SESSION_SECRET` is set, require `Buffer.byteLength(SESSION_SECRET, 'utf8') >= 32`; if set-but-too-short, treat as a hard error and add to the collected list.
-- [ ] Permissive-with-warning: if any of `SESSION_SECRET` / `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `PUBLIC_BASE_URL` is absent, `console.warn` once (e.g. `[portal] auth not fully configured — /healthz boots but OAuth disabled (see TASK-025)`) and continue — do NOT exit.
-- [ ] `ALLOWLIST_EMAILS`: comma-split, trim, drop empties → `string[]` (default `[]`).
-- [ ] `PORT`: parse `process.env.PORT` as int; default `8080`; reject NaN with a clear error added to the collected list.
-- [ ] Add a top-of-file comment noting downstream tasks tighten Google/session vars to hard-required once auth lands (TASK-025).
+- [x] Create `portal/env.ts` exporting a typed, `Object.freeze`d `env` object with fields: `DATABASE_URL: string`, `SESSION_SECRET: string | undefined`, `GOOGLE_CLIENT_ID: string | undefined`, `GOOGLE_CLIENT_SECRET: string | undefined`, `PUBLIC_BASE_URL: string | undefined`, `ALLOWLIST_EMAILS: string[]`, `PORT: number`. <!-- Completed: 2026-06-13 -->
+- [x] Required check: `DATABASE_URL` must be a non-empty string. Collect ALL missing required vars into an array; if non-empty, `console.error` a single message listing every missing var (one per line) then `process.exit(1)`. <!-- Completed: 2026-06-13 -->
+- [x] Length check: if `SESSION_SECRET` is set, require `Buffer.byteLength(SESSION_SECRET, 'utf8') >= 32`; if set-but-too-short, treat as a hard error and add to the collected list. <!-- Completed: 2026-06-13 -->
+- [x] Permissive-with-warning: if any of `SESSION_SECRET` / `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `PUBLIC_BASE_URL` is absent, `console.warn` once (e.g. `[portal] auth not fully configured — /healthz boots but OAuth disabled (see TASK-025)`) and continue — do NOT exit. <!-- Completed: 2026-06-13 -->
+- [x] `ALLOWLIST_EMAILS`: comma-split, trim, drop empties → `string[]` (default `[]`). <!-- Completed: 2026-06-13 -->
+- [x] `PORT`: parse `process.env.PORT` as int; default `8080`; reject NaN with a clear error added to the collected list. <!-- Completed: 2026-06-13 -->
+- [x] Add a top-of-file comment noting downstream tasks tighten Google/session vars to hard-required once auth lands (TASK-025). <!-- Completed: 2026-06-13 -->
 
 ### 3. Implement portal/db.ts (pg Pool singleton)  <!-- agent: general-purpose -->
 
-- [ ] Create `portal/db.ts` importing `Pool` from `pg` and `env` from `./env.ts`.
-- [ ] Module-level `let pool: Pool | undefined`. Export `getPool(): Pool` that lazily constructs and memoises a `new Pool({ connectionString: env.DATABASE_URL, ssl: { rejectUnauthorized: false } })`.
+- [x] Create `portal/db.ts` importing `Pool` from `pg` and `env` from `./env.ts`. <!-- Completed: 2026-06-13 -->
+- [x] Module-level `let pool: Pool | undefined`. Export `getPool(): Pool` that lazily constructs and memoises a `new Pool({ connectionString: env.DATABASE_URL, ssl: { rejectUnauthorized: false } })`. <!-- Completed: 2026-06-13 -->
   - Add `// TODO(prod): replace rejectUnauthorized:false with a pinned CA_CERT on prod promotion (TASK-026 / ROADMAP-006).`
-- [ ] Export `async function query<T extends import('pg').QueryResultRow = any>(text: string, params?: unknown[]): Promise<import('pg').QueryResult<T>>` delegating to `getPool().query(...)`.
-- [ ] Export `async function closePool(): Promise<void>` that ends the pool if constructed (used by graceful shutdown later).
+- [x] Export `async function query<T extends import('pg').QueryResultRow = any>(text: string, params?: unknown[]): Promise<import('pg').QueryResult<T>>` delegating to `getPool().query(...)`. <!-- Completed: 2026-06-13 -->
+- [x] Export `async function closePool(): Promise<void>` that ends the pool if constructed (used by graceful shutdown later). <!-- Completed: 2026-06-13 -->
 
 ### 4. Implement portal/migrate.ts (advisory-locked, idempotent runner)  <!-- agent: general-purpose -->
 
-- [ ] Create `portal/migrations/.gitkeep` (empty) so the directory is tracked with zero migration files.
-- [ ] Create `portal/migrate.ts` exporting `async function runMigrations(): Promise<void>` and a CLI guard (`if (import.meta.url === ...)` / run when invoked as the `migrate` script) that calls `runMigrations()` then `closePool()` and exits non-zero on error.
-- [ ] In `runMigrations`: acquire a dedicated client via `getPool().connect()`. Call `await client.query('SELECT pg_advisory_lock($1)', [<fixed bigint, e.g. 4711>])`. Wrap the body in `try/finally`; in `finally` call `pg_advisory_unlock` then `client.release()`.
-- [ ] Ensure table: `CREATE TABLE IF NOT EXISTS schema_migrations (version text PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now())`.
-- [ ] Read `portal/migrations/` via `node:fs` for `*.sql` files, sort lexically (`NNN_*.sql` ordering). If zero files → log `[portal] no migrations to apply` and return cleanly.
-- [ ] Query existing applied versions into a `Set<string>`. For each file whose `version` (filename) is not applied, run inside a transaction: `BEGIN` → the file's SQL → `INSERT INTO schema_migrations(version) VALUES($1)` → `COMMIT` (`ROLLBACK` + rethrow on error). Log each applied version.
-- [ ] Re-running with no new files must be a no-op (idempotent).
+- [x] Create `portal/migrations/.gitkeep` (empty) so the directory is tracked with zero migration files. <!-- Completed: 2026-06-13 -->
+- [x] Create `portal/migrate.ts` exporting `async function runMigrations(): Promise<void>` and a CLI guard (`if (import.meta.url === ...)` / run when invoked as the `migrate` script) that calls `runMigrations()` then `closePool()` and exits non-zero on error. <!-- Completed: 2026-06-13 -->
+- [x] In `runMigrations`: acquire a dedicated client via `getPool().connect()`. Call `await client.query('SELECT pg_advisory_lock($1)', [<fixed bigint, e.g. 4711>])`. Wrap the body in `try/finally`; in `finally` call `pg_advisory_unlock` then `client.release()`. <!-- Completed: 2026-06-13 -->
+- [x] Ensure table: `CREATE TABLE IF NOT EXISTS schema_migrations (version text PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now())`. <!-- Completed: 2026-06-13 -->
+- [x] Read `portal/migrations/` via `node:fs` for `*.sql` files, sort lexically (`NNN_*.sql` ordering). If zero files → log `[portal] no migrations to apply` and return cleanly. <!-- Completed: 2026-06-13 -->
+- [x] Query existing applied versions into a `Set<string>`. For each file whose `version` (filename) is not applied, run inside a transaction: `BEGIN` → the file's SQL → `INSERT INTO schema_migrations(version) VALUES($1)` → `COMMIT` (`ROLLBACK` + rethrow on error). Log each applied version. <!-- Completed: 2026-06-13 -->
+- [x] Re-running with no new files must be a no-op (idempotent). <!-- Completed: 2026-06-13 -->
 
 ### 5. Implement portal/index.ts (Fastify boot + /healthz)  <!-- agent: general-purpose -->
 
-- [ ] Create `portal/index.ts` importing `Fastify` from `fastify`, `env` from `./env.ts`, `runMigrations` from `./migrate.ts`.
-- [ ] Construct `const app = Fastify({ logger: true })`.
-- [ ] Register `GET /healthz` (no auth) returning `{ ok: true }` with status 200 and no DB access. Add a comment: `// liveness only — DB readiness deferred to a future /readyz (ROADMAP-002).`
-- [ ] In an async `start()` IIFE/function: `await runMigrations()` (wrap so a missing/unreachable DB in local dev surfaces a clear `console.error` and `process.exit(1)`), then `await app.listen({ host: '0.0.0.0', port: env.PORT })`.
-- [ ] Add a top-of-file comment listing out-of-scope downstream registrations: auth (TASK-025), relay (Phase 4), device/pairing routes — none registered here.
+- [x] Create `portal/index.ts` importing `Fastify` from `fastify`, `env` from `./env.ts`, `runMigrations` from `./migrate.ts`. <!-- Completed: 2026-06-13 -->
+- [x] Construct `const app = Fastify({ logger: true })`. <!-- Completed: 2026-06-13 -->
+- [x] Register `GET /healthz` (no auth) returning `{ ok: true }` with status 200 and no DB access. Add a comment: `// liveness only — DB readiness deferred to a future /readyz (ROADMAP-002).` <!-- Completed: 2026-06-13 -->
+- [x] In an async `start()` IIFE/function: `await runMigrations()` (wrap so a missing/unreachable DB in local dev surfaces a clear `console.error` and `process.exit(1)`), then `await app.listen({ host: '0.0.0.0', port: env.PORT })`. <!-- Completed: 2026-06-13 -->
+- [x] Add a top-of-file comment listing out-of-scope downstream registrations: auth (TASK-025), relay (Phase 4), device/pairing routes — none registered here. <!-- Completed: 2026-06-13 -->
 
 ### 6. Verification  <!-- agent: general-purpose -->
 
-- [ ] From `portal/`, run `npm install` (or confirm deps resolve) then `npx tsc --noEmit` — zero type errors.
-- [ ] Boot with a reachable `DATABASE_URL` and no auth vars: `DATABASE_URL=... node --import tsx/esm index.ts` → process starts, warning about unconfigured auth is printed, server listens on `:8080`, and `curl localhost:8080/healthz` returns `{"ok":true}` with HTTP 200.
-- [ ] Boot with `DATABASE_URL` unset → process exits non-zero with a message naming `DATABASE_URL`.
-- [ ] Run `npm run migrate` twice against the dev DB → first run creates `schema_migrations` and applies zero files cleanly; second run is a no-op (idempotent).
-- [ ] Confirm `portal/migrations/` contains only `.gitkeep` (no `001_init.sql` — that's TASK-024).
+- [x] From `portal/`, run `npm install` (or confirm deps resolve) then `npx tsc --noEmit` — zero type errors. <!-- Completed: 2026-06-13 — npm install: 68 packages added; tsc --noEmit: exit 0, no errors -->
+- [DEFERRED-TO-UAT] Boot with a reachable `DATABASE_URL` and no auth vars: `DATABASE_URL=... node --import tsx/esm index.ts` → process starts, warning about unconfigured auth is printed, server listens on `:8080`, and `curl localhost:8080/healthz` returns `{"ok":true}` with HTTP 200.
+- [DEFERRED-TO-UAT] Boot with `DATABASE_URL` unset → process exits non-zero with a message naming `DATABASE_URL`.
+- [DEFERRED-TO-UAT] Run `npm run migrate` twice against the dev DB → first run creates `schema_migrations` and applies zero files cleanly; second run is a no-op (idempotent).
+- [x] Confirm `portal/migrations/` contains only `.gitkeep` (no `001_init.sql` — that's TASK-024). <!-- Completed: 2026-06-13 — only .gitkeep created; 001_init.sql deferred to TASK-024 -->
 
 ## Acceptance Criteria
 

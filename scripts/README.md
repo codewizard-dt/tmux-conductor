@@ -46,7 +46,7 @@ flowchart TD
   Broadcast["broadcast.sh<br/>(fan-out to all agents)"]
   Teardown["teardown.sh<br/>(/exit + kill-session)"]
   Pane["agent pane"]:::ext
-  Queue[("tasks.txt")]:::ext
+  Queue[("tasks table\n(SQLite DB)")]:::ext
   State[("$STATE_DIR/&lt;agent&gt;.state")]:::ext
 
   Monitor -->|"is_idle reads (fallback: IDLE_PATTERN)"| State
@@ -68,8 +68,8 @@ flowchart TD
 ```mermaid
 flowchart TD
   User([User])
-  AddTask["add-task.sh<br/>(appends scoped line)"]
-  Queue[(tasks.txt)]
+  AddTask["add-task.sh<br/>(writes scoped task)"]
+  Queue[("tasks table\n(SQLite DB)")]
   Pane["agent pane<br/>(Claude Code / Codex / Aider)"]
   PromptHook["on-prompt-submit.js"]
   StopHook["on-stop.js<br/>on-stop-failure.js"]
@@ -79,7 +79,7 @@ flowchart TD
   Dispatch["dispatch.sh"]:::ext
 
   User -->|"enqueue"| AddTask
-  AddTask -->|"append agent: cmd"| Queue
+  AddTask -->|"write agent: cmd"| Queue
   Monitor -->|"pop_task"| Queue
   Monitor --> Dispatch
   Dispatch -->|"send-keys"| Pane
@@ -98,7 +98,7 @@ flowchart TD
 
 ## conductor.sh
 
-Entry point for a conductor session. Creates the tmux session named `$SESSION_NAME`, spawns one window per entry in `AGENTS`, and launches the `monitor` window running `monitor.sh`. Reads `SESSION_NAME`, `AGENTS`, `BG_PROCESSES`, `STATE_DIR`, and `LOG_DIR` from `../conductor.conf`.
+Entry point for a conductor session. Creates the tmux session named `$SESSION_NAME`, spawns one window per entry in `AGENTS`, and launches the `monitor` window running `monitor.sh`. Reads `SESSION_NAME`, `BG_PROCESSES`, `STATE_DIR`, and `LOG_DIR` from `../conductor.conf`. Agents are loaded from SQLite via `load_agents()`.
 
 Each entry in `BG_PROCESSES` also gets its own tmux window, created after the agent windows and before the monitor window. Bg processes run on the **host** (no `CONDUCTOR_AGENT_NAME` env prefix) so things like `pnpm dev` execute in the same shell environment as the user's dev workflow.
 
@@ -118,7 +118,7 @@ scripts/spawn.sh
 
 ## monitor.sh
 
-The main polling loop. Every `POLL_INTERVAL` seconds it checks each agent with `is_idle` — primarily by reading `$STATE_DIR/<agent>.state` (written by the Node.js hooks), falling back to the `IDLE_PATTERN` regex against `capture-pane` output when the state file is missing or stale. On idle, it calls `pop_task` against `TASK_QUEUE` (scoped lines first, then global) and hands the command to `dispatch.sh`. When the queue is empty for a given agent, the agent simply stays idle — there is no default-command fallback. Appends a JSONL record per dispatch to `$LOG_DIR/dispatch.jsonl` and inline logs to `$LOG_DIR/monitor-*.log`. When every agent is idle AND `USAGE_CHECK_CMD` fails for every agent, it auto-invokes `teardown.sh`.
+The main polling loop. Every `POLL_INTERVAL` seconds it checks each agent with `is_idle` — primarily by reading `$STATE_DIR/<agent>.state` (written by the Node.js hooks), falling back to the `IDLE_PATTERN` regex against `capture-pane` output when the state file is missing or stale. On idle, it calls `pop_task_sql` against the SQLite DB (scoped tasks first, then global) and hands the command to `dispatch.sh`. When the queue is empty for a given agent, the agent simply stays idle — there is no default-command fallback. Appends a JSONL record per dispatch to `$LOG_DIR/dispatch.jsonl` and inline logs to `$LOG_DIR/monitor-*.log`. When every agent is idle AND `USAGE_CHECK_CMD` fails for every agent, it auto-invokes `teardown.sh`.
 
 Each poll also runs a liveness check over `BG_PROCESSES` window names: if `tmux has-session -t "$SESSION_NAME:$bg_name"` fails, monitor logs `WARN: bg '<name>' — window not found`. Bg processes are never dispatched to and never affect the `all_idle`/`all_usage_hit` shutdown decision.
 
@@ -156,7 +156,7 @@ scripts/teardown.sh
 
 ## add-task.sh
 
-Convenience enqueuer for the task queue. Uses `basename "$PWD"` as the agent-scope prefix and appends a line `<agent>: <command>` to `../tasks.txt`. Intended to be run (or aliased) from within the target project directory so scoped tasks land on the right agent without manual prefixing.
+Convenience enqueuer for the task queue. Uses `basename "$PWD"` as the agent-scope prefix and writes a scoped task `<agent>: <command>` to the SQLite DB. Intended to be run (or aliased) from within the target project directory so scoped tasks land on the right agent without manual prefixing.
 
 Usage:
 ```
@@ -177,7 +177,7 @@ The Fastify HTTP server backing the Astro+React dashboard. Runs on `127.0.0.1:87
 | File | Purpose |
 |------|---------|
 | `backend/index.ts` | Fastify app: `GET /status` (per-agent state + queue lengths), `GET\|POST /queue/:agent` (CRUD), `PUT /queue/:agent/reorder`, `DELETE /queue/:agent/:index`, `POST /agents` (spawn), `GET /events` (SSE), `GET /healthz` |
-| `backend/config.ts` | Reads and parses `conductor.conf` via regex; exports `readConductorConf()` and `appendAgentToConf()` |
+| `backend/config.ts` | Reads and parses `conductor.conf` via regex; exports `readConductorConf()` and bg-process conf splice helpers |
 | `backend/state.ts` | Exports `readAgentState()`, `countQueuedTasks()`, `isTmuxWindowPresent()`, `readQueue()`, `writeQueue()`, `getAgentLines()` |
 
 Usage:
