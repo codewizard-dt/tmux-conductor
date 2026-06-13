@@ -4,7 +4,13 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# db.sh sources conductor.conf only in a subshell (to extract DB_PATH), so the
+# explicit conf source below is still required for SESSION_NAME etc.
 source "$SCRIPT_DIR/../conductor.conf"
+# Agent list is loaded from SQLite via load_agents (see lib/db.sh), which fills
+# AGENT_NAMES. No load_bg — broadcast only targets agents.
+source "$SCRIPT_DIR/lib/db.sh"
+load_agents
 
 if [[ $# -lt 1 ]]; then
   echo "Usage: broadcast.sh <command>"
@@ -16,8 +22,7 @@ CMD="$1"
 sent=0
 skipped=0
 
-for entry in "${AGENTS[@]}"; do
-  IFS=: read -r name _workdir _launch_cmd <<< "$entry"
+for name in "${AGENT_NAMES[@]}"; do
   target="$SESSION_NAME:$name"
 
   if tmux has-session -t "$target" 2>/dev/null; then

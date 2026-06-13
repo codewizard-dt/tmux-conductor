@@ -1,7 +1,7 @@
 ---
 id: TASK-011
 title: "Immediate dispatch for tasks enqueued to an idle agent with an empty queue"
-status: todo
+status: in-progress
 created: 2026-06-12
 updated: 2026-06-12
 depends_on: []

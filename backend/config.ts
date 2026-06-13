@@ -21,6 +21,8 @@ export interface ConductorConf {
   busyPattern: string;
   awaitingPattern: string;
   pollInterval: number;
+  stallTimeout: number;
+  contextWindow: number;
   agents: AgentEntry[];
   bgProcesses: BgProcessEntry[];
   agentBgLinks: Record<string, string>;
@@ -136,7 +138,7 @@ export function readConductorConf(confPath: string = DEFAULT_CONF_PATH): Conduct
   // IDLE_PATTERN/AWAITING_PATTERN/POLL_INTERVAL settings: declare -p still
   // prints the variables that exist, and missing ones simply parse as empty
   // (pollInterval then falls back to 15, idlePattern to '' → regex skipped).
-  const cmd = `bash -c "source ${confPath} && declare -p AGENTS BG_PROCESSES AGENT_BG_LINKS SESSION_NAME TASK_QUEUE STATE_DIR LOG_DIR DB_PATH IDLE_PATTERN BUSY_PATTERN AWAITING_PATTERN POLL_INTERVAL 2>/dev/null || true"`;
+  const cmd = `bash -c "source ${confPath} && declare -p AGENTS BG_PROCESSES AGENT_BG_LINKS SESSION_NAME TASK_QUEUE STATE_DIR LOG_DIR DB_PATH IDLE_PATTERN BUSY_PATTERN AWAITING_PATTERN POLL_INTERVAL CONTEXT_WINDOW 2>/dev/null || true"`;
   const output = execSync(cmd, { encoding: 'utf8' });
 
   // Relative paths in the conf (./tasks.txt, ./logs/state) are relative to the
@@ -154,6 +156,8 @@ export function readConductorConf(confPath: string = DEFAULT_CONF_PATH): Conduct
   const busyPattern = parseScalar(parseDeclare(output, 'BUSY_PATTERN'));
   const awaitingPattern = parseScalar(parseDeclare(output, 'AWAITING_PATTERN'));
   const pollInterval = parseInt(parseScalar(parseDeclare(output, 'POLL_INTERVAL')), 10) || 15;
+  const stallTimeout = parseInt(parseScalar(parseDeclare(output, 'STALL_TIMEOUT')), 10) || 300;
+  const contextWindow = parseInt(parseScalar(parseDeclare(output, 'CONTEXT_WINDOW')), 10) || 200000;
   const agentsRaw = parseArray(parseDeclare(output, 'AGENTS'));
   const agents = agentsRaw.map(parseAgentEntry);
   const bgProcessesRaw = parseArray(parseDeclare(output, 'BG_PROCESSES'));
@@ -167,7 +171,7 @@ export function readConductorConf(confPath: string = DEFAULT_CONF_PATH): Conduct
     }
   }
 
-  cache = { sessionName, taskQueue, stateDir, logDir, dbPath, _confPath: path.resolve(confPath), idlePattern, busyPattern, awaitingPattern, pollInterval, agents, bgProcesses, agentBgLinks };
+  cache = { sessionName, taskQueue, stateDir, logDir, dbPath, _confPath: path.resolve(confPath), idlePattern, busyPattern, awaitingPattern, pollInterval, stallTimeout, contextWindow, agents, bgProcesses, agentBgLinks };
   cacheTime = now;
   return cache;
 }

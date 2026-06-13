@@ -16,13 +16,13 @@
   <key>KeepAlive</key>
   <true/>
   <key>StandardOutPath</key>
-  <string>/Users/davidtaylor/.local/share/tmux-conductor/daemon.log</string>
+  <string>__LOG_PATH__</string>
   <key>StandardErrorPath</key>
-  <string>/Users/davidtaylor/.local/share/tmux-conductor/daemon.log</string>
+  <string>__LOG_PATH__</string>
   <key>EnvironmentVariables</key>
   <dict>
     <key>PATH</key>
-    <string>/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin</string>
+    <string>__NODE_PATH__:/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin</string>
   </dict>
 </dict>
 </plist>

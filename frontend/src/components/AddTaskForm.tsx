@@ -1,22 +1,10 @@
 import React from 'react';
-import { API_BASE } from '../lib/api';
+import { addTask, type Task } from '../lib/api';
 
 export interface AddTaskFormProps {
   agentName: string;
-  onAdded: (task: string) => void;
+  onAdded: (task: Task) => void;
 }
-
-interface ApiErrorBody {
-  error?: string;
-}
-
-interface AddTaskResponse {
-  ok: boolean;
-  line?: string;
-  task?: unknown;
-  dispatched?: boolean;
-}
-
 export default function AddTaskForm({ agentName, onAdded }: AddTaskFormProps) {
   const [value, setValue] = React.useState('');
   const [error, setError] = React.useState<string | null>(null);
@@ -32,25 +20,14 @@ export default function AddTaskForm({ agentName, onAdded }: AddTaskFormProps) {
     setError(null);
 
     try {
-      const res = await fetch(`${API_BASE}/queue/${encodeURIComponent(agentName)}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ task: trimmed }),
-      });
-
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({})) as ApiErrorBody;
-        throw new Error(body.error ?? `HTTP ${res.status.toString()}`);
-      }
-
-      const body = await res.json().catch(() => ({})) as AddTaskResponse;
+      const result = await addTask(trimmed, { agentName });
       setValue('');
 
-      if (body.dispatched) {
+      if (result.dispatched) {
         setDispatched(true);
         setTimeout(() => { setDispatched(false); }, 2000);
-      } else {
-        onAdded(trimmed);
+      } else if (result.task) {
+        onAdded(result.task);
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Failed to add task';

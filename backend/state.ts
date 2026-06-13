@@ -114,7 +114,7 @@ function isPaneDead(sessionName: string, windowName: string, launchCmd: string):
  *          "Enter to select · Esc to cancel" footer)
  *        - file older than 2×POLL_INTERVAL and IDLE_PATTERN matches -> 'idle'
  *          (Stop hook never fired; monitor recovers the file on its next poll)
- *        - file older than 2×POLL_INTERVAL and NO pattern matches -> 'stalled'
+ *        - file older than STALL_TIMEOUT and NO pattern matches -> 'stalled'
  *          (mid-task but in a state none of the patterns recognise)
  *      An 'awaiting' file is reverted to 'busy' when the dialog footer is gone
  *      (the agent resumed on its own; monitor rewrites the file later).
@@ -123,14 +123,14 @@ function isPaneDead(sessionName: string, windowName: string, launchCmd: string):
  *      ('stalled' requires a busy state file — the fallback never reports it)
  *
  * @param {string} [precapturedTail] - Reuse an existing capturePaneTail() result
- *   (≥5 non-blank lines, e.g. the 15-line capture shared with detectAgentMode);
- *   the last 5 lines are used. '' is treated as "no precapture" so a transient
+ *   (≥15 non-blank lines, e.g. the 15-line capture shared with detectAgentMode);
+ *   the last 15 lines are used. '' is treated as "no precapture" so a transient
  *   capture failure upstream can't force 'starting'.
  *
  * @returns {'no-window'|'exited'|'idle'|'busy'|'awaiting'|'stalled'|'starting'|'unknown'}
  */
 export function detectAgentStatus(conf: ConductorConf, agentName: string, precapturedTail?: string): string {
-  const { sessionName, stateDir, idlePattern, busyPattern, awaitingPattern, pollInterval } = conf;
+  const { sessionName, stateDir, idlePattern, busyPattern, awaitingPattern, pollInterval, stallTimeout } = conf;
 
   if (!isTmuxWindowPresent(sessionName, agentName)) {
     return 'no-window';
@@ -141,16 +141,15 @@ export function detectAgentStatus(conf: ConductorConf, agentName: string, precap
     return 'exited';
   }
 
-  // Lazy, memoized 5-line pane tail — at most one capture-pane spawn per call,
-  // and zero when a precaptured tail is supplied (capturePaneTail filters blank
-  // lines before slicing, so the last 5 lines of a larger capture are identical
-  // to a direct 5-line capture).
+  // Lazy, memoized 15-line pane tail — at most one capture-pane spawn per call,
+  // and zero when a precaptured tail is supplied. 15 lines keeps the "esc to
+  // interrupt" footer visible even when a Workflow progress tree fills the pane.
   let cachedTail: string | null = null;
   const tail5 = (): string => {
     if (cachedTail === null) {
       cachedTail = precapturedTail !== undefined && precapturedTail !== ''
-        ? precapturedTail.split('\n').slice(-5).join('\n')
-        : capturePaneTail(sessionName, agentName, 5);
+        ? precapturedTail.split('\n').slice(-15).join('\n')
+        : capturePaneTail(sessionName, agentName, 15);
     }
     return cachedTail;
   };
@@ -177,6 +176,11 @@ export function detectAgentStatus(conf: ConductorConf, agentName: string, precap
           if (idlePattern !== '' && grepMatches(idlePattern, tail)) {
             return 'idle';
           }
+        }
+        // Stall detection uses a separate, longer threshold (STALL_TIMEOUT,
+        // default 300 s) so long-running Workflow runs with sub-agents don't
+        // trigger a false stalled before the pane re-shows the busy footer.
+        if (ageSeconds > stallTimeout) {
           // Old busy file, pane matches nothing we know — stuck in an
           // unrecognized state (crashed TUI, unexpected dialog, …).
           return 'stalled';

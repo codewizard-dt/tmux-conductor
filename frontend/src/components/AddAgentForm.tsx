@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { API_BASE as API_URL } from '../lib/api';
+import { useEffect, useState } from 'react';
+import { API_BASE as API_URL, listProjects, spawnAgentInProject, type Project } from '../lib/api';
 import { useAgents } from '../lib/useAgents';
 import { useGitRoot } from '../lib/useGitRoot';
 import { deriveStatus, type Agent, type AgentStatus } from './AgentList';
@@ -36,8 +36,23 @@ export default function AddAgentForm() {
   const [showInactive, setShowInactive] = useState(false);
   const [rowBusy, setRowBusy] = useState<string | null>(null);
   const [rowError, setRowError] = useState<string | null>(null);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null);
   const gitRoot = useGitRoot(workdir);
   const { agents } = useAgents();
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        setProjects(await listProjects());
+      } catch {
+        // Non-fatal: project list stays empty, free-form path still works.
+      }
+    })();
+  }, []);
+
+  const selectedProject =
+    selectedProjectId === null ? null : projects.find((p) => p.id === selectedProjectId) ?? null;
 
   const inactiveAgents = agents.filter((a) => INACTIVE_STATUSES.includes(deriveStatus(a)));
 
@@ -90,6 +105,30 @@ export default function AddAgentForm() {
     setError(null);
     setSuccess(false);
 
+    function clearOnSuccess() {
+      setName('');
+      setWorkdir('');
+      setLaunchCmd(DEFAULT_LAUNCH_CMD);
+      setShowAdvanced(false);
+      setSuccess(true);
+      setTimeout(() => { setSuccess(false); }, 4000);
+    }
+
+    if (selectedProject !== null) {
+      // Project-scoped path: name is optional (backend auto-names), workdir +
+      // launchCmd come from the project itself, so skip the free-form validation.
+      setSubmitting(true);
+      try {
+        await spawnAgentInProject(selectedProject.id, name.trim() || undefined);
+        clearOnSuccess();
+      } catch (err: unknown) {
+        setError(err instanceof Error ? err.message : 'Failed to spawn agent');
+      } finally {
+        setSubmitting(false);
+      }
+      return;
+    }
+
     if (!NAME_PATTERN.test(name)) {
       setError('Name must match ^[a-zA-Z0-9_-]+$ (letters, digits, hyphens, underscores)');
       return;
@@ -108,12 +147,7 @@ export default function AddAgentForm() {
       });
 
       if (res.status === 201) {
-        setName('');
-        setWorkdir('');
-        setLaunchCmd(DEFAULT_LAUNCH_CMD);
-        setShowAdvanced(false);
-        setSuccess(true);
-        setTimeout(() => { setSuccess(false); }, 4000);
+        clearOnSuccess();
       } else if (res.status === 409) {
         const body = await res.json() as ApiErrorBody;
         setError(body.error ?? 'Conflict error');
@@ -137,6 +171,24 @@ export default function AddAgentForm() {
         onSubmit={(e: React.SyntheticEvent<HTMLFormElement>) => { void handleSubmit(e); }}
         className="flex flex-col gap-3"
       >
+        <div className={fieldCls}>
+          <label htmlFor="agent-project" className={labelCls}>Project</label>
+          <select
+            id="agent-project"
+            value={selectedProjectId === null ? '' : selectedProjectId.toString()}
+            onChange={(e) => {
+              const v = e.target.value;
+              setSelectedProjectId(v === '' ? null : Number(v));
+            }}
+            className={inputCls}
+          >
+            <option value="">— None (free-form) —</option>
+            {projects.map((p) => (
+              <option key={p.id} value={p.id}>{p.name}</option>
+            ))}
+          </select>
+        </div>
+
         <div className="grid grid-cols-2 gap-3">
           <div className={fieldCls}>
             <label htmlFor="agent-name" className={labelCls}>Name</label>
@@ -145,9 +197,9 @@ export default function AddAgentForm() {
               type="text"
               value={name}
               onChange={(e) => { setName(e.target.value); }}
-              placeholder="agent-name"
+              placeholder={selectedProject !== null ? `(auto: ${selectedProject.name}-N)` : 'agent-name'}
               pattern="^[a-zA-Z0-9_-]+$"
-              required
+              required={selectedProject === null}
               className={inputCls}
             />
           </div>
@@ -156,13 +208,14 @@ export default function AddAgentForm() {
             <input
               id="agent-workdir"
               type="text"
-              value={workdir}
+              value={selectedProject !== null ? selectedProject.workdir : workdir}
               onChange={(e) => { setWorkdir(e.target.value); }}
               placeholder="/absolute/path"
-              required
+              required={selectedProject === null}
+              disabled={selectedProject !== null}
               className={inputCls}
             />
-            {gitRoot.isInsideRepo && gitRoot.gitRoot && gitRoot.gitRoot !== workdir && (
+            {selectedProject === null && gitRoot.isInsideRepo && gitRoot.gitRoot && gitRoot.gitRoot !== workdir && (
               <div className="mt-1 flex items-center gap-2 rounded-[6px] border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-[11px] text-amber-800">
                 <span>⚠ Inside a git repo — nearest root:</span>
                 <code className="font-mono">{gitRoot.gitRoot}</code>
@@ -192,9 +245,10 @@ export default function AddAgentForm() {
               <input
                 id="agent-launch-cmd"
                 type="text"
-                value={launchCmd}
+                value={selectedProject !== null ? selectedProject.defaultLaunchCmd : launchCmd}
                 onChange={(e) => { setLaunchCmd(e.target.value); }}
                 placeholder={DEFAULT_LAUNCH_CMD}
+                disabled={selectedProject !== null}
                 className={inputCls}
               />
             </div>

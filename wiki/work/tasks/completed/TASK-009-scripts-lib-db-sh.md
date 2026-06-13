@@ -1,13 +1,13 @@
 ---
 id: TASK-009
 title: "Create scripts/lib/db.sh — sql wrapper, load_agents, load_bg, pop_task_sql"
-status: todo
+status: done
 created: 2026-06-12
 updated: 2026-06-12
 depends_on: [TASK-003, TASK-005]
 blocks: [TASK-010, TASK-011]
 parallel_safe_with: [TASK-001, TASK-006, TASK-007, TASK-008]
-uat: ""
+uat: "../uat/UAT-009-scripts-lib-db-sh.md"
 tags: [shell, sqlite, scripts]
 ---
 
@@ -28,12 +28,12 @@ From the design plan:
 
 ## Steps
 
-### 1. Create scripts/lib/ directory and scripts/lib/db.sh skeleton  <!-- agent: general-purpose -->
+### 1. Create scripts/lib/ directory and scripts/lib/db.sh skeleton  <!-- agent: general-purpose --> <!-- Completed: 2026-06-12 -->
 
-- [ ] Create `scripts/lib/db.sh` (new file — `Write` tool)
-- [ ] Shebang: `#!/usr/bin/env bash` (library — not executed directly, sourced)
-- [ ] Set `set -euo pipefail` at the top (inherited by sourcing script's context)
-- [ ] DB path resolution at source time:
+- [x] Create `scripts/lib/db.sh` (new file — `Write` tool)
+- [x] Shebang: `#!/usr/bin/env bash` (library — not executed directly, sourced)
+- [x] Set `set -euo pipefail` at the top (inherited by sourcing script's context)
+- [x] DB path resolution at source time:
   ```bash
   LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
   CONF_DIR="$(dirname "$LIB_DIR")"  # scripts/../ = repo root
@@ -52,34 +52,34 @@ From the design plan:
   fi
   ```
 
-### 2. Implement sql() wrapper  <!-- agent: general-purpose -->
+### 2. Implement sql() wrapper  <!-- agent: general-purpose --> <!-- Completed: 2026-06-12 -->
 
-- [ ] `sql()` function:
+- [x] `sql()` function:
   ```bash
   sql() {
     sqlite3 -cmd '.timeout 5000' -separator $'\x1f' "$CONDUCTOR_DB" "$@"
   }
   ```
-- [ ] `sql_one()` — same but returns single-column first row (used for simple SELECTs)
+- [x] `sql_one()` — same but returns single-column first row (used for simple SELECTs)
 
-### 3. Implement load_agents()  <!-- agent: general-purpose -->
+### 3. Implement load_agents()  <!-- agent: general-purpose --> <!-- Completed: 2026-06-12 -->
 
-- [ ] `load_agents()`:
+- [x] `load_agents()`:
   - Declare: `AGENT_NAMES=()`, `declare -A AGENT_DIRS`, `declare -A AGENT_CMDS`, `declare -A AGENT_BG` (associative: agent_name → linked_bg_name or "")
   - Query: `SELECT a.name, a.workdir, a.launch_cmd, COALESCE(b.name,'') FROM agents a LEFT JOIN bg_processes b ON b.linked_agent_id=a.id ORDER BY a.name`
   - Parse each row with `IFS=$'\x1f' read -r name workdir cmd bg_name`
   - Populate the arrays
 
-### 4. Implement load_bg()  <!-- agent: general-purpose -->
+### 4. Implement load_bg()  <!-- agent: general-purpose --> <!-- Completed: 2026-06-12 -->
 
-- [ ] `load_bg()`:
+- [x] `load_bg()`:
   - Declare: `BG_NAMES=()`, `declare -A BG_DIRS`, `declare -A BG_CMDS`
   - Query: `SELECT name, workdir, launch_cmd FROM bg_processes ORDER BY name`
   - Parse and populate
 
-### 5. Implement pop_task_sql()  <!-- agent: general-purpose -->
+### 5. Implement pop_task_sql()  <!-- agent: general-purpose --> <!-- Completed: 2026-06-12 -->
 
-- [ ] `pop_task_sql()` accepts `$1` = agent name:
+- [x] `pop_task_sql()` accepts `$1` = agent name:
   - Initialize: `POPPED_TASK=""`, `LAST_QUEUE_KIND=""`, `LAST_QUEUE_REMAINING=0`
   - Run the atomic `DELETE…RETURNING` SQL from the design plan (inlining `$1` for the agent name — names validated `^[A-Za-z0-9_-]+$` + schema CHECK):
     ```sql
@@ -101,7 +101,7 @@ From the design plan:
   - Remaining count: `LAST_QUEUE_REMAINING=$(sql "SELECT COUNT(*) FROM tasks WHERE status='queued'")`
   - Return 0 if `POPPED_TASK` non-empty, else 1
 
-### 6. Syntax verification  <!-- agent: general-purpose -->
+### 6. Syntax verification  <!-- agent: general-purpose --> <!-- Completed: 2026-06-12 -->
 
-- [ ] Run `bash -n scripts/lib/db.sh` — no syntax errors
-- [ ] Run `bash -c "source scripts/lib/db.sh && echo 'sourced ok'"` against a test env to verify it sources without errors (CONDUCTOR_DB may not exist yet — that's OK)
+- [x] Run `bash -n scripts/lib/db.sh` — no syntax errors
+- [x] Run `bash -c "source scripts/lib/db.sh && echo 'sourced ok'"` against a test env to verify it sources without errors (CONDUCTOR_DB may not exist yet — that's OK)

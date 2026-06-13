@@ -1,10 +1,9 @@
 import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type FocusEvent, type KeyboardEvent } from 'react'
 import { API_BASE, sendAgentKeys, uploadAgentImage, type KeysPayload } from '../lib/api'
+import { useSSEEvent } from '../hooks/useSSE'
 
 const LINE_OPTIONS = [10, 20, 50, 100]
 const DEFAULT_LINES = 20
-const POLL_MS = 3000
-const INTERACT_POLL_MS = 500
 
 interface TailResponse {
   agent: string
@@ -49,15 +48,17 @@ function mapKey(e: KeyboardEvent<HTMLDivElement>): KeysPayload | null {
   }
 }
 
-export default function LogTail({ agentName, maxHeightClass, interactSignal, onInteractChange, pollMs }: {
+const pendingDeletes = new Map<string, ReturnType<typeof setTimeout>>()
+
+export default function LogTail({ agentName, maxHeightClass, focused, interactSignal, onInteractChange }: {
   agentName: string
   maxHeightClass?: string | undefined
+  /** When true, registers with the backend focus endpoint so the agent gets 200 ms SSE pushes instead of 2 s. */
+  focused?: boolean | undefined
   /** Increment to (re)enable Direct Input mode from outside (banner button, needs-attention CTA). */
   interactSignal?: number | undefined
   /** Notifies the parent (e.g. a modal that closes on Escape) when Direct Input toggles. */
   onInteractChange?: ((interacting: boolean) => void) | undefined
-  /** Fixed poll interval override (e.g. the detail modal); wins over the idle/interact defaults. */
-  pollMs?: number | undefined
 }) {
   const [lines, setLines] = useState<number>(() => readStoredLines(agentName))
   const [tail, setTail] = useState<TailResponse | null>(null)
@@ -71,21 +72,44 @@ export default function LogTail({ agentName, maxHeightClass, interactSignal, onI
   const queueRef = useRef<Promise<void>>(Promise.resolve())
   const captureRef = useRef<HTMLDivElement>(null)
 
+  // One-shot backfill on mount/lines change; live updates arrive via the SSE subscription below.
   useEffect(() => {
     let cancelled = false
-    const load = () => {
-      fetch(`${API_BASE}/agents/${encodeURIComponent(agentName)}/tail?lines=${String(lines)}`)
-        .then((r) => {
-          if (!r.ok) throw new Error(`HTTP ${r.status.toString()}`)
-          return r.json() as Promise<TailResponse>
-        })
-        .then((data) => { if (!cancelled) { setTail(data); setFailed(false) } })
-        .catch(() => { if (!cancelled) setFailed(true) })
+    fetch(`${API_BASE}/agents/${encodeURIComponent(agentName)}/tail?lines=${String(lines)}`)
+      .then((r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status.toString()}`)
+        return r.json() as Promise<TailResponse>
+      })
+      .then((data) => { if (!cancelled) { setTail(data); setFailed(false) } })
+      .catch(() => { if (!cancelled) setFailed(true) })
+    return () => { cancelled = true }
+  }, [agentName, lines])
+
+  useEffect(() => {
+    if (!focused) return
+    const pending = pendingDeletes.get(agentName)
+    if (pending !== undefined) {
+      // StrictMode remount: cancel the queued DELETE — backend is already focused
+      clearTimeout(pending)
+      pendingDeletes.delete(agentName)
+    } else {
+      fetch(`${API_BASE}/agents/${encodeURIComponent(agentName)}/focus`, { method: 'POST' }).catch(() => {})
     }
-    load()
-    const interval = setInterval(load, pollMs ?? (interacting ? INTERACT_POLL_MS : POLL_MS))
-    return () => { cancelled = true; clearInterval(interval) }
-  }, [agentName, lines, interacting, pollMs])
+    return () => {
+      pendingDeletes.set(agentName, setTimeout(() => {
+        pendingDeletes.delete(agentName)
+        fetch(`${API_BASE}/agents/${encodeURIComponent(agentName)}/focus`, { method: 'DELETE' }).catch(() => {})
+      }, 0))
+    }
+  }, [agentName, focused])
+
+  useSSEEvent<{ agent: string; text: string; lines: number }>(
+    focused ? 'terminal-output-focus' : 'terminal-output',
+    (payload) => {
+      if (payload.agent !== agentName) return
+      setTail({ agent: agentName, lines: payload.lines, windowPresent: true, text: payload.text })
+    },
+  )
 
   useEffect(() => {
     if (interactSignal !== undefined && interactSignal > 0) {
@@ -211,9 +235,9 @@ export default function LogTail({ agentName, maxHeightClass, interactSignal, onI
           onDragLeave={() => { setDragOver(false) }}
           onDrop={handleDrop}
           className={dragOver
-            ? 'rounded-[10px] outline-none ring-2 ring-accent-blue'
+            ? 'rounded-[10px] outline-none ring-[3px] ring-accent-blue'
             : interacting
-              ? 'rounded-[10px] outline-none ring-2 ring-[#e0901a]'
+              ? 'rounded-[10px] outline-none ring-[3px] ring-[#e0901a]'
               : 'outline-none'}
         >
           {interacting && (
@@ -227,7 +251,10 @@ export default function LogTail({ agentName, maxHeightClass, interactSignal, onI
               >stop</button>
             </div>
           )}
-          <pre className={`scrollbar-none m-0 overflow-auto whitespace-pre ${interacting ? 'rounded-b-[10px]' : 'rounded-[10px]'} bg-[#0b0b0d] p-3 font-mono text-[11px] leading-[1.3] text-[#e7e8ea] ${maxHeightClass ?? ''}`}>{tail.text || ' '}</pre>
+          <pre
+            className={`scrollbar-none m-0 overflow-auto whitespace-pre ${interacting ? 'rounded-b-[10px]' : 'rounded-[10px]'} bg-[#0b0b0d] p-3 font-mono text-[11px] leading-[1.3] text-[#e7e8ea] ${maxHeightClass ?? ''} ${!interacting && onInteractChange !== undefined ? 'cursor-text' : ''}`}
+            onClick={!interacting && onInteractChange !== undefined ? () => { setInteracting(true); captureRef.current?.focus() } : undefined}
+          >{tail.text || ' '}</pre>
         </div>
       )}
       {windowPresent && (

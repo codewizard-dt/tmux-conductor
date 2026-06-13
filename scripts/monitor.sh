@@ -2,14 +2,20 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Shared SQLite helper library: defines sql/sql_one, load_agents, load_bg,
+# pop_task_sql, and resolves CONDUCTOR_DB. db.sh sources conductor.conf only in
+# a subshell (to extract DB_PATH), so it does NOT export conf vars into this
+# scope — the explicit conf source below is still required for POLL_INTERVAL,
+# LOG_DIR, STATE_DIR, AGENTS, BG_PROCESSES, etc.
+source "$SCRIPT_DIR/lib/db.sh"
 source "$SCRIPT_DIR/../conductor.conf"
 
-# Conf-relative paths (./logs, ./tasks.txt) resolve against the conf file's
-# directory (the repo root), never the caller's cwd.
+# Conf-relative paths (./logs, ./logs/state) resolve against the conf file's
+# directory (the repo root), never the caller's cwd. The task queue store is the
+# SQLite DB ($CONDUCTOR_DB), resolved by db.sh.
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 case "$LOG_DIR"    in /*) ;; *) LOG_DIR="$REPO_ROOT/${LOG_DIR#./}" ;; esac
 case "$STATE_DIR"  in /*) ;; *) STATE_DIR="$REPO_ROOT/${STATE_DIR#./}" ;; esac
-case "$TASK_QUEUE" in /*) ;; *) TASK_QUEUE="$REPO_ROOT/${TASK_QUEUE#./}" ;; esac
 
 LOG_FILE="$LOG_DIR/monitor-$(date +%Y%m%d-%H%M%S).log"
 PAUSED_FILE="$LOG_DIR/.paused"
@@ -29,141 +35,26 @@ debug() { [ "${DEBUG:-0}" != "0" ] && echo "[$(date +%H:%M:%S)] DEBUG: $*" | tee
 rm -f "$PAUSED_FILE"
 mkdir -p "$STATE_DIR"
 
-# Build list of agent window names and a name -> launch-command lookup
-declare -a AGENT_NAMES=()
-declare -A AGENT_CMDS=()
-for entry in "${AGENTS[@]}"; do
-  IFS=: read -r name _workdir cmd <<< "$entry"
-  AGENT_NAMES+=("$name")
-  AGENT_CMDS["$name"]="$cmd"
-done
-
-# Build list of background-process window names (parallel to AGENT_NAMES)
-declare -a BG_NAMES=()
-if [ -n "${BG_PROCESSES+x}" ] && [ "${#BG_PROCESSES[@]}" -gt 0 ]; then
-  for entry in "${BG_PROCESSES[@]}"; do
-    [ -z "$entry" ] && continue
-    IFS=: read -r bg_name _ _ <<< "$entry"
-    BG_NAMES+=("$bg_name")
-  done
-fi
+# Agent and background-process lists are loaded from SQLite via load_agents /
+# load_bg (see lib/db.sh). These are re-invoked at the top of the poll loop so
+# agents/bg-processes spawned via the dashboard are picked up on the next tick
+# without restarting the monitor. Load once here too so the startup log below
+# reports an accurate agent count.
+load_agents
+load_bg
 
 move_to_backlog() {
-  local window_name="$1"
-  local queue_dir
-  queue_dir="$(dirname "$TASK_QUEUE")"
-  local backlog_file="${queue_dir}/tasks.backlog.txt"
-
-  if [ ! -f "$TASK_QUEUE" ] || [ ! -s "$TASK_QUEUE" ]; then
-    return 0
+  local agent_name="$1"
+  local agent_id
+  agent_id=$(sql "SELECT id FROM agents WHERE name='${agent_name//\'/''}'")
+  if [[ -n "$agent_id" ]]; then
+    sql "UPDATE tasks SET status='backlog' WHERE agent_id=$agent_id AND status='queued'"
   fi
-
-  # Extract scoped lines for this window name into the backlog
-  local moved=0
-  local tmp_queue
-  tmp_queue=$(mktemp)
-  while IFS= read -r line; do
-    if [[ "$line" =~ ^${window_name}:\ .+ ]]; then
-      printf '%s\n' "$line" >> "$backlog_file"
-      moved=$((moved + 1))
-    else
-      printf '%s\n' "$line" >> "$tmp_queue"
-    fi
-  done < "$TASK_QUEUE"
-  mv "$tmp_queue" "$TASK_QUEUE"
-
-  # If no agent windows remain alive, also move global (unscoped) lines to backlog
-  local alive=0
-  local live_windows
-  live_windows=$(tmux list-windows -t "$SESSION_NAME" -F '#{window_name}' 2>/dev/null || true)
-  for aname in "${AGENT_NAMES[@]}"; do
-    if printf '%s\n' "$live_windows" | grep -qxF "$aname"; then
-      alive=$((alive + 1))
-    fi
-  done
-
-  if [ "$alive" -eq 0 ]; then
-    if [ -f "$TASK_QUEUE" ] && [ -s "$TASK_QUEUE" ]; then
-      local tmp_global
-      tmp_global=$(mktemp)
-      while IFS= read -r line; do
-        if ! [[ "$line" =~ ^[a-zA-Z0-9_-]+:\ .+ ]]; then
-          printf '%s\n' "$line" >> "$backlog_file"
-          moved=$((moved + 1))
-        else
-          printf '%s\n' "$line" >> "$tmp_global"
-        fi
-      done < "$TASK_QUEUE"
-      mv "$tmp_global" "$TASK_QUEUE"
-    fi
-  fi
-
-  log "[$(date +%Y-%m-%dT%H:%M:%SZ)] BACKLOG: moved ${moved} task(s) for '${window_name}' to tasks.backlog.txt"
 }
 
 pop_task() {
   local agent_name="$1"
-  LAST_QUEUE_KIND=""
-  LAST_QUEUE_REMAINING=""
-  POPPED_TASK=""
-  debug "pop_task: checking queue for agent '$agent_name' (queue=$TASK_QUEUE)"
-  if [ ! -f "$TASK_QUEUE" ]; then
-    debug "pop_task: queue file does not exist"
-    return 1
-  fi
-  if [ ! -s "$TASK_QUEUE" ]; then
-    debug "pop_task: queue file is empty"
-    return 1
-  fi
-  debug "pop_task: queue has $(wc -l < "$TASK_QUEUE" | tr -d ' ') line(s)"
-
-  local match_line=""
-  local match_cmd=""
-  local match_kind=""
-
-  # Priority 1: lines prefixed with this agent's name
-  local line_num=0
-  while IFS= read -r line; do
-    line_num=$((line_num + 1))
-    if [[ "$line" =~ ^${agent_name}:\ (.+) ]]; then
-      match_line="$line_num"
-      match_cmd="${BASH_REMATCH[1]}"
-      match_kind="scoped"
-      break
-    fi
-  done < "$TASK_QUEUE"
-
-  # Priority 2: global/unscoped lines (no colon-space prefix pattern)
-  if [ -z "$match_line" ]; then
-    line_num=0
-    while IFS= read -r line; do
-      line_num=$((line_num + 1))
-      if ! [[ "$line" =~ ^[a-zA-Z0-9_-]+:\ .+ ]]; then
-        match_line="$line_num"
-        match_cmd="$line"
-        match_kind="global"
-        break
-      fi
-    done < "$TASK_QUEUE"
-  fi
-
-  if [ -z "$match_line" ]; then
-    debug "pop_task: no scoped or global match for '$agent_name'"
-    return 1
-  fi
-
-  debug "pop_task: matched $match_kind line $match_line -> '$match_cmd'"
-  LAST_QUEUE_KIND="$match_kind"
-  POPPED_TASK="$match_cmd"
-  sed -i.bak "${match_line}d" "$TASK_QUEUE" && rm -f "${TASK_QUEUE}.bak"
-  debug "pop_task: removed line $match_line from queue"
-  # Count remaining lines after removal
-  if [ -f "$TASK_QUEUE" ]; then
-    LAST_QUEUE_REMAINING=$(wc -l < "$TASK_QUEUE" | tr -d ' ')
-  else
-    LAST_QUEUE_REMAINING=0
-  fi
-  return 0
+  pop_task_sql "$agent_name"  # sets POPPED_TASK, LAST_QUEUE_KIND, LAST_QUEUE_REMAINING
 }
 
 # True for plain shell process names (what a pane shows after its agent exits)
@@ -426,7 +317,7 @@ print(json.dumps(data, separators=(',', ':')))
 log "Monitor started. Watching ${#AGENT_NAMES[@]} agents. Poll interval: ${POLL_INTERVAL}s"
 log "Idle pattern: $IDLE_PATTERN"
 log "Usage check: $USAGE_CHECK_CMD"
-log "Task queue: $TASK_QUEUE"
+log "Task queue: $CONDUCTOR_DB"
 if [ "${DEBUG:-0}" != "0" ]; then
   log "DEBUG logging enabled (DEBUG=${DEBUG})"
 fi
@@ -434,6 +325,11 @@ fi
 ITER=0
 while true; do
   ITER=$((ITER + 1))
+  # Reload agents/bg-processes from SQLite each tick so dashboard-spawned
+  # additions are picked up without restarting the monitor. Both reset their
+  # name arrays (AGENT_NAMES/BG_NAMES) on each call, so this is idempotent.
+  load_agents
+  load_bg
   debug "loop: iteration $ITER starting (agents=${#AGENT_NAMES[@]})"
   # Check for manual stop signal
   if [ -f "$PAUSED_FILE" ]; then

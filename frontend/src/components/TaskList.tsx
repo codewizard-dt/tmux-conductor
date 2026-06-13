@@ -14,14 +14,16 @@ import {
   arrayMove,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { API_BASE } from '../lib/api';
+import { deleteTask, reorderTasks, jumpTaskToHead, type Task } from '../lib/api';
 
 interface SortableItemProps {
   id: string;
   text: string;
+  onDelete: () => void;
+  onJumpHead: () => void;
 }
 
-function SortableItem({ id, text }: SortableItemProps) {
+function SortableItem({ id, text, onDelete, onJumpHead }: SortableItemProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id });
 
@@ -38,55 +40,88 @@ function SortableItem({ id, text }: SortableItemProps) {
         {...listeners}
       >⠿</span>
       <span className="flex-1 font-mono text-[11px] text-ink-2">{text}</span>
+      <button
+        type="button"
+        onClick={onJumpHead}
+        title="Move to front of queue"
+        aria-label={`Move to front of queue: ${text}`}
+        className="flex h-4 flex-shrink-0 cursor-pointer items-center justify-center rounded-[4px] px-1 text-[10px] leading-none text-muted-2 transition hover:bg-accent/10 hover:text-accent"
+      >↑ head</button>
+      <button
+        type="button"
+        onClick={onDelete}
+        title="Remove task"
+        aria-label={`Remove task: ${text}`}
+        className="flex h-4 w-4 flex-shrink-0 cursor-pointer items-center justify-center rounded-[4px] text-[13px] leading-none text-muted-2 transition hover:bg-accent-red/10 hover:text-accent-red"
+      >×</button>
     </li>
   );
 }
 
 export interface TaskListProps {
   agentName: string;
-  tasks: string[];
-  onReorder: (newTasks: string[]) => void;
+  tasks: Task[];
+  onReorder: (newTasks: Task[]) => void;
 }
 
-interface ApiErrorBody {
-  error?: string;
-}
 
-export default function TaskList({ agentName, tasks, onReorder }: TaskListProps) {
+
+export default function TaskList({ tasks, onReorder }: TaskListProps) {
   const [error, setError] = React.useState<string | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
   );
 
-  const ids = tasks.map((_, i) => String(i));
-
+  const ids = tasks.map((task) => String(task.id));
   async function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
 
-    const oldIndex = Number(active.id);
-    const newIndex = Number(over.id);
+    const oldIndex = tasks.findIndex((t) => String(t.id) === String(active.id));
+    const newIndex = tasks.findIndex((t) => String(t.id) === String(over.id));
+    if (oldIndex === -1 || newIndex === -1) return;
+
+    const original = tasks;
     const newTasks = arrayMove(tasks, oldIndex, newIndex);
-    const newOrder = arrayMove(tasks.map((_, i) => i), oldIndex, newIndex);
 
     onReorder(newTasks);
     setError(null);
 
     try {
-      const res = await fetch(`${API_BASE}/queue/${encodeURIComponent(agentName)}/reorder`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ order: newOrder }),
-      });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({})) as ApiErrorBody;
-        throw new Error(body.error ?? `HTTP ${res.status.toString()}`);
-      }
+      await reorderTasks(newTasks.map((t) => t.id));
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Unknown error';
       setError(`Reorder failed: ${msg}`);
-      onReorder(tasks);
+      onReorder(original);
+    }
+  }
+
+  async function handleDelete(task: Task) {
+    const original = tasks;
+    onReorder(tasks.filter((t) => t.id !== task.id));
+    setError(null);
+
+    try {
+      await deleteTask(task.id);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Unknown error';
+      setError(`Delete failed: ${msg}`);
+      onReorder(original);
+    }
+  }
+
+  async function handleJumpHead(task: Task) {
+    const original = tasks;
+    onReorder([task, ...tasks.filter((t) => t.id !== task.id)]);
+    setError(null);
+
+    try {
+      await jumpTaskToHead(task.id);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Unknown error';
+      setError(`Move to front failed: ${msg}`);
+      onReorder(original);
     }
   }
 
@@ -100,8 +135,14 @@ export default function TaskList({ agentName, tasks, onReorder }: TaskListProps)
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={(e) => { void handleDragEnd(e); }}>
         <SortableContext items={ids} strategy={verticalListSortingStrategy}>
           <ul className="m-0 list-none p-0">
-            {tasks.map((task, i) => (
-              <SortableItem key={i} id={String(i)} text={task} />
+            {tasks.map((task) => (
+              <SortableItem
+                key={task.id}
+                id={String(task.id)}
+                text={task.command}
+                onDelete={() => { void handleDelete(task); }}
+                onJumpHead={() => { void handleJumpHead(task); }}
+              />
             ))}
           </ul>
         </SortableContext>

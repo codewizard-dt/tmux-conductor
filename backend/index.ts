@@ -5,9 +5,10 @@ import { fileURLToPath } from 'url';
 import Fastify, { type FastifyReply } from 'fastify';
 import fastifyCors from '@fastify/cors';
 import fastifyStatic from '@fastify/static';
-import { readConductorConf, DEFAULT_CONF_PATH } from './config.ts';
-import { openDb, getDbPath, listAgents, createAgent, deleteAgent, listBgProcesses, createBgProcess, deleteBgProcess, addTask, deleteTask, reorderTasks, jumpTaskToHead, listTasksForAgent, listProjects, createProject, updateProject, deleteProject, nextAgentName, listSchedules, createSchedule, updateSchedule, deleteSchedule, dueSchedules, fireSchedule } from './db.ts';
+import { readConductorConf, DEFAULT_CONF_PATH, appendBgProcessToConf, removeBgProcessFromConf, removeBgLink, addBgLink, clearConfCache } from './config.ts';
+import { openDb, getDbPath, listAgents, createAgent, deleteAgent, addTask, deleteTask, reorderTasks, jumpTaskToHead, listTasksForAgent, listProjects, createProject, updateProject, deleteProject, nextAgentName, listSchedules, createSchedule, updateSchedule, deleteSchedule, dueSchedules, fireSchedule } from './db.ts';
 import { detectAgentStatus, detectAgentMode, countQueuedTasks, isTmuxWindowPresent, readQueue, writeQueue, getAgentLines, getActiveTask, capturePaneTail, capturePaneTailRaw, sendTextToPane, type AgentMode } from './state.ts';
+import { getAgentContext, type AgentContext } from './context.ts';
 import dotenv from 'dotenv';
 import { getUserSkills, getPluginSkills, getProjectSkills } from './skills.ts';
 
@@ -106,6 +107,9 @@ function healMonitorWindow(sessionName: string): boolean {
 let sessionStartInFlight = false;
 let lastMonitorHealAttempt = 0;
 const MONITOR_HEAL_COOLDOWN_MS = 30_000;
+const TAIL_POLL_MS = 2000;
+const TAIL_POLL_FOCUS_MS = 200;
+const TAIL_LINES = 100;
 
 // ── Background-process status (shared by /status and the poll loop) ──────────
 
@@ -191,6 +195,8 @@ await fastify.register((api) => {
       // (full 15) detection.
       const tail15 = windowPresent ? capturePaneTail(sessionName, agent.name, 15) : '';
       const state = detectAgentStatus(conf, agent.name, tail15 || undefined);
+      const isBusy = state === 'busy' || state === 'awaiting' || state === 'stalled';
+      const ctx = getAgentContext(agent.name, agent.workdir, conf.stateDir, conf.contextWindow, isBusy);
       return {
         name: agent.name,
         state,
@@ -201,6 +207,7 @@ await fastify.register((api) => {
         workdir: agent.workdir,
         linkedBg: agentBgLinks[agent.name] ?? null,
         activeTask: getActiveTask(conf, agent.name, state),
+        ...ctx,
       };
     });
 
@@ -798,6 +805,23 @@ await fastify.register((api) => {
     return reply.send({ agent: name, lines, windowPresent: true, text });
   });
 
+  // Focus registration: modal/detail views POST on open, DELETE on close.
+  // The fast tail-poll loop (200 ms) only runs for focused agents; the slow
+  // loop (2 s) skips them, so overall capture-pane load stays constant.
+  api.post<{ Params: { agent: string } }>('/agents/:agent/focus', (req, reply) => {
+    const { agent: name } = req.params;
+    focusedAgents.add(name);
+    prevTailMapFocus.delete(name); // force immediate push on first fast tick
+    return reply.status(204).send();
+  });
+
+  api.delete<{ Params: { agent: string } }>('/agents/:agent/focus', (req, reply) => {
+    const { agent: name } = req.params;
+    focusedAgents.delete(name);
+    prevTailMapFocus.delete(name);
+    return reply.status(204).send();
+  });
+
   api.get<{ Params: { agent: string } }>('/agents/:agent/skills', async (req, reply) => {
     const { agent: name } = req.params;
     const entry = listAgents(db).find((a) => a.name === name);
@@ -839,11 +863,20 @@ await fastify.register((api) => {
     if (isTmuxWindowPresent(sessionName, name)) {
       return reply.status(409).send({ error: 'window already exists' });
     }
+    if (conf.bgProcesses.some((b) => b.name === name)) {
+      return reply.status(409).send({ error: `bg process '${name}' already defined` });
+    }
+    if (linkedAgent !== undefined && typeof linkedAgent !== 'string') {
+      return reply.status(400).send({ error: 'linkedAgent must be a string' });
+    }
 
-    const linkedAgentId = linkedAgent && typeof linkedAgent === 'string'
-      ? listAgents(db).find((a) => a.name === linkedAgent)?.id
-      : undefined;
-    createBgProcess(db, { name, workdir, launchCmd, ...(linkedAgentId !== undefined ? { linkedAgentId } : {}) });
+    // conductor.conf is authoritative for bg processes (what conductor.sh spawns
+    // and teardown.sh kills) — write the definition there, not the DB.
+    await appendBgProcessToConf(conf._confPath, name, workdir, launchCmd);
+    if (linkedAgent) {
+      await addBgLink(conf._confPath, linkedAgent, name);
+    }
+    clearConfCache();
 
     execSync(`tmux new-window -t ${sessionName} -n ${name} -c ${workdir}`);
     execSync(`tmux send-keys -t ${sessionName}:${name} "${launchCmd}" Enter`);
@@ -855,10 +888,9 @@ await fastify.register((api) => {
   api.delete<{ Params: { name: string } }>('/bg-processes/:name', async (req, reply) => {
     const { name } = req.params;
     const conf = readConductorConf();
-    const { sessionName, stateDir } = conf;
+    const { sessionName, stateDir, agentBgLinks } = conf;
 
-    const bgList = listBgProcesses(db);
-    const entry = bgList.find((b) => b.name === name);
+    const entry = conf.bgProcesses.find((b) => b.name === name);
     if (!entry) {
       return reply.status(404).send({ error: `bg process '${name}' not found` });
     }
@@ -867,7 +899,15 @@ await fastify.register((api) => {
       execSync(`tmux kill-window -t ${sessionName}:${name}`);
     }
 
-    deleteBgProcess(db, entry.id);
+    // Remove the definition from conductor.conf (the authoritative source) plus
+    // any owning agent link, so conductor.sh won't respawn it and the next poll
+    // snapshot drops the row via the bg-removed SSE event.
+    await removeBgProcessFromConf(conf._confPath, name);
+    const owningAgent = Object.entries(agentBgLinks).find(([, v]) => v === name)?.[0];
+    if (owningAgent) {
+      await removeBgLink(conf._confPath, owningAgent);
+    }
+    clearConfCache();
 
     try { unlinkSync(path.join(stateDir, `bg-${name}.state`)); } catch { /* fine */ }
 
@@ -882,7 +922,7 @@ await fastify.register((api) => {
     const conf = readConductorConf();
     const { sessionName, logDir } = conf;
 
-    const entry = listBgProcesses(db).find((b) => b.name === name);
+    const entry = conf.bgProcesses.find((b) => b.name === name);
     if (!entry) {
       return reply.status(404).send({ error: `bg process '${name}' not found` });
     }
@@ -899,6 +939,32 @@ await fastify.register((api) => {
     execSync(`tmux pipe-pane -t ${sessionName}:${name} -o "cat >> '${logDir}/bg-${name}.log'"`);
 
     return reply.status(201).send({ ok: true, bg: { name, workdir: entry.workdir, launchCmd: entry.launchCmd } });
+  });
+
+  // Close a bg process's tmux window without removing its registration — the
+  // inverse of POST /bg-processes/:name/window, mirroring the agent variant
+  // DELETE /agents/:agent/window. The state file is removed so a stale
+  // alive/dead value doesn't linger until the next reopen.
+  api.delete<{ Params: { name: string } }>('/bg-processes/:name/window', (req, reply) => {
+    const { name } = req.params;
+    const conf = readConductorConf();
+    const { sessionName, stateDir } = conf;
+
+    const entry = conf.bgProcesses.find((b) => b.name === name);
+    if (!entry) {
+      return reply.status(404).send({ error: `bg process '${name}' not found` });
+    }
+    if (!isTmuxWindowPresent(sessionName, name)) {
+      return reply.status(409).send({ error: 'bg window not present' });
+    }
+
+    const r = spawnSync('tmux', ['kill-window', '-t', `${sessionName}:${name}`], { encoding: 'utf8' });
+    if (r.status !== 0) {
+      return reply.status(500).send({ error: 'tmux kill-window failed', stderr: r.stderr });
+    }
+    try { unlinkSync(path.join(stateDir, `bg-${name}.state`)); } catch { /* no state file — fine */ }
+
+    return reply.send({ ok: true, closed: name });
   });
 
   // Resolve the nearest git root for a given path. Used by the frontend to
@@ -1138,11 +1204,14 @@ await fastify.register((api) => {
 interface Snapshot {
   sessionAlive: boolean;
   sessionExists: boolean;
-  agents: Array<{ name: string; state: string; mode: AgentMode; windowPresent: boolean; queuedTasks: number; launchCmd: string; workdir: string; activeTask: string | null }>;
+  agents: Array<{ name: string; state: string; mode: AgentMode; windowPresent: boolean; queuedTasks: number; launchCmd: string; workdir: string; activeTask: string | null } & AgentContext>;
   bgProcesses: BgStatus[];
 }
 
 let prevSnapshot: Snapshot | null = null;
+const prevTailMap = new Map<string, string>();
+const prevTailMapFocus = new Map<string, string>();
+const focusedAgents = new Set<string>();
 
 function buildSnapshot(): Snapshot {
   const conf = readConductorConf();
@@ -1155,6 +1224,8 @@ function buildSnapshot(): Snapshot {
     // One capture-pane per agent per tick, shared by status and mode detection.
     const tail15 = windowPresent ? capturePaneTail(sessionName, agent.name, 15) : '';
     const state = detectAgentStatus(conf, agent.name, tail15 || undefined);
+    const isBusy = state === 'busy' || state === 'awaiting' || state === 'stalled';
+    const ctx = getAgentContext(agent.name, agent.workdir, conf.stateDir, conf.contextWindow, isBusy);
     return {
       name: agent.name,
       state,
@@ -1164,6 +1235,7 @@ function buildSnapshot(): Snapshot {
       launchCmd: agent.launchCmd,
       workdir: agent.workdir,
       activeTask: getActiveTask(conf, agent.name, state),
+      ...ctx,
     };
   });
   return { sessionAlive, sessionExists, agents: agentStatuses, bgProcesses: buildBgStatuses(conf) };
@@ -1207,7 +1279,9 @@ function pollAndDiff() {
       prev.mode !== agent.mode ||
       prev.queuedTasks !== agent.queuedTasks ||
       prev.windowPresent !== agent.windowPresent ||
-      prev.activeTask !== agent.activeTask
+      prev.activeTask !== agent.activeTask ||
+      prev.modelId !== agent.modelId ||
+      prev.contextPct !== agent.contextPct
     ) {
       broadcastSSE('agent-update', {
         name: agent.name,
@@ -1218,6 +1292,11 @@ function pollAndDiff() {
         launchCmd: agent.launchCmd,
         workdir: agent.workdir,
         activeTask: agent.activeTask,
+        model: agent.model,
+        modelId: agent.modelId,
+        contextTokens: agent.contextTokens,
+        contextPct: agent.contextPct,
+        contextLimit: agent.contextLimit,
       });
     }
   }
@@ -1244,6 +1323,39 @@ function pollAndDiff() {
   prevSnapshot = current;
 }
 
+function tailPollLoop() {
+  try {
+    const conf = readConductorConf();
+    const agents = listAgents(db).filter(
+      (a) => !focusedAgents.has(a.name) && isTmuxWindowPresent(conf.sessionName, a.name),
+    );
+    for (const a of agents) {
+      const text = capturePaneTailRaw(conf.sessionName, a.name, TAIL_LINES);
+      if (prevTailMap.get(a.name) !== text) {
+        broadcastSSE('terminal-output', { agent: a.name, text, lines: TAIL_LINES });
+        prevTailMap.set(a.name, text);
+      }
+    }
+  } catch { /* tail poll is best-effort */ }
+}
+
+function tailPollLoopFocus() {
+  if (focusedAgents.size === 0) return;
+  try {
+    const conf = readConductorConf();
+    const agents = listAgents(db).filter(
+      (a) => focusedAgents.has(a.name) && isTmuxWindowPresent(conf.sessionName, a.name),
+    );
+    for (const a of agents) {
+      const text = capturePaneTailRaw(conf.sessionName, a.name, TAIL_LINES);
+      if (prevTailMapFocus.get(a.name) !== text) {
+        broadcastSSE('terminal-output-focus', { agent: a.name, text, lines: TAIL_LINES });
+        prevTailMapFocus.set(a.name, text);
+      }
+    }
+  } catch { /* tail poll is best-effort */ }
+}
+
 // ── Static UI (prod only — ui/dist is absent in dev) ─────────────────────────
 
 const uiDist = path.join(path.dirname(fileURLToPath(import.meta.url)), 'ui', 'dist');
@@ -1261,6 +1373,9 @@ try {
   console.log(`Dashboard server listening on http://${host}:${String(port)}`);
 
   const pollInterval = setInterval(pollAndDiff, 2000);
+
+  setInterval(tailPollLoop, TAIL_POLL_MS);
+  setInterval(tailPollLoopFocus, TAIL_POLL_FOCUS_MS);
 
   const schedulerInterval = setInterval(() => {
     const now = Math.floor(Date.now() / 1000);

@@ -1,0 +1,23 @@
+# systemd user-unit TEMPLATE for the tmux-conductor daemon.
+# This is a pre-render template (.in): the installer (TASK-020) substitutes the
+# placeholders __REPO_ROOT__, __LOG_PATH__, and __NODE_PATH__ before installing it
+# under ~/.config/systemd/user/ and enabling it via `systemctl --user enable --now`.
+# NOTE: for the unit to run without an active login session, lingering must be
+# enabled (`loginctl enable-linger <user>`). The install flow performs that step,
+# not this file.
+
+[Unit]
+Description=tmux-conductor daemon
+After=network.target
+
+[Service]
+WorkingDirectory=__REPO_ROOT__
+ExecStart=__REPO_ROOT__/daemon/node_modules/.bin/tsx __REPO_ROOT__/daemon/index.ts
+Environment=PATH=__NODE_PATH__:/usr/local/bin:/usr/bin:/bin
+StandardOutput=append:__LOG_PATH__
+StandardError=append:__LOG_PATH__
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=default.target

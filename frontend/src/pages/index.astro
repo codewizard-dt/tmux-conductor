@@ -2,6 +2,9 @@
 import AddAgentForm from '../components/AddAgentForm.tsx'
 import AddBgProcessForm from '../components/AddBgProcessForm.tsx'
 import AgentList from '../components/AgentList.tsx'
+import AddProjectForm from '../components/AddProjectForm.tsx'
+import ProjectList from '../components/ProjectList.tsx'
+import ScheduleList from '../components/ScheduleList.tsx'
 ---
 <!DOCTYPE html>
 <html lang="en">
@@ -12,7 +15,10 @@ import AgentList from '../components/AgentList.tsx'
   </head>
   <body>
     <AddAgentForm client:load />
+    <AddProjectForm client:load />
+    <ProjectList client:load />
     <AddBgProcessForm client:load />
     <AgentList client:load />
+    <ScheduleList client:load />
   </body>
 </html>

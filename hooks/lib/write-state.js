@@ -32,14 +32,16 @@ function writeState(value, event) {
     }
   }
 
-  // Drain stdin non-blockingly so the Claude Code JSON payload is consumed.
+  // Read the Claude Code JSON payload from stdin synchronously. This both
+  // consumes it (so the caller doesn't backpressure / SIGPIPE) and lets us
+  // extract transcript_path / model / session_id for the dashboard's context
+  // meter. fd 0 is a pipe in hook context, so readFileSync blocks until EOF.
+  let payload = null;
   try {
-    process.stdin.on('data', () => {});
-    process.stdin.on('end', () => {});
-    process.stdin.on('error', () => {});
-    process.stdin.resume();
+    const raw = fs.readFileSync(0, 'utf8');
+    if (raw && raw.trim()) payload = JSON.parse(raw);
   } catch (_err) {
-    // ignore
+    // no stdin, or not JSON — payload stays null
   }
 
   if (!AGENT_NAME) {
@@ -81,6 +83,29 @@ function writeState(value, event) {
     fs.appendFileSync(path.join(LOG_DIR, 'hooks.jsonl'), record + '\n');
   } catch (_err) {
     // swallow — logging must never crash the agent
+  }
+
+  // Persist transcript_path / model / session_id so the dashboard backend can
+  // locate this agent's transcript and read live model + context usage. Merge
+  // with any prior sidecar: only SessionStart carries `model`, so events that
+  // lack it must keep the last captured value while refreshing transcript_path.
+  if (payload) {
+    try {
+      const metaFile = path.join(STATE_DIR, AGENT_NAME + '.meta.json');
+      let meta = {};
+      try {
+        meta = JSON.parse(fs.readFileSync(metaFile, 'utf8'));
+      } catch (_err) {
+        meta = {};
+      }
+      if (payload.transcript_path) meta.transcript_path = payload.transcript_path;
+      if (payload.session_id) meta.session_id = payload.session_id;
+      if (payload.model) meta.model = payload.model;
+      meta.ts = new Date().toISOString();
+      fs.writeFileSync(metaFile, JSON.stringify(meta) + '\n');
+    } catch (_err) {
+      // best-effort — never break the agent
+    }
   }
 
   process.exit(0);
