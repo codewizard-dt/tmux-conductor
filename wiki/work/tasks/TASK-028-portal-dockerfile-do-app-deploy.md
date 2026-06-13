@@ -1,15 +1,23 @@
 ---
 id: TASK-028
 title: "Dockerfile.portal + deploy/do-app.yaml (DO App Platform spec); document the manual DO deploy + Google OAuth client setup"
-status: todo
+status: superseded
 created: 2026-06-12
-updated: 2026-06-12
+updated: 2026-06-13
 depends_on: [TASK-027]
 blocks: []
 parallel_safe_with: []
 uat: ""
 tags: [portal, deploy, docker, digitalocean, oauth, roadmap-002]
 ---
+
+<!--
+SUPERSEDED (2026-06-13): The `simplify-architecture` branch replaced `portal/` with `app/api/`,
+deleted `Dockerfile.portal` entirely, and created `deploy/app.yaml` (App Platform spec for the new
+`app/api` + `app/frontend` monorepo structure with better-auth). The original objectives of this
+task (Dockerfile.portal + deploy/do-app.yaml for a standalone portal service) no longer apply.
+See `deploy/app.yaml` and `app/api/Dockerfile` for what replaced them.
+-->
 
 <!--
 NOTE: Requested as TASK-026 with slug portal-dockerfile-do-app-deploy and dependency TASK-023.

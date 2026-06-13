@@ -1,0 +1,63 @@
+# DigitalOcean App Platform spec. Deploy: doctl apps create --spec deploy/app.yaml
+# (or doctl apps update <app-id> --spec deploy/app.yaml). Replace OWNER below.
+name: tmux-conductor
+region: nyc
+services:
+  - name: api
+    github:
+      repo: codewizard-dt/tmux-conductor
+      branch: main
+      deploy_on_push: true
+    source_dir: /
+    dockerfile_path: app/api/Dockerfile
+    http_port: 8080
+    health_check:
+      http_path: /healthz
+    envs:
+      - key: DATABASE_URL
+        scope: RUN_TIME
+        type: SECRET
+      - key: BETTER_AUTH_SECRET
+        scope: RUN_TIME
+        type: SECRET
+      - key: GOOGLE_CLIENT_ID
+        scope: RUN_TIME
+        value: ""
+      - key: GOOGLE_CLIENT_SECRET
+        scope: RUN_TIME
+        type: SECRET
+      - key: PUBLIC_BASE_URL
+        scope: RUN_TIME
+        value: ${APP_URL}
+static_sites:
+  - name: frontend
+    github:
+      repo: codewizard-dt/tmux-conductor
+      branch: main
+      deploy_on_push: true
+    source_dir: app/frontend
+    build_command: npm ci && npm run build
+    output_dir: dist
+    envs:
+      - key: PUBLIC_API_URL
+        scope: BUILD_TIME
+        value: ${api.PUBLIC_URL}
+databases:
+  - name: db
+    engine: PG
+    production: false
+# Ingress: frontend owns "/", the api is mounted under "/api" so the two
+# components don't collide on the same path prefix. NOTE: no `rewrite` — the
+# "/api" prefix is preserved so it reaches app/api's own "/api/auth/*" routes.
+ingress:
+  rules:
+    - match:
+        path:
+          prefix: /api
+      component:
+        name: api
+    - match:
+        path:
+          prefix: /
+      component:
+        name: frontend

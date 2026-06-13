@@ -1,15 +1,22 @@
 ---
 id: TASK-029
 title: "Postgres migration 001 — users, devices (hashed tokens), pairing_codes"
-status: todo
+status: superseded
 created: 2026-06-12
-updated: 2026-06-12
+updated: 2026-06-13
 depends_on: [TASK-027]
 blocks: [TASK-030]
 parallel_safe_with: []
 uat: ""
 tags: [portal, postgres, migration, schema, auth, roadmap-002]
 ---
+
+<!-- SUPERSEDED (2026-06-13): The `simplify-architecture` branch replaced hand-rolled Google OIDC auth
+with better-auth. The planned `users`/`devices`/`pairing_codes` schema was replaced by better-auth's
+own schema (`user`, `session`, `account`, `verification` tables), generated and applied via
+`@better-auth/cli migrate` against the managed Postgres cluster `tmux-conductor-db` (nyc3). The
+`app/api/migrate.ts` runner (formerly portal/migrate.ts) remains for future app-specific migrations
+but has no SQL files yet. -->
 
 # TASK-029 — Postgres migration 001 — users, devices (hashed tokens), pairing_codes
 

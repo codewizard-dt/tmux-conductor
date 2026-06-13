@@ -1,0 +1,13 @@
+[Unit]
+Description=tmux-conductor host-server
+After=network.target
+
+[Service]
+WorkingDirectory=/opt/tmux-conductor/host-server
+EnvironmentFile=/opt/tmux-conductor/.env
+ExecStart=/usr/bin/npm start
+Restart=on-failure
+User=conductor
+
+[Install]
+WantedBy=multi-user.target

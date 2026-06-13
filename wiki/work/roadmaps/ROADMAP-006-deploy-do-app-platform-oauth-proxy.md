@@ -3,7 +3,7 @@ id: ROADMAP-006
 title: Deploy Dashboard to DO App Platform with oauth2-proxy
 status: done
 created: 2026-06-06
-updated: 2026-06-12
+updated: 2026-06-13
 owner: David Taylor
 linked_requirements: []
 linked_decisions: []
@@ -16,9 +16,15 @@ tags: [infra, auth, deploy]
 
 ## Superseded
 
-The oauth2-proxy sidecar approach was superseded by the first-party Google OIDC implementation in [ROADMAP-002](ROADMAP-002-hosted-portal-oauth-relay-installer.md) Phase 2. ROADMAP-002 integrates authentication directly into the portal Fastify server using Google OIDC + JWT session cookies, which fits the broader hosted-portal architecture and removes the sidecar dependency.
+The oauth2-proxy sidecar approach was superseded **twice**: first by a first-party Google OIDC implementation, then by **better-auth** (email/password + optional Google) as part of the 2026-06-13 `simplify-architecture` work. Authentication now lives in `app/api` (the renamed/merged portal) mounted at `/api/auth/*`, on managed Postgres — no sidecar, no hand-rolled OIDC. See [ROADMAP-002](ROADMAP-002-hosted-portal-oauth-relay-installer.md) Phase 2.
 
-**Phase 1 artefacts** (the `npx bootstrap deployment .` run) remain in the repo: `Dockerfile.prod`, `docker-compose.yml`, `.github/workflows/build.yml`, `.github/workflows/security.yml`, `Makefile` CI targets. These are still useful scaffolding for ROADMAP-002's deployment phase.
+**The deploy model also changed.** This roadmap assumed a GHCR pre-built image deployed to App Platform with an oauth2-proxy sidecar, automated by `.github/workflows/build.yml`. That is no longer the approach:
+
+- **Deleted** in `simplify-architecture`: `Dockerfile.prod`, `docker-compose.yml`, `docker-compose.build.yml`, `.github/workflows/build.yml`, `.github/workflows/base-image.yml`. The Phase 1 bootstrap artefacts this roadmap created **no longer exist** — they are NOT useful scaffolding anymore.
+- **Current deploy:** App Platform **native build** (push-to-deploy) via `deploy/app.yaml` — no GHCR/DOCR image, no self-hosted runner. The `host-server` (conductor API, formerly `backend/`) is **never** deployed to App Platform; it runs natively on a VPS via `make deploy` + systemd (`deploy/host-server.service`).
+- **Surviving CI:** `.github/workflows/security.yml` (CodeQL + gitleaks) and the new `.github/workflows/ci.yml` (typecheck + lint).
+
+This roadmap is retained for historical context only; all of its remaining `[ ]` items are obsolete.
 
 ## Goal
 
@@ -59,8 +65,8 @@ The dashboard Fastify server is running on DO App Platform behind Google OAuth. 
 
 ## Notes
 
-Phase 1 was pre-checked — bootstrap ran before this roadmap was created. Resulting artefacts (Dockerfile.prod, docker-compose.yml, .github/workflows/) are still in the repo and remain useful for ROADMAP-002 Phase 2 deployment.
-oauth2-proxy approach was chosen over in-app auth middleware: battle-tested, no Fastify code changes needed. Superseded before Phase 2 work began.
+Phase 1 was pre-checked — bootstrap ran before this roadmap was created. Its artefacts (Dockerfile.prod, docker-compose.yml, .github/workflows/build.yml) were **deleted** in the 2026-06-13 `simplify-architecture` cleanup; see the Superseded section. Deployment now uses `deploy/app.yaml` (App Platform native build).
+oauth2-proxy approach was chosen over in-app auth middleware: battle-tested, no Fastify code changes needed. Superseded before Phase 2 work began — ultimately replaced by in-app **better-auth**, the opposite of the original rationale.
 
 ## Migration Note
 

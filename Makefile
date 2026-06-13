@@ -1,67 +1,75 @@
 -include .env
 export
 
-GHCR_REPO   = ghcr.io/codewizard-dt/tmux-conductor
-DROPLET_IP ?=
-PROJECT     = tmux-conductor
-GITHUB_USER ?= $(shell gh api user --jq .login 2>/dev/null)
+PROJECT       = tmux-conductor
+DROPLET_IP   ?=
+GITHUB_USER  ?= $(shell gh api user --jq .login 2>/dev/null)
 BACKEND_PORT ?= 8788
+API_PORT     ?= 8080
 FRONTEND_PORT ?= 4321
 
-.PHONY: ports ps up dev dev-build push deploy deploy-pull ssh-alias login down typecheck-backend typecheck-frontend typecheck lint-backend lint-frontend lint
+.PHONY: dev docker-app docker-app-down deploy deploy-app ports ssh-alias \
+	typecheck typecheck-host typecheck-api typecheck-frontend \
+	lint lint-host lint-api lint-frontend
+
+## dev — run all three services natively & concurrently
+dev:
+	(cd host-server && npm run dev) & (cd app/api && npm run dev) & (cd app/frontend && npm run dev)
+
+## docker-app — run app/api + app/frontend locally via Docker Compose
+docker-app:
+	cd app && docker compose up --build
+
+## docker-app-down — stop the local app Docker Compose stack
+docker-app-down:
+	cd app && docker compose down
+
+## deploy — update the native host-server on the VPS
+## One-time setup: install deploy/host-server.service as
+##   /etc/systemd/system/tmux-conductor-host-server.service
+deploy:
+	ssh $(PROJECT) "cd /opt/$(PROJECT) && git pull && cd host-server && npm ci && sudo systemctl restart tmux-conductor-host-server"
+
+## deploy-app — force an App Platform redeploy of app/api + app/frontend
+## Push-to-deploy (deploy_on_push) usually handles this automatically.
+deploy-app:
+	doctl apps update $$(doctl apps list --format ID,Spec.Name --no-header | awk '/tmux-conductor/{print $$1}') --spec deploy/app.yaml
 
 ## ports — print service URLs
 ports:
-	@echo "Dashboard API: http://localhost:$${BACKEND_PORT}"
-	@echo "Dashboard UI:  http://localhost:$${FRONTEND_PORT} (dev) | http://localhost:$${BACKEND_PORT} (prod)"
+	@echo "host-server: http://localhost:$${BACKEND_PORT}"
+	@echo "app/api:     http://localhost:$${API_PORT}"
+	@echo "app/frontend: http://localhost:$${FRONTEND_PORT}"
 
-## login — authenticate Docker with GHCR (run once locally and once on the VPS)
-login:
-	gh auth token | docker login ghcr.io -u $(GITHUB_USER) --password-stdin
+## typecheck-host — run tsc --noEmit in host-server/
+typecheck-host:
+	cd host-server && npx tsc --noEmit
 
-## ps — show running container status
-ps:
-	docker compose ps
+## typecheck-api — run tsc --noEmit in app/api/
+typecheck-api:
+	cd app/api && npx tsc --noEmit
 
-## down — stop and remove containers
-down:
-	docker compose -f docker-compose.yml -f docker-compose.build.yml down
+## typecheck-frontend — run tsc --noEmit in app/frontend/
+typecheck-frontend:
+	cd app/frontend && npx tsc --noEmit
 
-## dev — build from source with hot-reload (Dockerfile.dev)
-# dev: down
-# 	docker compose -f docker-compose.build.yml up --wait
-dev:
-	(cd frontend && npm run dev) & (cd backend && npm run dev)
-	@echo "API:        http://localhost:$${BACKEND_PORT}"
-	@echo "UI (dev):   http://localhost:$${FRONTEND_PORT}"
+## typecheck — run tsc --noEmit in host-server, app/api, and app/frontend
+typecheck: typecheck-host typecheck-api typecheck-frontend
 
-dev-build: down
-	docker compose -f docker-compose.build.yml up --build --wait
-	@echo "API:        http://localhost:$${BACKEND_PORT}"
-	@echo "UI (dev):   http://localhost:$${FRONTEND_PORT}"
+## lint-host — run ESLint in host-server/
+lint-host:
+	cd host-server && npm run lint
 
-## up — pull latest GHCR images and start the production stack
-up:
-	docker compose pull && docker compose up -d --wait
+## lint-api — run ESLint in app/api/ (skips if no lint script)
+lint-api:
+	cd app/api && if npm run | grep -q '^  lint$$'; then npm run lint; else echo "app/api: no lint script, skipping"; fi
 
-## push — build linux/amd64 prod image and push to GHCR (bypasses CI)
-## Pass PUBLIC_API_URL if the API is not on the same origin as the UI
-push:
-	docker buildx build --platform linux/amd64 \
-		$(if $(PUBLIC_API_URL),--build-arg PUBLIC_API_URL=$(PUBLIC_API_URL),) \
-		-t $(GHCR_REPO)-dashboard:latest --push \
-		-f Dockerfile.prod \
-		.
+## lint-frontend — run ESLint in app/frontend/
+lint-frontend:
+	cd app/frontend && npm run lint
 
-## deploy — sync compose file, Makefile, and .env.production to VPS then restart
-deploy:
-	ssh $(PROJECT) "mkdir -p /opt/$(PROJECT)"
-	scp docker-compose.yml Makefile $(PROJECT):/opt/$(PROJECT)/
-	scp .env.production $(PROJECT):/opt/$(PROJECT)/.env
-	ssh $(PROJECT) "cd /opt/$(PROJECT) && make deploy-pull"
-
-## deploy-pull — pull images and restart; run directly on VPS after files are synced
-deploy-pull: up
+## lint — run ESLint across host-server, app/api, and app/frontend
+lint: lint-host lint-api lint-frontend
 
 ## ssh-alias — upsert ~/.ssh/config Host entry for the prod server (idempotent)
 ## Usage: make ssh-alias DROPLET_IP=1.2.3.4
@@ -75,28 +83,3 @@ ssh-alias:
 		printf "\nHost $(PROJECT)\n  HostName $(DROPLET_IP)\n  User root\n" >> ~/.ssh/config; \
 		echo "Added: Host $(PROJECT) -> $(DROPLET_IP)"; \
 	fi
-
-## typecheck-backend — run tsc --noEmit in backend/
-typecheck-backend:
-	cd backend && npx tsc --noEmit
-
-## typecheck-frontend — run tsc --noEmit in frontend/
-typecheck-frontend:
-	cd frontend && npx tsc --noEmit
-
-## typecheck — run tsc --noEmit in both backend/ and frontend/
-typecheck: typecheck-backend typecheck-frontend
-
-## lint-backend — run ESLint in backend/
-lint-backend:
-	cd backend && npm run lint
-
-## lint-frontend — run ESLint in frontend/
-lint-frontend:
-	cd frontend && npm run lint
-
-## lint — run ESLint in both backend/ and frontend/
-lint: lint-backend lint-frontend
-
-## strict-typecheck — run typecheck and lint in both backend/ and frontend/
-strict-typecheck: typecheck lint

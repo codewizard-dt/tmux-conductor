@@ -98,13 +98,13 @@ Out of scope (downstream tasks — note in code comments where relevant, do NOT 
 
 ## Acceptance Criteria
 
-- [ ] `portal/` exists with `package.json`, `tsconfig.json`, `env.ts`, `db.ts`, `migrate.ts`, `index.ts`, and `migrations/.gitkeep` — mirroring backend's ESM + Fastify 5 + tsx conventions.
-- [ ] `npx tsc --noEmit` passes with the strict tsconfig.
-- [ ] `GET /healthz` returns HTTP 200 `{ ok: true }` without touching the DB; server listens on `0.0.0.0:PORT` (default 8080).
-- [ ] Env validation hard-fails on missing `DATABASE_URL` (and on a present-but-<32-byte `SESSION_SECRET`), collecting all errors into one message; warns-and-continues when Google/session vars are absent.
-- [ ] `pg` Pool uses `ssl: { rejectUnauthorized: false }` with a TODO for prod CA pinning; `getPool()` is a memoised singleton and `query()` delegates to it.
-- [ ] `runMigrations()` acquires a `pg_advisory_lock`, ensures `schema_migrations`, applies ordered `NNN_*.sql` in transactions, tolerates zero files, and is idempotent on re-run.
-- [ ] No auth/relay/device/pairing/Docker/`001_init.sql` artifacts are created — all explicitly deferred to downstream tasks.
+- [x] `portal/` exists with `package.json`, `tsconfig.json`, `env.ts`, `db.ts`, `migrate.ts`, `index.ts`, and `migrations/.gitkeep` — mirroring backend's ESM + Fastify 5 + tsx conventions.
+- [x] `npx tsc --noEmit` passes with the strict tsconfig.
+- [x] `GET /healthz` returns HTTP 200 `{ ok: true }` without touching the DB; server listens on `0.0.0.0:PORT` (default 8080).
+- [x] Env validation hard-fails on missing `DATABASE_URL` (and on a present-but-<32-byte `SESSION_SECRET`), collecting all errors into one message; warns-and-continues when Google/session vars are absent.
+- [x] `pg` Pool uses `ssl: { rejectUnauthorized: false }` with a TODO for prod CA pinning; `getPool()` is a memoised singleton and `query()` delegates to it.
+- [x] `runMigrations()` acquires a `pg_advisory_lock`, ensures `schema_migrations`, applies ordered `NNN_*.sql` in transactions, tolerates zero files, and is idempotent on re-run.
+- [x] No auth/relay/device/pairing/Docker/`001_init.sql` artifacts are created — all explicitly deferred to downstream tasks.
 
 ## Dependencies
 

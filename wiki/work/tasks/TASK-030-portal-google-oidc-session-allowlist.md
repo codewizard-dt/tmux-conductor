@@ -1,15 +1,21 @@
 ---
 id: TASK-030
 title: "Portal Google OIDC sign-in, JWT session cookie, email allowlist, /api/me"
-status: todo
+status: superseded
 created: 2026-06-12
-updated: 2026-06-12
+updated: 2026-06-13
 depends_on: [TASK-027, TASK-029]
 blocks: []
 parallel_safe_with: []
 uat: ""
 tags: [portal, auth, oidc, google, session, jwt, allowlist, security]
 ---
+
+<!-- SUPERSEDED (2026-06-13): The `simplify-architecture` branch replaced the hand-rolled `openid-client`
++ `jose` OIDC implementation with `better-auth` (v1.6.16). better-auth provides email/password auth out
+of the box and optional Google OAuth via its `socialProviders.google` config. The old planned artifacts
+(`portal/auth/allowlist.ts`, `session.ts`, `oidc.ts`, `guards.ts`) were not built; better-auth manages
+sessions via its own `session` and `account` tables in Postgres. See `app/api/auth.ts`. -->
 
 # TASK-030 — Portal Google OIDC sign-in, JWT session cookie, email allowlist, /api/me
 

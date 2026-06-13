@@ -9,7 +9,7 @@ Lists **only active** roadmaps (`active`). When a roadmap completes (`done`), de
 
 Entry format: `- [ROADMAP-NNN — Title](ROADMAP-NNN-slug.md) — one-line summary · N/M items checked`
 
-- [ROADMAP-002 — Hosted portal with Google OAuth, device relay, and installer](ROADMAP-002-hosted-portal-oauth-relay-installer.md) — DO-hosted portal, outbound WS relay to local daemons, curl|bash installer · 7/21 items checked
+- [ROADMAP-002 — Hosted portal with Google OAuth, device relay, and installer](ROADMAP-002-hosted-portal-oauth-relay-installer.md) — DO-hosted `app/` (better-auth) + outbound WS relay to local host-server + curl|bash installer · 10/24 items checked
 - [ROADMAP-007 — Git workflow — worktree isolation, diff review, checkpoint & rollback](ROADMAP-007-git-workflow.md) — isolated git worktrees per agent, inline diff review, reversible dispatches · 0/13 items checked
 - [ROADMAP-008 — GitHub & CI integration — PR creation and autonomous CI fix loop](ROADMAP-008-github-ci-integration.md) — open PRs from dashboard, auto-dispatch fix tasks on CI failure · 0/9 items checked
 - [ROADMAP-009 — Mobile & remote access — PWA, push notifications, voice input, share links](ROADMAP-009-mobile-remote-access.md) — phone-ready PWA with background push, voice dictation, and read-only sharing · 0/17 items checked

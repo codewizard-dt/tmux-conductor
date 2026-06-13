@@ -1,0 +1,44 @@
+name: tmux-conductor-app
+services:
+  api:
+    build:
+      context: ..
+      dockerfile: app/api/Dockerfile.dev
+    ports:
+      - "${API_PORT:-8080}:8080"
+    env_file:
+      - ../.env
+    environment:
+      API_PORT: "${API_PORT:-8080}"
+      DATABASE_URL: "${DATABASE_URL}"
+      BETTER_AUTH_SECRET: "${BETTER_AUTH_SECRET}"
+      HOST_SERVER_URL: "${HOST_SERVER_URL:-http://host.docker.internal:8788}"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ../app/api:/app/api
+      - /app/api/node_modules
+      - ../shared:/app/shared
+    restart: unless-stopped
+  frontend:
+    build:
+      context: ..
+      dockerfile: app/frontend/Dockerfile.dev
+    ports:
+      - "${FRONTEND_PORT:-4321}:4321"
+    environment:
+      PUBLIC_API_URL: "${PUBLIC_API_URL:-http://localhost:8080}"
+      # Conductor data (/api/agents, /api/events, ...) is served by the NATIVE
+      # host-server on the host, not by the api container. The api container only
+      # serves /api/auth/* + /healthz today (the relay that would funnel conductor
+      # traffic through app/api is future work). So the Vite dev proxy targets the
+      # host-server directly, mirroring native dev.
+      PROXY_TARGET: "${PROXY_TARGET:-http://host.docker.internal:8788}"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ../app/frontend:/app/frontend
+      - /app/frontend/node_modules
+    depends_on:
+      - api
+    restart: unless-stopped
