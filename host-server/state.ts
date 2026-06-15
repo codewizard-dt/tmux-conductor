@@ -192,6 +192,8 @@ export function detectAgentStatus(conf: ConductorConf, windowName: string, launc
     }
     return cachedTail;
   };
+  const matchesAwaiting = (tail: string): boolean =>
+    tail !== '' && awaitingPattern !== '' && grepMatches(awaitingPattern, tail.split('\n').slice(-8).join('\n'));
 
   const filePath = path.join(stateDir, `${windowName}.state`);
   try {
@@ -203,8 +205,11 @@ export function detectAgentStatus(conf: ConductorConf, windowName: string, launc
         // Dialog open? Last-non-blank-line check mirrors monitor.sh's awaiting
         // detection. Not age-gated: the dashboard's 2s poll should flag a
         // waiting agent long before the monitor's next pass.
-        if (awaitingPattern !== '' && grepMatches(awaitingPattern, tail.split('\n').slice(-8).join('\n'))) {
+        if (matchesAwaiting(tail)) {
           return 'awaiting';
+        }
+        if (type === 'codex' && ageSeconds > pollInterval * 2 && idlePattern !== '' && grepMatches(idlePattern, tail)) {
+          return 'idle';
         }
         // Hook-failure safety net (mirrors monitor.sh): a busy file old enough
         // to rule out the dispatch race whose pane footer reads idle means the
@@ -228,7 +233,7 @@ export function detectAgentStatus(conf: ConductorConf, windowName: string, launc
     }
     if (state === 'awaiting') {
       const tail = tail5();
-      if (tail !== '' && awaitingPattern !== '' && !grepMatches(awaitingPattern, tail.split('\n').slice(-8).join('\n'))) {
+      if (tail !== '' && !matchesAwaiting(tail)) {
         // Dialog gone — the agent resumed on its own. monitor.sh reverts the
         // state file on its next poll; report busy read-only meanwhile.
         return 'busy';
@@ -237,10 +242,11 @@ export function detectAgentStatus(conf: ConductorConf, windowName: string, launc
     }
     if (state === 'idle') {
       const tail = tail5();
-      if (tail !== '' && busyPattern && grepMatches(busyPattern, tail)) return 'busy';
-      if (tail !== '' && awaitingPattern !== '' && grepMatches(awaitingPattern, tail.split('\n').slice(-8).join('\n'))) {
+      if (matchesAwaiting(tail)) {
         return 'awaiting';
       }
+      if (type === 'codex') return 'idle';
+      if (tail !== '' && busyPattern && grepMatches(busyPattern, tail)) return 'busy';
       return 'idle';
     }
   } catch {
@@ -250,6 +256,7 @@ export function detectAgentStatus(conf: ConductorConf, windowName: string, launc
   const tail = tail5();
   if (tail === '') return 'starting';
   if (busyPattern && grepMatches(busyPattern, tail)) return 'busy';
+  if (matchesAwaiting(tail)) return 'awaiting';
   if (idlePattern && grepMatches(idlePattern, tail)) return 'idle';
   return 'busy';
 }

@@ -61,7 +61,7 @@ const app = Fastify({
 // mutating requests (devices, pair, invite-codes, relay forward) must originate from
 // an allowlisted origin. GET WS upgrades are non-mutating and pass automatically.
 app.addHook('onRequest', async (request, reply) => {
-  if (request.url.startsWith('/api/auth/')) return;
+  if (request.url.startsWith('/auth/')) return;
   if (isCrossSiteMutation(request)) {
     return reply.code(403).send({ error: 'cross_site_request_blocked' });
   }
@@ -100,7 +100,7 @@ app.get('/healthz', async (_request, _reply) => {
 // request to a Fetch API Request and stream the Response back onto the reply.
 app.route({
   method: ['GET', 'POST'],
-  url: '/api/auth/*',
+  url: '/auth/*',
   async handler(request, reply) {
     try {
       const url = new URL(request.url, `http://${request.headers.host}`);

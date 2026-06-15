@@ -171,6 +171,18 @@ is_idle() {
         LAST_DETECTION="state-file"
         LAST_STATE_VALUE="busy"
         LAST_STATE_AGE="$age"
+        # Interactive prompts beat idle recovery. Codex panes often keep idle
+        # chrome in scrollback/header areas, so check awaiting before treating
+        # a stale busy file as an idle Stop-hook miss.
+        if [ -n "$awaiting_pattern" ]; then
+          local last_lines_aw
+          last_lines_aw=$(tmux capture-pane -t "$target" -p 2>/dev/null | grep -v '^[[:space:]]*$' | tail -8 || true)
+          if printf '%s\n' "$last_lines_aw" | grep -qE "$awaiting_pattern"; then
+            debug "is_idle: target=$target awaiting-input pattern matched — writing 'awaiting'"
+            printf 'awaiting\n' > "$state_file" 2>/dev/null || true
+            return 1
+          fi
+        fi
         # Hook-failure safety net: if the busy file is old enough to rule out
         # the dispatch race (mark_busy fires right before send-keys) and the
         # pane footer reads idle (IDLE_PATTERN matches, BUSY_PATTERN doesn't),
@@ -180,23 +192,22 @@ is_idle() {
         if [ "$age" -gt "$busy_min_age" ]; then
           local tail_busy
           tail_busy=$(pane_tail5 "$target")
-          if { [ -z "$busy_pattern" ] || ! printf '%s\n' "$tail_busy" | grep -qE "$busy_pattern"; } \
+          if [ "$(agent_type "$launch")" = "codex" ] \
              && [ -n "$idle_pattern" ] \
              && printf '%s\n' "$tail_busy" | grep -qE "$idle_pattern"; then
+            log "$name — Codex busy state (age=${age}s) but pane reads idle; recovering to idle"
+            printf 'idle\n' > "$state_file" 2>/dev/null || true
+            LAST_DETECTION="busy-recovered"
+            LAST_STATE_VALUE="idle"
+            return 0
+          elif { [ -z "$busy_pattern" ] || ! printf '%s\n' "$tail_busy" | grep -qE "$busy_pattern"; } \
+               && [ -n "$idle_pattern" ] \
+               && printf '%s\n' "$tail_busy" | grep -qE "$idle_pattern"; then
             log "$name — busy state (age=${age}s) but pane reads idle; Stop hook likely missed — recovering to idle"
             printf 'idle\n' > "$state_file" 2>/dev/null || true
             LAST_DETECTION="busy-recovered"
             LAST_STATE_VALUE="idle"
             return 0
-          fi
-        fi
-        # Secondary: check if the pane is awaiting interactive input
-        if [ -n "$awaiting_pattern" ]; then
-          local last_lines_aw
-          last_lines_aw=$(tmux capture-pane -t "$target" -p 2>/dev/null | grep -v '^[[:space:]]*$' | tail -8 || true)
-          if printf '%s\n' "$last_lines_aw" | grep -qE "$awaiting_pattern"; then
-            debug "is_idle: target=$target awaiting-input pattern matched — writing 'awaiting'"
-            printf 'awaiting\n' > "$state_file" 2>/dev/null || true
           fi
         fi
         return 1
@@ -210,6 +221,19 @@ is_idle() {
         LAST_DETECTION="state-file"
         LAST_STATE_VALUE="idle"
         LAST_STATE_AGE="$age"
+        if [ -n "$awaiting_pattern" ]; then
+          local last_lines_idle_aw
+          last_lines_idle_aw=$(tmux capture-pane -t "$target" -p 2>/dev/null | grep -v '^[[:space:]]*$' | tail -8 || true)
+          if printf '%s\n' "$last_lines_idle_aw" | grep -qE "$awaiting_pattern"; then
+            debug "is_idle: target=$target idle state but awaiting-input pattern matched — writing 'awaiting'"
+            printf 'awaiting\n' > "$state_file" 2>/dev/null || true
+            LAST_STATE_VALUE="awaiting"
+            return 1
+          fi
+        fi
+        if [ "$(agent_type "$launch")" = "codex" ]; then
+          return 0
+        fi
         if [ -n "$busy_pattern" ]; then
           local tail_lines
           tail_lines=$(pane_tail5 "$target")
@@ -250,6 +274,12 @@ is_idle() {
   last_lines=$(pane_tail5 "$target")
   if [ -n "$busy_pattern" ] && printf '%s\n' "$last_lines" | grep -qE "$busy_pattern"; then
     debug "is_idle: target=$target BUSY_PATTERN matched — busy"
+    return 1
+  fi
+  if [ -n "$awaiting_pattern" ] && printf '%s\n' "$last_lines" | grep -qE "$awaiting_pattern"; then
+    debug "is_idle: target=$target AWAITING_PATTERN matched — writing 'awaiting'"
+    printf 'awaiting\n' > "$state_file" 2>/dev/null || true
+    LAST_STATE_VALUE="awaiting"
     return 1
   fi
   if [ -n "$idle_pattern" ] && printf '%s\n' "$last_lines" | grep -qE "$idle_pattern"; then

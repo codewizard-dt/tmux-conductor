@@ -66,7 +66,7 @@ export async function inviteCodesRoutes(app: FastifyInstance) {
    * Returns: { valid: boolean, error?: 'invalid' | 'expired' | 'exhausted' }
    */
   app.post<{ Body: ValidateBody }>(
-    '/api/invite-codes/validate',
+    '/invite-codes/validate',
     {
       schema: {
         body: {
@@ -111,7 +111,7 @@ export async function inviteCodesRoutes(app: FastifyInstance) {
    * Admin only — requires BOOTSTRAP_ADMIN_EMAIL session.
    * Returns all invite codes ordered by created_at DESC.
    */
-  app.get('/api/admin/invite-codes', async (req, reply) => {
+  app.get('/admin/invite-codes', async (req, reply) => {
     const session = await requireAdmin(req, reply);
     if (!session) return;
 
@@ -128,7 +128,7 @@ export async function inviteCodesRoutes(app: FastifyInstance) {
    * Body: { code: string (4-64 chars), usageLimit: integer >= 1, expiresAt?: ISO date string }
    */
   app.post<{ Body: CreateInviteBody }>(
-    '/api/admin/invite-codes',
+    '/admin/invite-codes',
     {
       schema: {
         body: {
@@ -175,7 +175,7 @@ export async function inviteCodesRoutes(app: FastifyInstance) {
    * Returns 404 when no row was deleted.
    */
   app.delete<{ Params: { id: string } }>(
-    '/api/admin/invite-codes/:id',
+    '/admin/invite-codes/:id',
     async (req, reply) => {
       const session = await requireAdmin(req, reply);
       if (!session) return;

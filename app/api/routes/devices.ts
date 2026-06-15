@@ -95,7 +95,7 @@ export default async function devicesRoutes(app: FastifyInstance): Promise<void>
   // -------------------------------------------------------------------------
   app.route({
     method: 'GET',
-    url: '/api/devices',
+    url: '/devices',
     async handler(request, reply) {
       const allowed = await requireAllowed(request, reply);
       if (allowed === false) return;
@@ -123,7 +123,7 @@ export default async function devicesRoutes(app: FastifyInstance): Promise<void>
   // -------------------------------------------------------------------------
   app.route({
     method: 'PATCH',
-    url: '/api/devices/:id',
+    url: '/devices/:id',
     async handler(request, reply) {
       const allowed = await requireAllowed(request, reply);
       if (allowed === false) return;
@@ -168,7 +168,7 @@ export default async function devicesRoutes(app: FastifyInstance): Promise<void>
   // -------------------------------------------------------------------------
   app.route({
     method: 'DELETE',
-    url: '/api/devices/:id',
+    url: '/devices/:id',
     async handler(request, reply) {
       const allowed = await requireAllowed(request, reply);
       if (allowed === false) return;

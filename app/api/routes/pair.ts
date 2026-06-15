@@ -67,7 +67,7 @@ export default async function pairRoutes(app: FastifyInstance): Promise<void> {
   // -------------------------------------------------------------------------
   app.route({
     method: 'POST',
-    url: '/api/pair/code',
+    url: '/pair/code',
     async handler(request, reply) {
       const allowed = await requireAllowed(request, reply);
       if (allowed === false) return; // reply already sent
@@ -117,7 +117,7 @@ export default async function pairRoutes(app: FastifyInstance): Promise<void> {
   // -------------------------------------------------------------------------
   app.route({
     method: 'POST',
-    url: '/api/pair/redeem',
+    url: '/pair/redeem',
     // Strict per-IP throttle on the unauthenticated redeem endpoint to defeat
     // online guessing of the ~40-bit pairing code within its 10-min TTL.
     // keyGenerator defaults to request.ip. The 429 body is intentionally generic

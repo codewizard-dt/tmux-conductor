@@ -24,6 +24,7 @@ export const auth = betterAuth({
   // node-postgres Pool passed straight through; built-in Kysely adapter handles it.
   database: getPool(),
   secret: env.BETTER_AUTH_SECRET,
+  basePath: '/auth',
   ...(env.PUBLIC_BASE_URL ? { baseURL: env.PUBLIC_BASE_URL } : {}),
   // The frontend is served from a different origin (Vite dev :4321, or the App
   // Platform static-site domain in prod) than this API's baseURL, and reaches us
