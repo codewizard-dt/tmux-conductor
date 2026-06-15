@@ -77,7 +77,7 @@ app.addContentTypeParser('application/octet-stream', { parseAs: 'buffer' }, (_re
 });
 
 app.register(cors, {
-  origin: process.env['CORS_ORIGIN'] ?? `http://localhost:${process.env['FRONTEND_PORT'] ?? '4321'}`,
+  origin: env.CORS_ORIGINS,
   credentials: true,
 });
 

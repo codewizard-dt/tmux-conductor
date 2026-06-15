@@ -65,15 +65,18 @@ if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
 // --- HOST_SERVER_URL (URL of the host-side conductor backend reachable from the container) ---
 const HOST_SERVER_URL = process.env['HOST_SERVER_URL'] ?? 'http://host.docker.internal:8788';
 
-// --- CORS_ORIGIN (frontend origin allowed by @fastify/cors AND better-auth trustedOrigins) ---
-const CORS_ORIGIN = process.env['CORS_ORIGIN'] ?? 'http://localhost:4321';
+// --- CORS_ORIGINS (comma-separated; allowed by @fastify/cors AND better-auth trustedOrigins) ---
+const CORS_ORIGINS: string[] = (process.env['CORS_ORIGIN'] ?? 'http://localhost:4321')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);
 
 // Export a single typed frozen env object.
 export const env = Object.freeze({
   DATABASE_URL: DATABASE_URL as string,
   BETTER_AUTH_SECRET: BETTER_AUTH_SECRET as string,
   HOST_SERVER_URL,
-  CORS_ORIGIN,
+  CORS_ORIGINS,
   GOOGLE_CLIENT_ID: GOOGLE_CLIENT_ID as string | undefined,
   GOOGLE_CLIENT_SECRET: GOOGLE_CLIENT_SECRET as string | undefined,
   PUBLIC_BASE_URL: PUBLIC_BASE_URL as string | undefined,

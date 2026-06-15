@@ -32,7 +32,7 @@ export const auth = betterAuth({
   // baseURL by default and 403s (INVALID_ORIGIN) on a mismatch, so the frontend
   // origin must be explicitly trusted. Driven by CORS_ORIGIN (same value used by
   // @fastify/cors in index.ts), defaulting to the local Vite dev origin.
-  trustedOrigins: [env.CORS_ORIGIN],
+  trustedOrigins: env.CORS_ORIGINS,
   // Cookie hardening. better-auth already sets HttpOnly + SameSite=Lax by default;
   // we additionally force the Secure attribute in production (real enforcement still
   // depends on the deployment terminating TLS). Gating on NODE_ENV keeps local http

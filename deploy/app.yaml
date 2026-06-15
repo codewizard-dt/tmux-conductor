@@ -36,7 +36,7 @@ services:
       # api, so better-auth's trustedOrigins / @fastify/cors must trust that origin.
       - key: CORS_ORIGIN
         scope: RUN_TIME
-        value: ${APP_URL}
+        value: "localhost:4321,${APP_URL},https://tmux.davidtaylor.codes"
       # Required by env.ts (hard-fail if unset). The single bootstrap admin that
       # bypasses the invite-code gate. MUST match the frontend VITE_ADMIN_EMAIL.
       - key: BOOTSTRAP_ADMIN_EMAIL

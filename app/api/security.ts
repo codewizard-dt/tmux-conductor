@@ -23,7 +23,7 @@ function allowedOrigins(): Set<string> {
       // ignore malformed values
     }
   };
-  add(env.CORS_ORIGIN);
+  env.CORS_ORIGINS.forEach(add);
   add(env.PUBLIC_BASE_URL);
   return origins;
 }
