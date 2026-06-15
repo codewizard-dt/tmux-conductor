@@ -64,10 +64,16 @@ static_sites:
         value: doctordeetz@gmail.com
 # DATABASE_URL points at the pre-existing managed cluster "tmux-conductor-db"
 # (set as a SECRET on the api service), so no App Platform-managed database block.
-# Ingress: frontend owns "/", the api is mounted under "/api" and "/relay".
-# NOTE: no `rewrite` — the prefix is preserved so it reaches app/api's own
-# "/api/auth/*" and "/relay/:deviceId" routes. The "/relay" rule MUST come
-# before the "/" catch-all so daemon WebSocket upgrades reach the api service.
+# Ingress: frontend owns "/", the api owns "/api" and "/relay".
+# App Platform TRIMS the matched prefix by default before forwarding:
+#   - "/api"  is trimmed — app/api registers de-prefixed routes ("/auth/*",
+#     "/devices", "/pair/*"); see commit e91c1bc.
+#   - "/relay" MUST set preserve_path_prefix: true — the relay routes keep the
+#     full path ("/relay/:deviceId" WS upgrade + "/relay/:deviceId/*" catch-all),
+#     so trimming would break them. This rule MUST precede the "/" catch-all so
+#     daemon WebSocket upgrades reach the api service instead of the static site.
+# These ingress rules only take effect via `doctl apps update --spec`
+# (make deploy-app) — deploy_on_push rebuilds code but does NOT re-apply the spec.
 ingress:
   rules:
     - match:
@@ -80,6 +86,7 @@ ingress:
           prefix: /relay
       component:
         name: api
+        preserve_path_prefix: true
     - match:
         path:
           prefix: /
