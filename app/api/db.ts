@@ -50,6 +50,14 @@ export function getPool(): pg.Pool {
       connectionString: env.DATABASE_URL,
       ssl: resolveSsl(),
     });
+    // pg forwards backend/network errors from IDLE pooled clients as a Pool
+    // 'error' event. Without a listener, Node escalates it to an unhandled
+    // 'error' and crashes the process — e.g. EADDRNOTAVAIL/ECONNRESET when DO
+    // closes an idle connection or the host's network blips. pg already evicts
+    // the dead client, so we just log and keep serving.
+    pool.on('error', (err) => {
+      console.error('[db] idle pg client error (connection evicted):', err.message);
+    });
   }
   return pool;
 }
