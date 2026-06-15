@@ -1,4 +1,5 @@
 import { useCallback, useState } from 'react'
+import { createPairingCode } from '../lib/devices'
 
 const sectionCls = 'rounded-card border border-line bg-white px-5 py-5 shadow-card'
 const sectionTitleCls = 'mb-3 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted'
@@ -11,6 +12,22 @@ const INSTALL_COMMAND =
 
 export default function Onboarding() {
   const [copied, setCopied] = useState(false)
+  const [pairing, setPairing] = useState<{ code: string; expiresAt: string } | null>(null)
+  const [pairingLoading, setPairingLoading] = useState(false)
+  const [pairingError, setPairingError] = useState<string | null>(null)
+
+  const handleGenerateCode = useCallback(async () => {
+    setPairingLoading(true)
+    setPairingError(null)
+    try {
+      setPairing(await createPairingCode())
+    } catch (err) {
+      setPairing(null)
+      setPairingError(err instanceof Error ? err.message : 'Failed to generate code')
+    } finally {
+      setPairingLoading(false)
+    }
+  }, [])
 
   const handleCopy = useCallback(() => {
     void navigator.clipboard
@@ -59,18 +76,34 @@ export default function Onboarding() {
       <div className={sectionCls}>
         <h2 className={sectionTitleCls}>2 · Pair the device</h2>
         <p className="mb-3 text-[13px] leading-relaxed text-muted">
-          After installing, pair the host with this account. Run the pairing command on the host:
+          After installing, pair the host with this account. Generate a code below, then run on the host:
         </p>
         <pre className={`${cmdBlockCls} mb-3`}>
-          <code>conductor pair</code>
+          <code>conductor pair --portal {'<portal-url>'} --code XXXX-XXXX</code>
         </pre>
+
+        <div className="mb-3 flex flex-col gap-2">
+          <button
+            type="button"
+            onClick={() => { void handleGenerateCode() }}
+            disabled={pairingLoading}
+            className="self-start rounded-md bg-accent px-3 py-1.5 text-[13px] font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
+          >
+            {pairingLoading ? 'Generating…' : 'Generate pairing code'}
+          </button>
+          {pairing && (
+            <div className="rounded-md border border-line bg-canvas px-3 py-2">
+              <p className="font-mono text-[18px] font-semibold tracking-[0.12em] text-ink">{pairing.code}</p>
+              <p className="text-[11px] text-muted-2">
+                Expires {new Date(pairing.expiresAt).toLocaleString()}
+              </p>
+            </div>
+          )}
+          {pairingError && <p className="text-[12px] text-accent-red">{pairingError}</p>}
+        </div>
+
         <p className="text-[13px] leading-relaxed text-muted">
-          Run <code className="rounded bg-canvas px-1 py-0.5 font-mono text-[12px] text-ink">conductor pair</code>{' '}
-          interactively and follow the prompts, or generate a pairing code here and pass it to the
-          CLI. The code is the{' '}
-          <code className="rounded bg-canvas px-1 py-0.5 font-mono text-[12px] text-ink">XXXX-XXXX</code>{' '}
-          value from the device manager&apos;s &ldquo;Generate pairing code&rdquo; action. Once paired,
-          the device shows up here automatically.
+          Once paired, the device shows up here automatically.
         </p>
       </div>
     </div>

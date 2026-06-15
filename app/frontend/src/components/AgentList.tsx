@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { Link } from 'react-router-dom'
 import { API_BASE, addTask, renameAgent, type Task } from '../lib/api'
 import AddTaskForm from './AddTaskForm'
 import ErrorBoundary from './ErrorBoundary'
@@ -1161,10 +1162,28 @@ export default function AgentList() {
   }
 
   if (error) {
+    const isNotConnected = error.includes('HTTP 404') || error.includes('HTTP 503')
     return (
       <div>
         <h1 className={sectionLabelCls}>tmux Conductor — Agents</h1>
-        <div className="rounded-[10px] border border-accent-red/20 bg-accent-red/5 px-4 py-3 text-[13px] text-accent-red">{error}</div>
+        {isNotConnected ? (
+          <div className="rounded-[10px] border border-line bg-white px-5 py-5 shadow-card">
+            <p className="mb-1 text-[15px] font-semibold text-ink">No host connected</p>
+            <p className="mb-4 text-[13px] leading-relaxed text-muted">
+              {error.includes('HTTP 404')
+                ? 'No device is selected. Pair a host machine to start orchestrating agents.'
+                : 'Your device is paired but the daemon is offline. Start the conductor on your host.'}
+            </p>
+            <Link
+              to="/devices"
+              className="inline-block rounded-md bg-accent px-4 py-2 text-[13px] font-semibold text-white transition hover:opacity-90"
+            >
+              Pair a device →
+            </Link>
+          </div>
+        ) : (
+          <div className="rounded-[10px] border border-accent-red/20 bg-accent-red/5 px-4 py-3 text-[13px] text-accent-red">{error}</div>
+        )}
       </div>
     )
   }
