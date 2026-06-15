@@ -7,7 +7,7 @@ updated: 2026-06-11
 
 Execution-ready task files with `## Steps` checklists. ID scheme: **TASK-NNN** (3-digit, zero-padded). Filename: `TASK-NNN-slug.md`. UAT test files mirror task naming (**UAT-NNN**) and live in the sibling [`../uat/`](../uat/) family.
 
-Files are **never moved** after creation; state lives in the `status:` frontmatter field (no `completed/` directory — status is in frontmatter, per the two-domain rule). The active set is tracked in [`index.md`](index.md).
+Active files are **never moved** after creation; state lives in the `status:` frontmatter field. Terminal items (`done`, `trashed`) may be moved to [`archive/`](archive/) by `/wiki-archive`. The active set is tracked in [`index.md`](index.md).
 
 ## Frontmatter schema
 
