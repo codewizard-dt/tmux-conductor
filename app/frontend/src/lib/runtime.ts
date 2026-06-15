@@ -9,8 +9,13 @@
 //
 // Resolution order:
 //   1. Explicit override: `VITE_API_MODE` ('direct' | 'relay').
-//   2. Probe the host-server's `/api/healthz` through the direct proxy. If it
+//   2. Probe the host-server's `/api/status` through the direct proxy. If it
 //      answers OK, we are local-direct; otherwise we are relay.
+//      NOTE: we probe `/api/status`, NOT `/api/healthz`. In production the `/api`
+//      ingress trims its prefix and forwards to app/api, which has its OWN
+//      `/healthz` route — so `/api/healthz` answers 200 from app/api and would
+//      falsely resolve `direct`. `/status` is host-server-exclusive (app/api has
+//      no such route → 404), making the probe unambiguous.
 //
 // Device selection: in relay mode the conductor base depends on the active
 // device. The selected `deviceId` is persisted to localStorage so a reload
@@ -32,8 +37,13 @@ const viteEnv = ((import.meta as ViteEnv).env ?? {}) as ViteEnv['env']
 
 const DEVICE_STORAGE_KEY = 'tmux-conductor:selected-device'
 
-/** Probe target — relative so it flows through the dev `/api` proxy to host-server. */
-const HEALTHZ_URL = '/api/healthz'
+/**
+ * Probe target — relative so it flows through the dev `/api` proxy to host-server.
+ * Host-server-exclusive: app/api answers `/api/healthz` (after the ingress trims
+ * `/api`) but has no `/status` route, so this cleanly distinguishes local-direct
+ * (200) from relay/production (404).
+ */
+const PROBE_URL = '/api/status'
 
 let resolvedMode: ApiMode | null = null
 const subscribers = new Set<() => void>()
@@ -83,7 +93,7 @@ async function probeDirect(): Promise<boolean> {
   try {
     const controller = new AbortController()
     const timer = setTimeout(() => { controller.abort() }, 3000)
-    const res = await fetch(HEALTHZ_URL, { signal: controller.signal })
+    const res = await fetch(PROBE_URL, { signal: controller.signal })
     clearTimeout(timer)
     return res.ok
   } catch {
@@ -96,8 +106,8 @@ async function probeDirect(): Promise<boolean> {
  * first successful resolution is cached for the session. Returns the mode.
  *
  * - `VITE_API_MODE` is honored as an explicit override.
- * - Otherwise, a reachable host-server `/api/healthz` means local-direct;
- *   an unreachable one means relay.
+ * - Otherwise, a reachable host-server `/api/status` means local-direct;
+ *   an unreachable one (404 from app/api in production) means relay.
  *
  * In relay mode the persisted selected device (or `VITE_DEVICE_ID` fallback)
  * is applied so a reload restores the prior selection.

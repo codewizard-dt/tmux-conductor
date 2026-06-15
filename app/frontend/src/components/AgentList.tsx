@@ -322,7 +322,7 @@ function AgentDetailModal({ agent, project, projectId, status, onClose, armInter
   onNavigate: (dir: 'prev' | 'next') => void
   onRenamed?: (id: number, newName: string) => void
 }) {
-  const isMac = /mac/i.test(navigator.platform)
+  const isMac = /mac/i.test(navigator.userAgent)
   const [tasks, setTasks] = useState<Task[]>([])
   const [windowError, setWindowError] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
