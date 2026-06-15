@@ -217,7 +217,7 @@ print(d.get('sessionName', ''))
     [ -n "$PORTAL" ] && PORTAL_FLAG="--portal $PORTAL"
     [ -n "$CODE" ]   && CODE_FLAG="--code $CODE"
     # shellcheck disable=SC2086
-    node --import tsx/esm "$REPO_ROOT/daemon/pair.ts" $PORTAL_FLAG $CODE_FLAG
+    "$REPO_ROOT/daemon/node_modules/.bin/tsx" "$REPO_ROOT/daemon/pair.ts" $PORTAL_FLAG $CODE_FLAG
     ;;
 
   unpair)

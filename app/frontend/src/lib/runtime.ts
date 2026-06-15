@@ -116,7 +116,22 @@ export async function initRuntimeMode(): Promise<ApiMode> {
   resolvedMode = mode
 
   if (mode === 'relay') {
-    const deviceId = getSelectedDeviceId() ?? viteEnv.VITE_DEVICE_ID ?? null
+    let deviceId = getSelectedDeviceId() ?? viteEnv.VITE_DEVICE_ID ?? null
+    if (!deviceId) {
+      // No device in localStorage yet — try to auto-select from the API so the
+      // relay config is populated on first load without requiring a manual pick.
+      try {
+        const res = await fetch('/api/devices', { signal: AbortSignal.timeout(3000) })
+        if (res.ok) {
+          const devices = (await res.json()) as Array<{ id: string; isOnline?: boolean }>
+          if (devices.length > 0) {
+            const pick = devices.find(d => d.isOnline) ?? devices[0]!
+            deviceId = pick.id
+            persistSelectedDeviceId(deviceId)
+          }
+        }
+      } catch { /* unauthenticated or network error — leave deviceId null */ }
+    }
     setRelayConfig({ mode: 'relay', deviceId })
   } else {
     setRelayConfig({ mode: 'direct', deviceId: null })
