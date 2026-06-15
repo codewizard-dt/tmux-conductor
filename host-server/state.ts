@@ -3,6 +3,15 @@ import * as path from 'path';
 import { spawnSync } from 'child_process';
 import type { ConductorConf } from './config.ts';
 
+export type AgentType = 'claude' | 'codex' | 'custom';
+
+interface AgentStatusProfile {
+  type: AgentType;
+  idlePattern: string;
+  busyPattern: string;
+  awaitingPattern: string;
+}
+
 /**
  * Read the state file for a given agent.
  *
@@ -77,6 +86,37 @@ function launchCommandName(launchCmd: string): string {
   return '';
 }
 
+function launchCommandBasename(launchCmd: string): string {
+  return path.basename(launchCommandName(launchCmd)).toLowerCase();
+}
+
+export function detectAgentType(launchCmd: string): AgentType {
+  const cmdName = launchCommandBasename(launchCmd);
+  if (cmdName === 'claude') return 'claude';
+  if (cmdName === 'codex') return 'codex';
+  return 'custom';
+}
+
+function profileForAgent(conf: ConductorConf, launchCmd: string): AgentStatusProfile {
+  const type = detectAgentType(launchCmd);
+  if (type === 'codex') {
+    return {
+      type,
+      // Codex does not write Claude lifecycle hooks, so pane chrome is the
+      // primary recovery signal after conductor marks a dispatch busy.
+      idlePattern: '^codex[>›]|OpenAI Codex|^[[:space:]]*gpt-[^[:space:]]+[[:space:]].*~/|^[[:space:]]*[›❯][[:space:]]*$|^[[:space:]]*>[[:space:]]*$',
+      busyPattern: 'esc to interrupt|ctrl.c to interrupt|working|thinking|running|executing|applying',
+      awaitingPattern: '(\\?|\\[Y/n\\]|\\[y/N\\]|>[[:space:]]*$|Enter to (select|confirm|submit)|Esc to (cancel|go back))',
+    };
+  }
+  return {
+    type,
+    idlePattern: conf.idlePattern,
+    busyPattern: conf.busyPattern,
+    awaitingPattern: conf.awaitingPattern,
+  };
+}
+
 /**
  * True when the pane has fallen back to a plain shell while the agent's launch
  * command is not itself a shell — i.e. the agent process exited or crashed.
@@ -129,7 +169,8 @@ function isPaneDead(sessionName: string, windowName: string, launchCmd: string):
  * @returns {'no-window'|'exited'|'idle'|'busy'|'awaiting'|'stalled'|'starting'|'unknown'}
  */
 export function detectAgentStatus(conf: ConductorConf, windowName: string, launchCmd: string, precapturedTail?: string): string {
-  const { sessionName, stateDir, idlePattern, busyPattern, awaitingPattern, pollInterval, stallTimeout } = conf;
+  const { sessionName, stateDir, pollInterval, stallTimeout } = conf;
+  const { type, idlePattern, busyPattern, awaitingPattern } = profileForAgent(conf, launchCmd);
 
   if (!isTmuxWindowPresent(sessionName, windowName)) {
     return 'no-window';
@@ -151,7 +192,6 @@ export function detectAgentStatus(conf: ConductorConf, windowName: string, launc
     }
     return cachedTail;
   };
-  const lastLine = (tail: string): string => tail.split('\n').at(-1) ?? '';
 
   const filePath = path.join(stateDir, `${windowName}.state`);
   try {
@@ -178,7 +218,7 @@ export function detectAgentStatus(conf: ConductorConf, windowName: string, launc
         // Stall detection uses a separate, longer threshold (STALL_TIMEOUT,
         // default 300 s) so long-running Workflow runs with sub-agents don't
         // trigger a false stalled before the pane re-shows the busy footer.
-        if (ageSeconds > stallTimeout) {
+        if (type !== 'codex' && ageSeconds > stallTimeout) {
           // Old busy file, pane matches nothing we know — stuck in an
           // unrecognized state (crashed TUI, unexpected dialog, …).
           return 'stalled';
@@ -230,7 +270,8 @@ export type AgentMode = 'default' | 'acceptEdits' | 'plan' | 'bypass' | 'unknown
  *
  * @param {string} [precapturedTail] - Reuse an existing capturePaneTail() result
  */
-export function detectAgentMode(conf: ConductorConf, agentName: string, precapturedTail?: string): AgentMode {
+export function detectAgentMode(conf: ConductorConf, agentName: string, launchCmd: string, precapturedTail?: string): AgentMode {
+  if (detectAgentType(launchCmd) !== 'claude') return 'unknown';
   const tail = precapturedTail ?? capturePaneTail(conf.sessionName, agentName, 15);
   if (tail === '') return 'unknown';
 

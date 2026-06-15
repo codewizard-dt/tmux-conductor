@@ -271,11 +271,15 @@ export async function renameAgent(agentId: number, newName: string): Promise<Api
 export async function spawnAgentInProject(
   projectId: number,
   name?: string,
+  launchCmd?: string,
 ): Promise<unknown> {
   const res = await apiFetch(`${API_BASE}/projects/${projectId.toString()}/agents`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(name !== undefined ? { name } : {}),
+    body: JSON.stringify({
+      ...(name !== undefined ? { name } : {}),
+      ...(launchCmd !== undefined ? { launchCmd } : {}),
+    }),
   });
   if (!res.ok) {
     const body = (await res.json().catch(() => ({}))) as { error?: string };

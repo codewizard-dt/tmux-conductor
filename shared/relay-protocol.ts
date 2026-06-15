@@ -61,6 +61,16 @@ const RELAY_TYPES = new Set<string>([
   'relay:response:end', 'relay:cancel', 'relay:error',
 ]);
 
+// ---------------------------------------------------------------------------
+// WebSocket close codes (application range 4000-4999)
+// ---------------------------------------------------------------------------
+
+/**
+ * Relay WS close code: the device has been revoked / is no longer authorized.
+ * The daemon MUST NOT reconnect on this code — it should stop cleanly.
+ */
+export const RELAY_CLOSE_REVOKED = 4001;
+
 export function isRelayFrame(x: unknown): x is RelayFrame {
   if (typeof x !== 'object' || x === null) return false;
   const rec = x as Record<string, unknown>;

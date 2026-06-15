@@ -14,8 +14,58 @@ import pairRoutes from './routes/pair.ts';
 import devicesRoutes from './routes/devices.ts';
 import { inviteCodesRoutes } from './routes/invite-codes.js';
 import relayRoutes from './routes/relay.ts';
+import { isCrossSiteMutation } from './security.ts';
 
-const app = Fastify({ logger: true });
+// 26 MiB body cap (26 * 1024 * 1024). Relayed image uploads / forwarded POST bodies
+// exceed Fastify's 1 MiB default, but an explicit ceiling bounds memory per request.
+const BODY_LIMIT_BYTES = 27_262_976;
+
+const app = Fastify({
+  // Defense-in-depth redaction: even if a log object carries a headers map or a
+  // custom token/code/secret field, pino removes it before serialisation. Fastify's
+  // default req/res serializers nest headers under `req.headers` / `res.headers`,
+  // so cookie/authorization/set-cookie are targeted there; the bare keys and the
+  // common custom field names are also covered wherever they appear in a log object.
+  logger: {
+    redact: {
+      paths: [
+        'req.headers.cookie',
+        'req.headers.authorization',
+        'req.headers["set-cookie"]',
+        'res.headers["set-cookie"]',
+        'headers.cookie',
+        'headers.authorization',
+        'headers["set-cookie"]',
+        'token',
+        'rawToken',
+        'code',
+        'authorization',
+        'cookie',
+        'password',
+        'secret',
+        '*.token',
+        '*.authorization',
+        '*.cookie',
+        '*.password',
+        '*.secret',
+      ],
+      remove: true,
+    },
+  },
+  bodyLimit: BODY_LIMIT_BYTES,
+});
+
+// Origin / Sec-Fetch-Site check on mutating requests (CSRF defence-in-depth).
+// better-auth's /api/auth/* routes have their own CSRF protection (trustedOrigins),
+// so they are exempt here to avoid double-rejecting legitimate flows. All other
+// mutating requests (devices, pair, invite-codes, relay forward) must originate from
+// an allowlisted origin. GET WS upgrades are non-mutating and pass automatically.
+app.addHook('onRequest', async (request, reply) => {
+  if (request.url.startsWith('/api/auth/')) return;
+  if (isCrossSiteMutation(request)) {
+    return reply.code(403).send({ error: 'cross_site_request_blocked' });
+  }
+});
 
 // Raw-body parser for binary/relayed bodies. Without this, Fastify has no parser
 // for application/octet-stream and req.body is left undefined, so relayed request

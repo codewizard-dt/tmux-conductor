@@ -58,3 +58,5 @@ Terminal task files (`done` or `trashed`) moved here by `/wiki-archive` to reduc
 | [[TASK-055]] | Wire app/frontend to call conductor endpoints through app/api (the relay) in prod, replacing the dev-only host-server Vite proxy | done | 2026-06-14 |
 | [[TASK-056]] | Frontend runtime mode detection (local-direct vs relay) + API_BASE rewire | done | 2026-06-14 |
 | [[TASK-057]] | DevicePicker (pairing code + device list/rename/revoke) and Onboarding UI | done | 2026-06-14 |
+| [[TASK-058]] | Security hardening + structured logs + device last-seen heartbeat | done | 2026-06-15 |
+| [[TASK-059]] | README install one-liner + docs updates (CLAUDE.md, scripts/README, .env.example) | done | 2026-06-14 |

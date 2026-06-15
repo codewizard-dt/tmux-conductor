@@ -126,8 +126,11 @@ export default async function pairRoutes(app: FastifyInstance): Promise<void> {
       rateLimit: {
         max: 10,
         timeWindow: '1 minute',
-        errorResponseBuilder() {
-          return { error: 'too_many_requests' };
+        errorResponseBuilder(_request, context) {
+          // Must echo the rate-limit status (429, or 403 on ban) so Fastify
+          // sends it; returning a bare object without statusCode falls through
+          // to a 500. Body stays generic so it cannot be used as a code oracle.
+          return { statusCode: context.statusCode, error: 'too_many_requests' };
         },
       },
     },

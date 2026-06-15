@@ -77,7 +77,7 @@ export default function AddAgentForm() {
     if (selectedProject !== null) {
       setSubmitting(true);
       try {
-        await spawnAgentInProject(selectedProject.id, name.trim() || undefined);
+        await spawnAgentInProject(selectedProject.id, name.trim() || undefined, launchCmd);
         clearOnSuccess();
       } catch (err: unknown) {
         setError(err instanceof Error ? err.message : 'Failed to spawn agent');
@@ -136,6 +136,8 @@ export default function AddAgentForm() {
       const newList = await listProjects();
       setProjects(newList);
       setSelectedProjectId(newProject.id);
+      setLaunchCmd(newProject.defaultLaunchCmd);
+      setLaunchPreset(presetForCommand(newProject.defaultLaunchCmd));
       setNewProjName('');
       setNewProjWorkdir('');
       setNewProjLaunchCmd(DEFAULT_LAUNCH_COMMAND);
@@ -179,7 +181,17 @@ export default function AddAgentForm() {
                 value={selectedProjectId === null ? '' : selectedProjectId.toString()}
                 onChange={(e) => {
                   const v = e.target.value;
-                  setSelectedProjectId(v === '' ? null : Number(v));
+                  if (v === '') {
+                    setSelectedProjectId(null);
+                    return;
+                  }
+                  const projectId = Number(v);
+                  const project = projects.find((p) => p.id === projectId);
+                  setSelectedProjectId(projectId);
+                  if (project !== undefined) {
+                    setLaunchCmd(project.defaultLaunchCmd);
+                    setLaunchPreset(presetForCommand(project.defaultLaunchCmd));
+                  }
                 }}
                 className={inputCls}
               >
@@ -338,7 +350,7 @@ export default function AddAgentForm() {
                 <label htmlFor="agent-launch-preset" className={labelCls}>Launch Agent</label>
                 <select
                   id="agent-launch-preset"
-                  value={selectedProject !== null ? presetForCommand(selectedProject.defaultLaunchCmd) : launchPreset}
+                  value={launchPreset}
                   onChange={(e) => {
                     const next = e.target.value as LaunchCommandSelection;
                     setLaunchPreset(next);
@@ -346,7 +358,6 @@ export default function AddAgentForm() {
                       setLaunchCmd(commandForPreset(next));
                     }
                   }}
-                  disabled={selectedProject !== null}
                   className={inputCls}
                 >
                   {LAUNCH_COMMAND_PRESETS.map((preset) => (
@@ -358,13 +369,12 @@ export default function AddAgentForm() {
                 <input
                   id="agent-launch-cmd"
                   type="text"
-                  value={selectedProject !== null ? selectedProject.defaultLaunchCmd : launchCmd}
+                  value={launchCmd}
                   onChange={(e) => {
                     setLaunchCmd(e.target.value);
                     setLaunchPreset(presetForCommand(e.target.value));
                   }}
                   placeholder={DEFAULT_LAUNCH_COMMAND}
-                  disabled={selectedProject !== null}
                   className={inputCls}
                 />
               </div>

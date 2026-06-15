@@ -8,16 +8,18 @@
 // closes the first and fails all its pending in-flight requests with a relay:error.
 
 import type WebSocket from 'ws';
+import { RELAY_CLOSE_REVOKED } from '../../../shared/relay-protocol.ts';
 import type {
   RelayResponseHeadFrame,
   RelayBodyChunkFrame,
   RelayResponseEndFrame,
 } from '../../../shared/relay-protocol.ts';
+import { query } from '../db.ts';
+import type { FastifyBaseLogger } from 'fastify';
 
 // ---------------------------------------------------------------------------
 // In-flight request tracking
 // ---------------------------------------------------------------------------
-
 export interface InFlightEntry {
   /** Called when relay:response:head arrives for this correlation. */
   onHead: (frame: RelayResponseHeadFrame) => void;
@@ -104,6 +106,53 @@ export function isDeviceConnected(deviceId: string): boolean {
   return connections.has(deviceId);
 }
 
+// ---------------------------------------------------------------------------
+// last_seen_at heartbeat
+// ---------------------------------------------------------------------------
+
+/**
+ * Minimum interval between throttled last_seen_at writes for a given device.
+ * Ongoing relay traffic only triggers a DB write at most once per window.
+ */
+export const HEARTBEAT_THROTTLE_MS = 30_000;
+
+/** deviceId → epoch ms of the last last_seen_at write we issued. */
+const lastHeartbeatWrite = new Map<string, number>();
+
+/**
+ * Best-effort, throttled update of devices.last_seen_at = now() for a device.
+ *
+ * - `force=true` (connect/disconnect) always writes, bypassing the throttle.
+ * - Otherwise the write is skipped if we wrote within HEARTBEAT_THROTTLE_MS.
+ *
+ * The DB write is fire-and-forget relative to relay traffic: errors are caught
+ * and logged via the provided logger and never thrown into the WS handler.
+ */
+export function touchDeviceLastSeen(
+  deviceId: string,
+  log: FastifyBaseLogger,
+  force = false,
+): void {
+  const now = Date.now();
+  if (!force) {
+    const last = lastHeartbeatWrite.get(deviceId);
+    if (last !== undefined && now - last < HEARTBEAT_THROTTLE_MS) {
+      return;
+    }
+  }
+  lastHeartbeatWrite.set(deviceId, now);
+  // Fire-and-forget: do not await; a slow/failed UPDATE must not block the relay.
+  query('UPDATE devices SET last_seen_at = now() WHERE id = $1', [deviceId]).catch(
+    (err: unknown) => {
+      log.error(
+        { err, deviceId, event: 'relay:heartbeat-error' },
+        'relay: failed to update last_seen_at',
+      );
+    },
+  );
+}
+
+
 /**
  * Close and remove the device's WebSocket, failing all pending in-flight requests.
  * Safe to call when no connection exists.
@@ -113,7 +162,7 @@ export function closeRelayConnection(deviceId: string): void {
   if (ws !== undefined) {
     failAllInFlight(deviceId, 'Connection closed by server');
     try {
-      ws.close(1000, 'Closed by server');
+      ws.close(RELAY_CLOSE_REVOKED, 'Device revoked');
     } catch {
       // ignore
     }

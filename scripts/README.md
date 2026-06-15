@@ -17,8 +17,8 @@ flowchart TD
   Spawn["spawn.sh<br/>(alt: split-pane layout)"]
   Pane["agent pane"]:::ext
   BgPane["bg process window<br/>(host-side, no wrap)"]:::ext
-  DashServer["backend/index.ts<br/>(Fastify :8788)"]:::ext
-  DashUI["frontend/<br/>(Astro+React :4321)"]:::ext
+  DashServer["host-server/index.ts<br/>(Fastify :8788)"]:::ext
+  DashUI["app/frontend/<br/>(Vite React :4321)"]:::ext
   Monitor["monitor.sh"]:::ext
 
   User -->|"start session"| Conductor
@@ -170,31 +170,36 @@ The following scripts are preserved in `scripts/.archive/` for reference but are
 - `scaffold.sh` — generated `devcontainer-compose.yml` and `.devcontainer/devcontainer.json`; superseded by local-agent model (ROADMAP-001)
 - `agent_exec.sh` — host-side container exec wrapper; superseded by local-agent model (ROADMAP-001)
 
-## backend/ (repo root)
+## host-server/ (repo root, was `backend/`)
 
-The Fastify HTTP server backing the Astro+React dashboard. Runs on `127.0.0.1:8788` in a dedicated tmux window launched automatically via `BG_PROCESSES` in `conductor.conf`.
+The native Fastify HTTP server backing the Vite React dashboard. Runs on `127.0.0.1:8788` (env `BACKEND_PORT`). Runs **directly on the host/VPS, never Dockerized** — in dev via a dedicated tmux window (`BG_PROCESSES`) or `make dev`, in production under systemd. All operational data (agents, queue, bg processes, projects, schedules) lives in SQLite and is accessed through `host-server/db.ts`.
 
 | File | Purpose |
 |------|---------|
-| `backend/index.ts` | Fastify app: `GET /status` (per-agent state + queue lengths), `GET\|POST /queue/:agent` (CRUD), `PUT /queue/:agent/reorder`, `DELETE /queue/:agent/:index`, `POST /agents` (spawn), `GET /events` (SSE), `GET /healthz` |
-| `backend/config.ts` | Reads and parses `conductor.conf` via regex; exports `readConductorConf()` and bg-process conf splice helpers |
-| `backend/state.ts` | Exports `readAgentState()`, `countQueuedTasks()`, `isTmuxWindowPresent()`, `readQueue()`, `writeQueue()`, `getAgentLines()` |
+| `host-server/index.ts` | Fastify app: `GET /status`, `GET /agents`, `GET\|POST /queue/:agent`, `PUT /queue/:agent/reorder`, `DELETE /queue/:agent/:index`, `GET /agents/:agent/tail`, `POST /agents/:agent/keys`, `POST /agents/:agent/upload`, `GET /skills`, `GET /agents/:agent/skills`, `GET /events` (SSE), `GET /healthz` |
+| `host-server/config.ts` | Reads and parses `conductor.conf` (tuning settings only) and resolves `DB_PATH` / state dir relative to the conf file |
+| `host-server/db.ts` | better-sqlite3 data layer — agents, queue, bg processes, projects, schedules |
+| `host-server/state.ts` | Pane-liveness and agent-state helpers used by status detection |
 
 Usage:
 ```
-cd backend && npm start
+cd host-server && npm start
 ```
 
-## frontend/
+## app/frontend/ (was `frontend/`)
 
-The Astro+React single-page app that consumes the Fastify backend. Runs on `localhost:4321` in a dedicated tmux window launched automatically via `BG_PROCESSES` in `conductor.conf`. Displays a real-time accordion list of agents with state indicators and an inline queue editor; subscribes to the `GET /events` SSE stream for live updates.
+The Vite React single-page app that consumes the host-server. Runs on `localhost:4321` (env `FRONTEND_PORT`). Displays a real-time accordion list of agents with state indicators and an inline queue editor; subscribes to the `GET /events` SSE stream for live updates. The Vite dev proxy splits `/api/*`: auth/portal prefixes (`/api/auth`, `/api/invite-codes`, `/api/admin/invite-codes`, `/api/devices`, `/api/pair`) go to `app/api`, everything else under `/api/*` goes to the host-server on :8788.
 
 Usage:
 ```
-cd frontend && npm run dev
+cd app/frontend && npm run dev
 ```
 
 Open `http://localhost:4321` in your browser.
+
+## Remote access (relay & pairing)
+
+For remote/hosted access, `app/api` (Fastify + better-auth + Postgres, App Platform) fronts the host-server: browser → `app/api` → outbound **WSS** → daemon relay connector → host-server (:8788). New users sign up behind **invite-code gating** (`POST /api/admin/invite-codes` mints, `POST /api/invite-codes/validate` checks). Both halves are shipped: the server-side pairing endpoints (`POST /api/pair/code`, `POST /api/pair/redeem`) **and** the **pairing client** — `conductor pair --portal <url> --code XXXX-XXXX` (the `pair)` subcommand in `bin/conductor`, which calls `daemon/pair.ts`), the `device.json` writer (`daemon/credentials.ts`, writing `$CONDUCTOR_HOME/device.json`), the daemon relay connector (`daemon/connector.ts`, dialing `GET /relay/:deviceId` over outbound WSS), and the `install.sh` bootstrap (repo root) that runs the optional pairing step. The only pending item is the live public App Platform deployment (TASK-050) — the hosted portal URL isn't up yet. **Note:** `bin/conductor` is the user-facing CLI (`install`, `daemon`, `pair`, `unpair`) and is distinct from `scripts/conductor.sh`, the tmux session orchestrator. See [`../CLAUDE.md`](../CLAUDE.md) for the full relay data path.
 
 ---
 
@@ -209,8 +214,9 @@ Open `http://localhost:4321` in your browser.
 | `broadcast.sh` | **Useful** |
 | `teardown.sh` | **Essential** |
 | `add-task.sh` | **Useful** |
-| `backend/` | **Active** |
-| `frontend/` | **Active** |
+| `host-server/` | **Active** |
+| `app/frontend/` | **Active** |
+| `app/api/` (relay + auth) | **Active** |
 | `.archive/scaffold.sh` | **Archived — Docker era** |
 | `.archive/agent_exec.sh` | **Archived — Docker era** |
 
@@ -224,4 +230,4 @@ Open `http://localhost:4321` in your browser.
 - [`../hooks/README.md`](../hooks/README.md)
 - [`../install-hooks.sh`](../install-hooks.sh)
 - [`../SCRIPTS_GLOSSARY.md`](../SCRIPTS_GLOSSARY.md)
-- [`../.docs/tasks/README.md`](../.docs/tasks/README.md)
+- [`../wiki/work/tasks/index.md`](../wiki/work/tasks/index.md)

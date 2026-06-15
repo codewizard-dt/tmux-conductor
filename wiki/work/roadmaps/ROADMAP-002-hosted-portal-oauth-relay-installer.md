@@ -65,8 +65,10 @@ The original Phase 2 tasks were largely delivered or superseded by the architect
 
 - [x] [TASK-056: `app/frontend` runtime mode detection (local-direct vs relay) + API_BASE rewire](../tasks/completed/TASK-056-frontend-runtime-mode-detection.md) — replaces the planned `frontend/runtime.ts`
 - [x] [TASK-057: DevicePicker (pairing-code panel, revoke) + Onboarding (install instructions)](../tasks/completed/TASK-057-device-picker-onboarding-ui.md) — sign-in / invite-code entry covered by [TASK-049](../tasks/completed/TASK-049-invite-codes-signup-admin-ui.md) <!-- completed 2026-06-14 · UAT-057 API/proxy/data tests passed (auto); 8 UI tests defer to /uat-walk -->
-- [ ] [TASK-058: Security checklist pass + structured logs + device last-seen heartbeat](../tasks/TASK-058-security-hardening-logs-heartbeat.md) — plan §Security checklist
-- [ ] [TASK-059: README install one-liner + docs updates](../tasks/TASK-059-readme-docs-updates.md) — CLAUDE.md, scripts/README; note `host-server` / `app/` split
+- [x] [TASK-058: Security checklist pass + structured logs + device last-seen heartbeat](../tasks/completed/TASK-058-security-hardening-logs-heartbeat.md) — plan §Security checklist <!-- completed 2026-06-15 · UAT-058 passed (auto) 2026-06-15 · all 16 tests (9 API + 7 relay/daemon edge) verified; fixed pair.ts rate-limit 500→429 -->
+
+- [x] [TASK-059: README install one-liner + docs updates](../tasks/archive/TASK-059-readme-docs-updates.md) — CLAUDE.md, scripts/README; note `host-server` / `app/` split <!-- completed 2026-06-14 · UAT-059 passed (auto) 2026-06-14 · all 14 tests verified -->
+
 
 ## Prior Art
 

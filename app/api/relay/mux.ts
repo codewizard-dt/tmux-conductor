@@ -4,9 +4,9 @@
 // relayRequest() is registered as the HTTP handler for ALL /relay/:deviceId/* routes.
 // It:
 //  1. Looks up the device's WS in the registry — 503 if not connected.
-//  2. Enforces a per-device in-flight cap (MAX_IN_FLIGHT = 20) — 503 if exceeded.
+//  2. Enforces a per-device in-flight cap (MAX_IN_FLIGHT = 64) — 503 if exceeded.
 //  3. Generates a correlationId, sends a relay:request frame to the daemon.
-//  4. Registers the correlation in the in-flight map with a 30s timeout.
+//  4. Registers the correlation in the in-flight map with a 30s hard time-to-head timeout.
 //  5. Streams relay:response:head / relay:body:chunk / relay:response:end back to the caller.
 //  6. On relay:error → 502; on timeout → relay:cancel + 504; on WS close → 503.
 
@@ -20,13 +20,21 @@ import {
   deregisterInFlight,
 } from './registry.ts';
 
-const MAX_IN_FLIGHT = 20;
-const REQUEST_TIMEOUT_MS = 30_000;
+const MAX_IN_FLIGHT = 64;
+// Hard time-to-first-byte (time-to-head) timeout: a single timer armed when the
+// relay:request frame is sent. It fires if no response head arrives within this
+// window and is NOT rearmed on chunks — once the head is received it is cleared,
+// so a slow/streaming body (e.g. SSE) is not killed mid-stream.
+const HEAD_TIMEOUT_MS = 30_000;
 
-// Hop-by-hop headers that must not be forwarded across the relay boundary.
+// Headers that must NEVER cross the relay boundary in either direction. Includes the
+// standard hop-by-hop set plus a credential safelist: the browser's session cookie and
+// any Authorization header must not be forwarded to the daemon/host-server, and no
+// Set-Cookie/Authorization echoed back from the host-server must reach the browser.
 const HOP_BY_HOP = new Set([
   'connection', 'upgrade', 'keep-alive', 'transfer-encoding',
   'te', 'trailer', 'proxy-authorization', 'proxy-authenticate', 'host',
+  'cookie', 'authorization', 'set-cookie',
 ]);
 
 export async function relayRequest(
@@ -36,15 +44,44 @@ export async function relayRequest(
 ): Promise<void> {
   const wsOrUndefined = getDeviceWs(deviceId);
   if (wsOrUndefined === undefined) {
+    req.log.info(
+      { event: 'relay:request', deviceId, method: req.method, status: 503 },
+      'relay request rejected: device not connected',
+    );
     return reply.code(503).send({ error: 'device_not_connected' });
   }
   const ws = wsOrUndefined;
 
   if (inFlightCount(deviceId) >= MAX_IN_FLIGHT) {
+    req.log.info(
+      { event: 'relay:request', deviceId, method: req.method, status: 503 },
+      'relay request rejected: too many in-flight',
+    );
     return reply.code(503).send({ error: 'too_many_in_flight' });
   }
 
   const correlationId = randomUUID();
+  const startedAt = Date.now();
+  let completionLogged = false;
+
+  // Structured per-relay-request completion log. Safe correlation fields ONLY —
+  // no headers, no body, no token. `req.log` carries the Fastify reqId.
+  const logCompletion = (status: number): void => {
+    if (completionLogged) return;
+    completionLogged = true;
+    req.log.info(
+      {
+        event: 'relay:request',
+        deviceId,
+        correlationId,
+        method: req.method,
+        path: forwardPath,
+        status,
+        durationMs: Date.now() - startedAt,
+      },
+      'relay request completed',
+    );
+  };
 
   // Strip the /relay/:deviceId prefix — the daemon receives only the inner path.
   const rawUrl = req.url;
@@ -97,6 +134,7 @@ export async function relayRequest(
     let settled = false;
     let headSent = false;
     let finalized = false; // onEnd/onError ran — no cancel on client disconnect.
+    let headStatus = 0; // upstream status code once the head frame arrives.
 
     // --- Bounded write-queue + drain handling (portal → browser backpressure) ---
     // Incoming WS frames drive onChunk synchronously; we cannot block them. Instead we
@@ -128,7 +166,9 @@ export async function relayRequest(
       }
     }
 
-    // --- Idle/inactivity timeout: rearmed on every sign of progress ---
+    // --- Hard time-to-head timeout: armed once, fires if no response head arrives
+    // within HEAD_TIMEOUT_MS. Cleared (not rearmed) on the first head frame, so a
+    // slow streaming body cannot be killed once it has started. ---
     function onTimeout(): void {
       if (settled) return;
       // Send relay:cancel so the daemon can abort the proxied request.
@@ -140,6 +180,7 @@ export async function relayRequest(
       }
       finalized = true;
       settle();
+      logCompletion(504);
       if (headSent) {
         // reply.hijack() was already called — reply.send() would throw; close the raw socket.
         reply.raw.end();
@@ -148,11 +189,7 @@ export async function relayRequest(
       }
       resolve();
     }
-    let timeout: ReturnType<typeof setTimeout> = setTimeout(onTimeout, REQUEST_TIMEOUT_MS);
-    function rearmTimeout(): void {
-      clearTimeout(timeout);
-      timeout = setTimeout(onTimeout, REQUEST_TIMEOUT_MS);
-    }
+    const timeout: ReturnType<typeof setTimeout> = setTimeout(onTimeout, HEAD_TIMEOUT_MS);
 
     function settle(): void {
       if (settled) return;
@@ -180,12 +217,16 @@ export async function relayRequest(
         // ignore — WS may already be closed
       }
       settle();
+      // 499 (client closed request) — non-standard but conventional for aborts.
+      logCompletion(499);
       resolve();
     });
 
     registerInFlight(deviceId, correlationId, {
       onHead(headFrame) {
-        rearmTimeout();
+        // Head arrived within the window — disarm the hard time-to-head timer. The
+        // body may now stream for arbitrarily long without being cut off here.
+        clearTimeout(timeout);
         // Hijack the reply so Fastify stops managing it; we write the status line and
         // headers directly to the raw socket, preserving the upstream status code and
         // content-type (and any other headers) without Fastify overwriting them on send().
@@ -207,9 +248,9 @@ export async function relayRequest(
         }
         reply.raw.writeHead(headFrame.statusCode, rawHeaders);
         headSent = true;
+        headStatus = headFrame.statusCode;
       },
       onChunk(chunkFrame) {
-        rearmTimeout();
         const buf = Buffer.from(chunkFrame.data, 'base64');
         writeQueue.push(buf);
         if (!writableBlocked) {
@@ -220,6 +261,7 @@ export async function relayRequest(
         clearTimeout(timeout);
         finalized = true;
         settle();
+        logCompletion(headStatus || 200);
         // Flush any queued chunks before ending. If the socket is still blocked,
         // end() will flush remaining buffered writes once it drains.
         flushQueue();
@@ -230,6 +272,7 @@ export async function relayRequest(
         clearTimeout(timeout);
         finalized = true;
         settle();
+        logCompletion(502);
         if (!headSent && !reply.sent) {
           // Head not yet sent — Fastify still owns the reply; send a 502 normally.
           reply.code(502).send({ error: err.error, code: err.code });
@@ -250,6 +293,7 @@ export async function relayRequest(
       clearTimeout(timeout);
       finalized = true;
       settle();
+      logCompletion(502);
       if (!reply.sent) {
         reply.code(502).send({ error: 'failed_to_send_relay_frame' });
       }

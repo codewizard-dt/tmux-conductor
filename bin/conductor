@@ -193,17 +193,23 @@ print(d.get('sessionName', ''))
         --portal) PORTAL="${2:-}"; shift 2 ;;
         --code)   CODE="${2:-}";   shift 2 ;;
         --help|-h)
-          echo "Usage: conductor pair [--portal <url>] [--code <code>]"
+          echo "Usage: conductor pair [<code>] [--portal <url>] [--code <code>]"
           echo ""
           echo "Pairs this device with the tmux-conductor portal."
-          echo "If --portal or --code are omitted, you will be prompted interactively."
+          echo "The pairing code may be given positionally or via --code."
+          echo "If the portal URL or code are omitted, you will be prompted interactively."
           echo ""
           echo "Options:"
           echo "  --portal <url>   Portal base URL (e.g. https://portal.example.com)"
           echo "  --code <code>    Pairing code generated from the portal (XXXX-XXXX)"
           exit 0
           ;;
-        *) echo "Unknown flag: $1" >&2; exit 1 ;;
+        --*) echo "Unknown flag: $1" >&2; exit 1 ;;
+        *)
+          # Bare argument: treat as the pairing code (matches install.sh usage).
+          if [ -z "$CODE" ]; then CODE="$1"; shift
+          else echo "Unexpected argument: $1" >&2; exit 1; fi
+          ;;
       esac
     done
     PORTAL_FLAG=""

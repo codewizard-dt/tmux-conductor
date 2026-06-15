@@ -76,6 +76,38 @@ launch_cmd_name() {
   return 0
 }
 
+agent_type() {
+  local launch="$1"
+  local cmd_name
+  cmd_name="$(basename "$(launch_cmd_name "$launch")" 2>/dev/null | tr '[:upper:]' '[:lower:]')"
+  case "$cmd_name" in
+    claude) printf 'claude' ;;
+    codex) printf 'codex' ;;
+    *) printf 'custom' ;;
+  esac
+}
+
+agent_idle_pattern() {
+  case "$(agent_type "$1")" in
+    codex) printf '%s' '^codex[>›]|OpenAI Codex|^[[:space:]]*gpt-[^[:space:]]+[[:space:]].*~/|^[[:space:]]*[›❯][[:space:]]*$|^[[:space:]]*>[[:space:]]*$' ;;
+    *) printf '%s' "${IDLE_PATTERN:-}" ;;
+  esac
+}
+
+agent_busy_pattern() {
+  case "$(agent_type "$1")" in
+    codex) printf '%s' 'esc to interrupt|ctrl.c to interrupt|working|thinking|running|executing|applying' ;;
+    *) printf '%s' "${BUSY_PATTERN:-}" ;;
+  esac
+}
+
+agent_awaiting_pattern() {
+  case "$(agent_type "$1")" in
+    codex) printf '%s' '(\?|\[Y/n\]|\[y/N\]|>[[:space:]]*$|Enter to (select|confirm|submit)|Esc to (cancel|go back))' ;;
+    *) printf '%s' "${AWAITING_PATTERN:-}" ;;
+  esac
+}
+
 # True when the pane has fallen back to a plain shell while the agent's launch
 # command is not itself a shell — i.e. the agent process exited or crashed.
 # Dispatching into a dead pane would execute the task as a shell command.
@@ -102,6 +134,11 @@ is_idle() {
   local window_name="${2:-}"
   local name="${3:-$window_name}"
   local state_file="${STATE_DIR}/${window_name}.state"
+  local launch="${AGENT_CMDS[$name]:-}"
+  local idle_pattern busy_pattern awaiting_pattern
+  idle_pattern="$(agent_idle_pattern "$launch")"
+  busy_pattern="$(agent_busy_pattern "$launch")"
+  awaiting_pattern="$(agent_awaiting_pattern "$launch")"
 
   # Reset detection globals
   LAST_DETECTION=""
@@ -143,8 +180,9 @@ is_idle() {
         if [ "$age" -gt "$busy_min_age" ]; then
           local tail_busy
           tail_busy=$(pane_tail5 "$target")
-          if { [ -z "${BUSY_PATTERN:-}" ] || ! printf '%s\n' "$tail_busy" | grep -qE "$BUSY_PATTERN"; } \
-             && printf '%s\n' "$tail_busy" | grep -qE "$IDLE_PATTERN"; then
+          if { [ -z "$busy_pattern" ] || ! printf '%s\n' "$tail_busy" | grep -qE "$busy_pattern"; } \
+             && [ -n "$idle_pattern" ] \
+             && printf '%s\n' "$tail_busy" | grep -qE "$idle_pattern"; then
             log "$name — busy state (age=${age}s) but pane reads idle; Stop hook likely missed — recovering to idle"
             printf 'idle\n' > "$state_file" 2>/dev/null || true
             LAST_DETECTION="busy-recovered"
@@ -153,10 +191,10 @@ is_idle() {
           fi
         fi
         # Secondary: check if the pane is awaiting interactive input
-        if [ -n "${AWAITING_PATTERN:-}" ]; then
+        if [ -n "$awaiting_pattern" ]; then
           local last_lines_aw
           last_lines_aw=$(tmux capture-pane -t "$target" -p 2>/dev/null | grep -v '^[[:space:]]*$' | tail -8 || true)
-          if printf '%s\n' "$last_lines_aw" | grep -qE "$AWAITING_PATTERN"; then
+          if printf '%s\n' "$last_lines_aw" | grep -qE "$awaiting_pattern"; then
             debug "is_idle: target=$target awaiting-input pattern matched — writing 'awaiting'"
             printf 'awaiting\n' > "$state_file" 2>/dev/null || true
           fi
@@ -172,10 +210,10 @@ is_idle() {
         LAST_DETECTION="state-file"
         LAST_STATE_VALUE="idle"
         LAST_STATE_AGE="$age"
-        if [ -n "${BUSY_PATTERN:-}" ]; then
+        if [ -n "$busy_pattern" ]; then
           local tail_lines
           tail_lines=$(pane_tail5 "$target")
-          if printf '%s\n' "$tail_lines" | grep -qE "$BUSY_PATTERN"; then
+          if printf '%s\n' "$tail_lines" | grep -qE "$busy_pattern"; then
             debug "is_idle: target=$target state-file idle but BUSY_PATTERN matched — treating as busy"
             return 1
           fi
@@ -188,10 +226,10 @@ is_idle() {
         LAST_DETECTION="state-file"
         LAST_STATE_VALUE="awaiting"
         LAST_STATE_AGE="$age"
-        if [ -n "${AWAITING_PATTERN:-}" ]; then
+        if [ -n "$awaiting_pattern" ]; then
           local last_lines_aw2
           last_lines_aw2=$(tmux capture-pane -t "$target" -p 2>/dev/null | grep -v '^[[:space:]]*$' | tail -8 || true)
-          if ! printf '%s\n' "$last_lines_aw2" | grep -qE "$AWAITING_PATTERN"; then
+          if ! printf '%s\n' "$last_lines_aw2" | grep -qE "$awaiting_pattern"; then
             debug "is_idle: target=$target awaiting state but prompt gone — reverting to 'busy'"
             printf 'busy\n' > "$state_file" 2>/dev/null || true
           fi
@@ -210,11 +248,11 @@ is_idle() {
   LAST_DETECTION="regex"
   local last_lines
   last_lines=$(pane_tail5 "$target")
-  if [ -n "${BUSY_PATTERN:-}" ] && printf '%s\n' "$last_lines" | grep -qE "$BUSY_PATTERN"; then
+  if [ -n "$busy_pattern" ] && printf '%s\n' "$last_lines" | grep -qE "$busy_pattern"; then
     debug "is_idle: target=$target BUSY_PATTERN matched — busy"
     return 1
   fi
-  if printf '%s\n' "$last_lines" | grep -qE "$IDLE_PATTERN"; then
+  if [ -n "$idle_pattern" ] && printf '%s\n' "$last_lines" | grep -qE "$idle_pattern"; then
     debug "is_idle: target=$target regex MATCHED"
     return 0
   fi

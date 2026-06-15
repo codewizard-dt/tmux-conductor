@@ -22,6 +22,7 @@ export type AgentStatus =
   | 'unknown'
 
 export type AgentMode = 'default' | 'acceptEdits' | 'plan' | 'bypass' | 'unknown'
+export type AgentType = 'claude' | 'codex' | 'custom'
 
 export interface Agent {
   id: number
@@ -30,6 +31,7 @@ export interface Agent {
   projectName: string | null
   state: string
   mode: AgentMode
+  agentType?: AgentType
   windowPresent: boolean
   queuedTasks: number
   launchCmd: string
@@ -119,6 +121,36 @@ function StatusBadge({ status }: { status: AgentStatus }) {
   )
 }
 
+function inferAgentType(agent: Agent): AgentType | null {
+  if (agent.agentType === 'claude' || agent.agentType === 'codex') return agent.agentType
+  const cmd = agent.launchCmd
+    .trim()
+    .split(/\s+/)
+    .find((word) => !/^[A-Za-z_][A-Za-z0-9_]*=/.test(word))
+  const parts = (cmd ?? '').split('/')
+  const name = parts[parts.length - 1]?.toLowerCase()
+  if (name === 'claude' || name === 'codex') return name
+  return null
+}
+
+function AgentTypeBadge({ agent }: { agent: Agent }) {
+  const type = inferAgentType(agent)
+  if (type === null) return null
+  const palette = type === 'claude'
+    ? { bg: 'rgba(126,87,194,0.10)', color: '#5b21b6', dot: '#7e57c2' }
+    : { bg: 'rgba(20,126,105,0.10)', color: '#0f766e', dot: '#14a38b' }
+  return (
+    <span
+      className="inline-flex items-center gap-1 rounded-pill px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.06em]"
+      style={{ background: palette.bg, color: palette.color }}
+      title={`Agent type: ${type}`}
+    >
+      <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full" style={{ background: palette.dot }} />
+      {type}
+    </span>
+  )
+}
+
 /** Deterministic hue (0–359) from a project name so each project keeps a stable badge color. */
 function projectHue(name: string): number {
   let h = 0
@@ -163,10 +195,23 @@ function formatTokens(n: number): string {
   return String(n)
 }
 
+function modelForAgentType(type: AgentType, model: string | null | undefined): string | null {
+  if (!model) return null
+  const normalized = model.toLowerCase()
+  const isClaudeModel = /^(opus|sonnet|haiku|fable)\b/.test(normalized) || normalized.startsWith('claude-')
+  const isCodexModel = normalized.startsWith('gpt-') || normalized.startsWith('o') || normalized.includes('codex')
+  if (type === 'codex') return isClaudeModel ? null : model
+  if (type === 'claude') return isCodexModel ? null : model
+  return null
+}
+
 /** Model chip + thin context-fill bar. Shows model chip alone when contextPct is unknown. */
 function ContextMeter({ agent, detailed = false }: { agent: Agent; detailed?: boolean }) {
+  const type = inferAgentType(agent)
+  if (type !== 'claude' && type !== 'codex') return null
+
   const pct = agent.contextPct
-  const model = agent.model
+  const model = modelForAgentType(type, agent.model)
 
   if (pct == null && (!model || !detailed)) return null
 
@@ -419,6 +464,7 @@ function AgentDetailModal({ agent, project, projectId, status, onClose, armInter
             </span>
             <ProjectBadge name={project} />
             <StatusBadge status={status} />
+            <AgentTypeBadge agent={agent} />
             <ContextMeter agent={agent} detailed />
             {needsAttention(status) && (
               <span className="animate-flash text-[14px] font-bold leading-none" style={{ color: status === 'stalled' ? '#e5484d' : '#e0901a' }} aria-label="Needs attention">!</span>

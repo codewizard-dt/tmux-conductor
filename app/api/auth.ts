@@ -32,6 +32,17 @@ export const auth = betterAuth({
   // origin must be explicitly trusted. Driven by CORS_ORIGIN (same value used by
   // @fastify/cors in index.ts), defaulting to the local Vite dev origin.
   trustedOrigins: [env.CORS_ORIGIN],
+  // Cookie hardening. better-auth already sets HttpOnly + SameSite=Lax by default;
+  // we additionally force the Secure attribute in production (real enforcement still
+  // depends on the deployment terminating TLS). Gating on NODE_ENV keeps local http
+  // dev (no TLS) working, where browsers would otherwise drop a Secure cookie.
+  advanced: {
+    useSecureCookies: process.env['NODE_ENV'] === 'production',
+    defaultCookieAttributes: {
+      httpOnly: true,
+      sameSite: 'lax',
+    },
+  },
   emailAndPassword: {
     enabled: true,
   },

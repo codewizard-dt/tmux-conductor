@@ -38,3 +38,5 @@ Terminal UAT files (`passed`, `skipped`, or `trashed`) moved here by `/wiki-arch
 | [[UAT-031]] | UAT: app/api pairing-code creation API + rate-limited /pair/redeem (hashed, single-use, 10-min expiry) | passed | 2026-06-14 |
 | [[UAT-032]] | UAT: daemon/pair.ts + daemon/credentials.ts; conductor pair / conductor unpair CLI | passed | 2026-06-14 |
 | [[UAT-052]] | UAT: Daemon connector — outbound WSS client to app/api relay with reconnect/backoff and path-allowlisted proxying | passed | 2026-06-14 |
+| [[UAT-058]] | UAT: Security checklist pass + structured logs + device last-seen heartbeat | passed | 2026-06-15 |
+| [[UAT-059]] | UAT: README install one-liner + docs updates (CLAUDE.md, scripts/README, .env.example) | passed | 2026-06-14 |

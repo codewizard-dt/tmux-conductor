@@ -24,9 +24,9 @@ import {
   register,
   deregister,
   getInFlightEntry,
+  touchDeviceLastSeen,
 } from '../relay/registry.ts';
 import { relayRequest } from '../relay/mux.ts';
-
 // ---------------------------------------------------------------------------
 // Token validation
 // ---------------------------------------------------------------------------
@@ -113,12 +113,17 @@ export default async function relayRoutes(app: FastifyInstance): Promise<void> {
         return;
       }
 
-      app.log.info({ deviceId }, 'relay: daemon connected');
+      app.log.info({ deviceId, event: 'relay:connect' }, 'relay: daemon connected');
+      app.log.info({ deviceId, event: 'relay:connect' }, 'relay: daemon connected');
       // registry stores WebSocket directly (not SocketStream).
       register(deviceId, ws);
+      // Force a last_seen_at write on connect (first activity), bypassing throttle.
+      touchDeviceLastSeen(deviceId, app.log, true);
 
       // --- Route inbound frames from daemon to in-flight mux entries ---
       ws.on('message', (data: Buffer) => {
+        // Keep the connection fresh on ongoing traffic (throttled, best-effort).
+        touchDeviceLastSeen(deviceId, app.log);
         let parsed: unknown;
         try {
           parsed = JSON.parse(data.toString('utf8'));
@@ -128,7 +133,16 @@ export default async function relayRoutes(app: FastifyInstance): Promise<void> {
         }
 
         if (!isOutboundFrame(parsed)) {
-          app.log.warn({ deviceId, parsed }, 'relay: unrecognised outbound frame — ignored');
+          // Do NOT log `parsed` — an outbound frame can carry base64 body/headers.
+          // Log only the safe shape descriptor so the line stays leak-free.
+          const frameType =
+            typeof parsed === 'object' && parsed !== null && 'type' in parsed
+              ? String((parsed as { type: unknown }).type)
+              : 'unknown';
+          app.log.warn(
+            { deviceId, frameType, event: 'relay:bad-frame' },
+            'relay: unrecognised outbound frame — ignored',
+          );
           return;
         }
 
@@ -162,8 +176,13 @@ export default async function relayRoutes(app: FastifyInstance): Promise<void> {
       });
 
       // --- On close: deregister and fail all pending in-flight ---
-      ws.on('close', () => {
-        app.log.info({ deviceId }, 'relay: daemon disconnected');
+      ws.on('close', (closeCode: number) => {
+        app.log.info(
+          { deviceId, event: 'relay:disconnect', closeCode },
+          'relay: daemon disconnected',
+        );
+        // Record the last-seen moment as the disconnect time (force, best-effort).
+        touchDeviceLastSeen(deviceId, app.log, true);
         // deregister() calls failAllInFlight() internally — all in-flight get 503.
         deregister(deviceId);
       });

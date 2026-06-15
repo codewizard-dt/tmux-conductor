@@ -7,8 +7,8 @@ import fastifyCors from '@fastify/cors';
 import fastifyStatic from '@fastify/static';
 import { readConductorConf, DEFAULT_CONF_PATH, appendBgProcessToConf, removeBgProcessFromConf, removeBgLink, addBgLink, clearConfCache } from './config.ts';
 import { openDb, getDbPath, listAgents, getAgentById, createAgent, deleteAgent, updateAgentName, agentWindowName, addTask, deleteTask, reorderTasks, jumpTaskToHead, listTasksForAgentId, listTasksByProject, listProjects, createProject, updateProject, deleteProject, nextAgentName, listSchedules, createSchedule, updateSchedule, deleteSchedule, dueSchedules, fireSchedule } from './db.ts';
-import { detectAgentStatus, detectAgentMode, isTmuxWindowPresent, windowState, getActiveTask, capturePaneTail, capturePaneTailRaw, sendTextToPane, extractPaneLabel, type AgentMode } from './state.ts';
-import { getAgentContext, type AgentContext } from './context.ts';
+import { detectAgentStatus, detectAgentMode, detectAgentType, isTmuxWindowPresent, windowState, getActiveTask, capturePaneTail, capturePaneTailRaw, sendTextToPane, extractPaneLabel, type AgentMode, type AgentType } from './state.ts';
+import { getAgentContext, getCodexAgentContext, type AgentContext } from './context.ts';
 import dotenv from 'dotenv';
 import { getUserSkills, getPluginSkills, getProjectSkills } from './skills.ts';
 
@@ -144,6 +144,29 @@ function buildBgStatuses(conf: ReturnType<typeof readConductorConf>): BgStatus[]
   });
 }
 
+function emptyAgentContext(conf: ReturnType<typeof readConductorConf>): AgentContext {
+  return {
+    model: null,
+    modelId: null,
+    contextTokens: null,
+    contextPct: null,
+    contextLimit: conf.contextWindow,
+  };
+}
+
+function getContextForAgent(
+  conf: ReturnType<typeof readConductorConf>,
+  agentType: AgentType,
+  windowName: string,
+  workdir: string,
+  isBusy: boolean,
+  paneTail?: string,
+): AgentContext {
+  if (agentType === 'codex') return getCodexAgentContext(workdir, conf.contextWindow);
+  if (agentType !== 'claude') return emptyAgentContext(conf);
+  return getAgentContext(windowName, workdir, conf.stateDir, conf.contextWindow, isBusy, paneTail);
+}
+
 // ── Shared tmux helpers ───────────────────────────────────────────────────────
 
 function spawnAgentWindow(
@@ -205,14 +228,16 @@ await fastify.register((api) => {
       const tail15 = windowPresent ? capturePaneTail(sessionName, win, 15) : '';
       const state = detectAgentStatus(conf, win, agent.launchCmd, tail15 || undefined);
       const isBusy = state === 'busy' || state === 'awaiting' || state === 'stalled';
-      const ctx = getAgentContext(win, agent.workdir, conf.stateDir, conf.contextWindow, isBusy, tail15 || undefined);
+      const agentType = detectAgentType(agent.launchCmd);
+      const ctx = getContextForAgent(conf, agentType, win, agent.workdir, isBusy, tail15 || undefined);
       return {
         id: agent.id,
         name: agent.name,
         projectId: agent.projectId,
         projectName: agent.projectName,
         state,
-        mode: windowPresent ? detectAgentMode(conf, win, tail15) : 'unknown',
+        mode: windowPresent ? detectAgentMode(conf, win, agent.launchCmd, tail15) : 'unknown',
+        agentType,
         windowPresent,
         queuedTasks: listTasksForAgentId(db, agent.id, agent.projectId).length,
         launchCmd: agent.launchCmd,
@@ -445,10 +470,12 @@ await fastify.register((api) => {
       const tail15 = windowPresent ? capturePaneTail(conf.sessionName, winName, 15) : '';
       const state = detectAgentStatus(conf, winName, launchCmd, tail15 || undefined);
       const isBusy = state === 'busy' || state === 'awaiting' || state === 'stalled';
-      const ctx = getAgentContext(winName, workdir, conf.stateDir, conf.contextWindow, isBusy, tail15 || undefined);
+      const agentType = detectAgentType(launchCmd);
+      const ctx = getContextForAgent(conf, agentType, winName, workdir, isBusy, tail15 || undefined);
       broadcastSSE('agent-update', {
         id: newAgent.id, name, projectId: newAgent.projectId, projectName: newAgent.projectName,
-        state, mode: windowPresent ? detectAgentMode(conf, winName, tail15) : 'unknown',
+        state, mode: windowPresent ? detectAgentMode(conf, winName, launchCmd, tail15) : 'unknown',
+        agentType,
         windowPresent, queuedTasks: 0, launchCmd, workdir, linkedBg: null, activeTask: null, ...ctx,
       });
     }
@@ -531,13 +558,16 @@ await fastify.register((api) => {
     if (!isTmuxWindowPresent(sessionName, wn)) {
       return reply.status(409).send({ error: 'agent window not present' });
     }
+    if (detectAgentType(entry.launchCmd) !== 'claude') {
+      return reply.status(409).send({ error: 'mode switching is only supported for Claude Code agents' });
+    }
     if (modeSwitchInFlight.has(wn)) {
       return reply.status(409).send({ error: 'mode switch already in progress for this agent' });
     }
 
     modeSwitchInFlight.add(wn);
     try {
-      const origin = detectAgentMode(conf, wn);
+      const origin = detectAgentMode(conf, wn, entry.launchCmd);
       if (origin === 'unknown') {
         return await reply.status(409).send({
           error: 'cannot detect current permission mode (agent may not be Claude Code, or is showing a dialog)',
@@ -556,10 +586,10 @@ await fastify.register((api) => {
         await sleep(SETTLE_MS);
 
         // The footer can be mid-redraw right after a press — re-detect briefly.
-        let current = detectAgentMode(conf, wn);
+        let current = detectAgentMode(conf, wn, entry.launchCmd);
         for (let retry = 0; retry < 2 && current === 'unknown'; retry++) {
           await sleep(SETTLE_MS);
-          current = detectAgentMode(conf, wn);
+          current = detectAgentMode(conf, wn, entry.launchCmd);
         }
 
         seen.push(current);
@@ -1141,7 +1171,7 @@ await fastify.register((api) => {
     }
   });
 
-  api.post<{ Params: { id: string }; Body: { name?: unknown } }>('/projects/:id/agents', async (req, reply) => {
+  api.post<{ Params: { id: string }; Body: { name?: unknown; launchCmd?: unknown } }>('/projects/:id/agents', async (req, reply) => {
     const id = parseInt(req.params.id, 10);
     if (isNaN(id)) {
       return reply.status(400).send({ error: 'invalid project id' });
@@ -1152,16 +1182,20 @@ await fastify.register((api) => {
       return reply.status(404).send({ error: `project ${String(id)} not found` });
     }
 
-    const { name: nameOverride } = req.body;
+    const { name: nameOverride, launchCmd: launchCmdOverride } = req.body;
     if (nameOverride !== undefined && (typeof nameOverride !== 'string' || !/^[A-Za-z0-9_-]+$/.test(nameOverride))) {
       return reply.status(400).send({ error: 'name must match ^[A-Za-z0-9_-]+$' });
     }
+    if (launchCmdOverride !== undefined && (typeof launchCmdOverride !== 'string' || launchCmdOverride.trim() === '')) {
+      return reply.status(400).send({ error: 'launchCmd must be a non-empty string' });
+    }
 
     const agentName = typeof nameOverride === 'string' ? nameOverride : nextAgentName(db, id);
+    const launchCmd = typeof launchCmdOverride === 'string' ? launchCmdOverride.trim() : project.defaultLaunchCmd;
     const newAgent = createAgent(db, {
       name: agentName,
       workdir: project.workdir,
-      launchCmd: project.defaultLaunchCmd,
+      launchCmd,
       projectId: id,
     });
 
@@ -1173,13 +1207,15 @@ await fastify.register((api) => {
     {
       const windowPresent = isTmuxWindowPresent(conf.sessionName, winName);
       const tail15 = windowPresent ? capturePaneTail(conf.sessionName, winName, 15) : '';
-      const state = detectAgentStatus(conf, winName, project.defaultLaunchCmd, tail15 || undefined);
+      const state = detectAgentStatus(conf, winName, launchCmd, tail15 || undefined);
       const isBusy = state === 'busy' || state === 'awaiting' || state === 'stalled';
-      const ctx = getAgentContext(winName, project.workdir, conf.stateDir, conf.contextWindow, isBusy, tail15 || undefined);
+      const agentType = detectAgentType(launchCmd);
+      const ctx = getContextForAgent(conf, agentType, winName, project.workdir, isBusy, tail15 || undefined);
       broadcastSSE('agent-update', {
         id: newAgent.id, name: agentName, projectId: newAgent.projectId, projectName: newAgent.projectName,
-        state, mode: windowPresent ? detectAgentMode(conf, winName, tail15) : 'unknown',
-        windowPresent, queuedTasks: 0, launchCmd: project.defaultLaunchCmd, workdir: project.workdir,
+        state, mode: windowPresent ? detectAgentMode(conf, winName, launchCmd, tail15) : 'unknown',
+        agentType,
+        windowPresent, queuedTasks: 0, launchCmd, workdir: project.workdir,
         linkedBg: null, activeTask: null, ...ctx,
       });
     }
@@ -1321,7 +1357,7 @@ await fastify.register((api) => {
 interface Snapshot {
   sessionAlive: boolean;
   sessionExists: boolean;
-  agents: Array<{ id: number; name: string; projectId: number | null; projectName: string | null; state: string; mode: AgentMode; windowPresent: boolean; queuedTasks: number; launchCmd: string; workdir: string; activeTask: string | null; label: string | null } & AgentContext>;
+  agents: Array<{ id: number; name: string; projectId: number | null; projectName: string | null; state: string; mode: AgentMode; agentType: AgentType; windowPresent: boolean; queuedTasks: number; launchCmd: string; workdir: string; activeTask: string | null; label: string | null } & AgentContext>;
   bgProcesses: BgStatus[];
 }
 
@@ -1346,7 +1382,8 @@ function buildSnapshot(): Snapshot {
     const tail15 = windowPresent ? capturePaneTail(sessionName, wn, 15) : '';
     const state = detectAgentStatus(conf, wn, agent.launchCmd, tail15 || undefined);
     const isBusy = state === 'busy' || state === 'awaiting' || state === 'stalled';
-    const ctx = getAgentContext(wn, agent.workdir, conf.stateDir, conf.contextWindow, isBusy, tail15 || undefined);
+    const agentType = detectAgentType(agent.launchCmd);
+    const ctx = getContextForAgent(conf, agentType, wn, agent.workdir, isBusy, tail15 || undefined);
     // Clear label when window is gone; re-seed whenever cache is null (covers server restart + no-window reopen).
     if (state === 'no-window') {
       agentLabelCache.set(agent.id, null);
@@ -1361,7 +1398,8 @@ function buildSnapshot(): Snapshot {
       projectId: agent.projectId,
       projectName: agent.projectName,
       state,
-      mode: windowPresent ? detectAgentMode(conf, wn, tail15) : 'unknown',
+      mode: windowPresent ? detectAgentMode(conf, wn, agent.launchCmd, tail15) : 'unknown',
+      agentType,
       windowPresent,
       queuedTasks: listTasksForAgentId(db, agent.id, agent.projectId).length,
       launchCmd: agent.launchCmd,

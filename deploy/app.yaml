@@ -32,6 +32,20 @@ services:
       - key: PUBLIC_BASE_URL
         scope: RUN_TIME
         value: ${APP_URL}
+      # Same-origin ingress: the frontend is served from the same ${APP_URL} as the
+      # api, so better-auth's trustedOrigins / @fastify/cors must trust that origin.
+      - key: CORS_ORIGIN
+        scope: RUN_TIME
+        value: ${APP_URL}
+      # Required by env.ts (hard-fail if unset). The single bootstrap admin that
+      # bypasses the invite-code gate. MUST match the frontend VITE_ADMIN_EMAIL.
+      - key: BOOTSTRAP_ADMIN_EMAIL
+        scope: RUN_TIME
+        value: doctordeetz@gmail.com
+      # Enables better-auth Secure cookies (TLS is terminated at the App Platform edge).
+      - key: NODE_ENV
+        scope: RUN_TIME
+        value: production
 static_sites:
   - name: frontend
     github:
@@ -42,13 +56,14 @@ static_sites:
     build_command: npm ci && npm run build
     output_dir: dist
     envs:
-      - key: PUBLIC_API_URL
+      # Admin invite-codes UI gate (build-time). MUST match the api BOOTSTRAP_ADMIN_EMAIL.
+      # The frontend calls /api on the same origin (ingress), so VITE_API_URL is left
+      # unset and the code falls back to the relative "/api" base.
+      - key: VITE_ADMIN_EMAIL
         scope: BUILD_TIME
-        value: ${api.PUBLIC_URL}
-databases:
-  - name: db
-    engine: PG
-    production: false
+        value: doctordeetz@gmail.com
+# DATABASE_URL points at the pre-existing managed cluster "tmux-conductor-db"
+# (set as a SECRET on the api service), so no App Platform-managed database block.
 # Ingress: frontend owns "/", the api is mounted under "/api" so the two
 # components don't collide on the same path prefix. NOTE: no `rewrite` — the
 # "/api" prefix is preserved so it reaches app/api's own "/api/auth/*" routes.

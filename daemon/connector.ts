@@ -17,7 +17,7 @@ import * as http from 'http';
 import { WebSocket } from 'ws';
 import { readCredentials } from './credentials.ts';
 import { SOCKET_PATH } from './paths.ts';
-import { isInboundRelayFrame } from '../shared/relay-protocol.ts';
+import { isInboundRelayFrame, RELAY_CLOSE_REVOKED } from '../shared/relay-protocol.ts';
 import type {
   CorrelationId,
   InboundRelayFrame,
@@ -163,6 +163,12 @@ export class RelayConnector {
 
     ws.on('close', (code: number) => {
       this.log.info(`[relay] disconnected (code ${code})`);
+      if (code === RELAY_CLOSE_REVOKED) {
+        // Device revoked / unauthorized — do not reconnect; stop cleanly.
+        this.log.warn('[relay] device revoked, stopping');
+        this.stop();
+        return;
+      }
       this.onDisconnected();
     });
   }
@@ -538,7 +544,17 @@ function sanitizeHeaders(headers: Record<string, string>): Record<string, string
   const out: Record<string, string> = {};
   for (const [k, v] of Object.entries(headers)) {
     const lower = k.toLowerCase();
-    if (lower === 'host' || lower === 'connection' || lower === 'content-length') continue;
+    if (
+      lower === 'host' ||
+      lower === 'connection' ||
+      lower === 'content-length' ||
+      // Credential safelist: never forward the browser's cookie/authorization to the
+      // host-server, and never echo Set-Cookie back across the relay.
+      lower === 'cookie' ||
+      lower === 'authorization' ||
+      lower === 'set-cookie'
+    )
+      continue;
     out[k] = v;
   }
   return out;

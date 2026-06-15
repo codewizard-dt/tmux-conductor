@@ -13,7 +13,16 @@ import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { fromNodeHeaders } from 'better-auth/node';
 import { auth } from '../auth.ts';
 import { getPool } from '../db.ts';
-import { isDeviceConnected, closeRelayConnection } from '../relay/registry.ts';
+import {
+  isDeviceConnected,
+  closeRelayConnection,
+  HEARTBEAT_THROTTLE_MS,
+} from '../relay/registry.ts';
+
+// A device counts as "connected" if it has a live relay WS in the registry, OR
+// its last_seen_at heartbeat is within this recency window (2× the heartbeat
+// throttle, so a freshly-written heartbeat never lapses between writes).
+const CONNECTED_RECENCY_MS = HEARTBEAT_THROTTLE_MS * 2;
 
 // ---------------------------------------------------------------------------
 // Session helper — identical pattern to pair.ts
@@ -62,13 +71,16 @@ interface DeviceRow {
 }
 
 function formatDevice(row: DeviceRow) {
+  const recentLastSeen =
+    row.last_seen_at !== null &&
+    Date.now() - row.last_seen_at.getTime() < CONNECTED_RECENCY_MS;
   return {
     id: row.id,
     name: row.name,
     createdAt: row.created_at.toISOString(),
     lastSeenAt: row.last_seen_at?.toISOString() ?? null,
     revokedAt: row.revoked_at?.toISOString() ?? null,
-    connected: isDeviceConnected(row.id),
+    connected: isDeviceConnected(row.id) || recentLastSeen,
   };
 }
 

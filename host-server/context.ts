@@ -34,6 +34,9 @@ interface CacheEntry { mtimeMs: number; size: number; info: TranscriptInfo | nul
 const transcriptCache = new Map<string, CacheEntry>();
 
 interface TranscriptInfo { modelId: string | null; contextTokens: number; }
+interface CodexInfo { modelId: string | null; contextTokens: number | null; contextLimit: number | null; }
+interface CodexSessionCandidate { path: string; mtimeMs: number; }
+interface CodexCacheEntry { mtimeMs: number; size: number; info: CodexInfo | null; }
 
 // Per-agent memo that (a) pins the agent to its MAIN-session transcript so a
 // momentary mtime-fallback can't flap onto a sub-agent's separate transcript,
@@ -49,6 +52,9 @@ interface AgentMemo {
   prevModel: string | null;        // model from last good read; survives lastGood reset on /clear
 }
 const agentMemo = new Map<string, AgentMemo>();
+const codexCache = new Map<string, CodexCacheEntry>();
+let codexSessionScan: { ts: number; sessions: CodexSessionCandidate[] } | null = null;
+const CODEX_SESSION_SCAN_TTL_MS = 5000;
 
 interface ResolvedTranscript {
   path: string;
@@ -188,6 +194,129 @@ export function modelDisplayName(modelId: string | null): string | null {
   const single = id.match(/(?:opus|sonnet|haiku|fable)-(\d+)/);
   if (single) return `${fam} ${single[1] ?? ''}`;
   return fam;
+}
+
+function codexModelDisplayName(modelId: string | null): string | null {
+  if (!modelId) return null;
+  const parts = modelId.toLowerCase().split('-').filter(Boolean);
+  if (parts.length === 0) return modelId;
+  return parts.map((part) => part === 'gpt' ? 'GPT' : part.toUpperCase()).join('-');
+}
+
+function collectCodexSessions(dir: string, out: CodexSessionCandidate[]): void {
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return;
+  }
+  for (const entry of entries) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      collectCodexSessions(full, out);
+      continue;
+    }
+    if (!entry.isFile() || !entry.name.endsWith('.jsonl')) continue;
+    try {
+      out.push({ path: full, mtimeMs: fs.statSync(full).mtimeMs });
+    } catch {
+      // ignore races while Codex rotates/writes files
+    }
+  }
+}
+
+function listCodexSessions(): CodexSessionCandidate[] {
+  const now = Date.now();
+  if (codexSessionScan && now - codexSessionScan.ts < CODEX_SESSION_SCAN_TTL_MS) {
+    return codexSessionScan.sessions;
+  }
+  const sessions: CodexSessionCandidate[] = [];
+  collectCodexSessions(path.join(os.homedir(), '.codex', 'sessions'), sessions);
+  sessions.sort((a, b) => b.mtimeMs - a.mtimeMs);
+  codexSessionScan = { ts: now, sessions };
+  return sessions;
+}
+
+function codexSessionCwd(sessionPath: string): string | null {
+  try {
+    const first = fs.readFileSync(sessionPath, 'utf8').split('\n', 1)[0];
+    if (!first) return null;
+    const rec = JSON.parse(first) as { type?: string; payload?: { cwd?: string } };
+    return rec.type === 'session_meta' && typeof rec.payload?.cwd === 'string'
+      ? rec.payload.cwd
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function resolveCodexSessionPath(workdir: string): string | null {
+  if (!workdir) return null;
+  const resolvedWorkdir = path.resolve(workdir);
+  for (const candidate of listCodexSessions()) {
+    const cwd = codexSessionCwd(candidate.path);
+    if (cwd && path.resolve(cwd) === resolvedWorkdir) return candidate.path;
+  }
+  return null;
+}
+
+function readCodexInfo(sessionPath: string): CodexInfo | null {
+  let stat: fs.Stats;
+  try { stat = fs.statSync(sessionPath); } catch { return null; }
+
+  const cached = codexCache.get(sessionPath);
+  if (cached && cached.mtimeMs === stat.mtimeMs && cached.size === stat.size) {
+    return cached.info;
+  }
+
+  let modelId: string | null = null;
+  let contextTokens: number | null = null;
+  let contextLimit: number | null = null;
+  try {
+    const lines = fs.readFileSync(sessionPath, 'utf8').split('\n');
+    for (const line of lines) {
+      if (!line) continue;
+      let rec: {
+        type?: string;
+        payload?: {
+          model?: string;
+          info?: {
+            model_context_window?: number;
+            last_token_usage?: {
+              input_tokens?: number;
+              output_tokens?: number;
+              reasoning_output_tokens?: number;
+              total_tokens?: number;
+            };
+          };
+          model_context_window?: number;
+        };
+      };
+      try { rec = JSON.parse(line) as typeof rec; } catch { continue; }
+      if (rec.type === 'turn_context' && typeof rec.payload?.model === 'string') {
+        modelId = rec.payload.model;
+      }
+      if (rec.type === 'event_msg' && rec.payload?.info?.model_context_window) {
+        contextLimit = rec.payload.info.model_context_window;
+        const usage = rec.payload.info?.last_token_usage;
+        if (usage) {
+          contextTokens = usage.total_tokens ??
+            ((usage.input_tokens ?? 0) + (usage.output_tokens ?? 0) + (usage.reasoning_output_tokens ?? 0));
+        }
+      } else if (rec.type === 'event_msg' && rec.payload?.model_context_window) {
+        contextLimit = rec.payload.model_context_window;
+      }
+    }
+  } catch {
+    codexCache.set(sessionPath, { mtimeMs: stat.mtimeMs, size: stat.size, info: null });
+    return null;
+  }
+
+  const info = modelId || contextTokens !== null || contextLimit !== null
+    ? { modelId, contextTokens, contextLimit }
+    : null;
+  codexCache.set(sessionPath, { mtimeMs: stat.mtimeMs, size: stat.size, info });
+  return info;
 }
 
 interface PaneInfo {
@@ -377,4 +506,28 @@ export function getAgentContext(
   if (ctx.model != null || ctx.contextPct != null) memo.lastGood = ctx;
   if (ctx.model) memo.prevModel = ctx.model;
   return ctx;
+}
+
+export function getCodexAgentContext(
+  workdir: string,
+  contextLimit: number,
+): AgentContext {
+  const sessionPath = resolveCodexSessionPath(workdir);
+  const empty: AgentContext = { model: null, modelId: null, contextTokens: null, contextPct: null, contextLimit };
+  if (!sessionPath) return empty;
+
+  const info = readCodexInfo(sessionPath);
+  if (!info) return empty;
+
+  const resolvedLimit = info.contextLimit ?? contextLimit;
+  const contextTokens = info.contextTokens;
+  return {
+    model: codexModelDisplayName(info.modelId),
+    modelId: info.modelId,
+    contextTokens,
+    contextPct: contextTokens !== null && resolvedLimit > 0
+      ? Math.min(100, Math.round((contextTokens / resolvedLimit) * 100))
+      : null,
+    contextLimit: resolvedLimit,
+  };
 }
