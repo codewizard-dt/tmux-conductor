@@ -47,14 +47,23 @@ load_agents() {
   declare -gA AGENT_DIRS
   declare -gA AGENT_CMDS
   declare -gA AGENT_BG
-  local name workdir cmd bg_name
-  while IFS=$'\x1f' read -r name workdir cmd bg_name; do
+  declare -gA AGENT_WINDOW_NAMES
+  declare -gA AGENT_IDS
+  declare -gA AGENT_PROJECT_IDS
+  local name workdir cmd bg_name window_name agent_id project_id
+  while IFS=$'\x1f' read -r name workdir cmd bg_name window_name agent_id project_id; do
     [[ -z "$name" ]] && continue
     AGENT_NAMES+=("$name")
     AGENT_DIRS["$name"]="$workdir"
     AGENT_CMDS["$name"]="$cmd"
     AGENT_BG["$name"]="$bg_name"
-  done < <(sql "SELECT a.name, a.workdir, a.launch_cmd, COALESCE(b.name,'') FROM agents a LEFT JOIN bg_processes b ON b.linked_agent_id=a.id ORDER BY a.name")
+    AGENT_WINDOW_NAMES["$name"]="$window_name"
+    # Agent id + project id drive task dispatch directly. Names are only unique
+    # per-project, so resolving tasks by name at dispatch time is ambiguous when
+    # two projects share a short agent name — always match on these numeric ids.
+    AGENT_IDS["$name"]="$agent_id"
+    AGENT_PROJECT_IDS["$name"]="$project_id"
+  done < <(sql "SELECT a.name, a.workdir, a.launch_cmd, COALESCE(b.name,''), COALESCE(p.name || '-' || a.name, a.name), a.id, COALESCE(a.project_id,'') FROM agents a LEFT JOIN bg_processes b ON b.linked_agent_id=a.id LEFT JOIN projects p ON a.project_id=p.id ORDER BY a.name")
 }
 
 # ---------------------------------------------------------------------------
@@ -77,19 +86,27 @@ load_bg() {
 # 5. pop_task_sql — atomically pop the next queued task for an agent
 # ---------------------------------------------------------------------------
 pop_task_sql() {
-  local agent="$1"
+  local agent_id="$1"
+  local project_id="${2:-}"
   POPPED_TASK=""
   LAST_QUEUE_KIND=""
   LAST_QUEUE_REMAINING=0
 
-  # Atomic DELETE…RETURNING. Agent names are validated ^[A-Za-z0-9_-]+$ with a
-  # schema CHECK, so direct inlining for both <AGENT> occurrences is safe.
+  # Atomic DELETE…RETURNING. agent_id/project_id are numeric ids resolved by
+  # load_agents, so they are safe to inline directly. Matching on the id avoids
+  # the old `WHERE name='…'` subquery, which silently picked one arbitrary row
+  # when two projects shared a short agent name (now only unique per-project).
+  # When the agent has no project, project_id is empty and that clause is dropped.
+  local project_pred="0"
+  if [[ -n "$project_id" ]]; then
+    project_pred="(t.project_id = ${project_id})"
+  fi
   local pop_sql
   pop_sql="DELETE FROM tasks WHERE id = (
     SELECT t.id FROM tasks t
     WHERE t.status = 'queued' AND (
-         (t.agent_id IS NOT NULL AND t.agent_id = (SELECT id FROM agents WHERE name='${agent}'))
-      OR (t.project_id IS NOT NULL AND t.project_id = (SELECT project_id FROM agents WHERE name='${agent}'))
+         (t.agent_id IS NOT NULL AND t.agent_id = ${agent_id})
+      OR (t.project_id IS NOT NULL AND ${project_pred})
       OR (t.agent_id IS NULL AND t.project_id IS NULL))
     ORDER BY CASE WHEN t.agent_id IS NOT NULL THEN 0
                   WHEN t.project_id IS NOT NULL THEN 1 ELSE 2 END,

@@ -1,22 +1,34 @@
 # Project Status
 
-**Last updated:** 2026-06-13
+**Last updated:** 2026-06-14
 
 ## Current Focus
 
-- Architecture simplification (`simplify-architecture` branch): `backend/`→`host-server/`, `frontend/`→`app/frontend/`, `portal/`→`app/api/`; better-auth; App Platform deploy via `deploy/app.yaml`; managed Postgres provisioned and migrated.
-- Next: commit the restructure branch and merge to main; build relay so app/api proxies conductor traffic to host-server in prod.
+- Architecture simplification merged to main: `host-server/` (native tmux, systemd), `app/api/` (Fastify + better-auth, App Platform Docker service), `app/frontend/` (Vite SPA, App Platform static site). Local Docker via `app/docker-compose.yml`; DO App Platform spec at `deploy/app.yaml`.
+- Next: live App Platform deploy (TASK-050); git worktree per-agent support (TASK-060–063); diff panel + checkpoint/rollback UI (TASK-064–071).
 
 ## Active Tasks
 
 | Task | Title | Status |
 |------|-------|--------|
-| [TASK-001](wiki/work/tasks/TASK-001-skill-detection.md) | Skill detection — host-server scanner + dashboard surfacing | in-progress (awaiting UAT) |
-| [TASK-011](wiki/work/tasks/TASK-011-immediate-dispatch.md) | Immediate dispatch for idle agent with empty queue | in-progress (awaiting UAT) |
-| [TASK-012](wiki/work/tasks/TASK-012-sse-tail-stream.md) | Replace tail polling with SSE push for terminal output | in-progress (awaiting UAT) |
-| [TASK-023](wiki/work/tasks/TASK-023-remove-legacy-conf-queue-code-backend.md) | Delete dead conf-splice + legacy file-queue code | todo |
-| [TASK-024](wiki/work/tasks/TASK-024-strip-legacy-conf-keys-retire-tasks-txt.md) | Strip AGENTS/BG_PROCESSES blocks from conductor.conf, retire tasks.txt | todo |
-| [TASK-026](wiki/work/tasks/TASK-026-e2e-verification-suite.md) | Run end-to-end SQLite migration verification suite | todo |
+| [TASK-001](wiki/work/tasks/TASK-001-skill-detection.md) | Skill detection — host-server scanner + dashboard surfacing | in-progress |
+| [TASK-011](wiki/work/tasks/TASK-011-immediate-dispatch.md) | Immediate dispatch for idle agent with empty queue | in-progress |
+| [TASK-012](wiki/work/tasks/TASK-012-sse-tail-stream.md) | Replace tail polling with SSE push for terminal output | in-progress |
+| [TASK-050](wiki/work/tasks/TASK-050-app-platform-live-deploy-runbook.md) | App Platform live deploy runbook (api + frontend, invite-gated) | todo |
+| [TASK-058](wiki/work/tasks/TASK-058-security-hardening-logs-heartbeat.md) | Security hardening + structured logs + heartbeat | todo |
+| [TASK-059](wiki/work/tasks/TASK-059-readme-docs-updates.md) | README install one-liner + docs updates | todo |
+| [TASK-060](wiki/work/tasks/TASK-060-agents-worktree-schema.md) | agents table schema — add worktree_path and branch columns | todo |
+| [TASK-061](wiki/work/tasks/TASK-061-worktree-spawn.md) | Worktree spawn on agent add | todo |
+| [TASK-062](wiki/work/tasks/TASK-062-branch-badge-ui.md) | Branch badge on agent card | todo |
+| [TASK-063](wiki/work/tasks/TASK-063-worktree-teardown.md) | Worktree teardown on agent delete | todo |
+| [TASK-064](wiki/work/tasks/TASK-064-diff-endpoint.md) | Diff endpoint — GET /api/agents/:agent/diff | todo |
+| [TASK-065](wiki/work/tasks/TASK-065-base-branch-endpoint.md) | Base-branch endpoint | todo |
+| [TASK-066](wiki/work/tasks/TASK-066-diff-panel-ui.md) | Diff panel UI in AgentDetailModal | todo |
+| [TASK-067](wiki/work/tasks/TASK-067-agent-checkpoints-table.md) | agent_checkpoints SQLite table | todo |
+| [TASK-068](wiki/work/tasks/TASK-068-pre-dispatch-checkpoint.md) | Pre-dispatch checkpoint (git stash) | todo |
+| [TASK-069](wiki/work/tasks/TASK-069-checkpoints-list-endpoint.md) | Checkpoints list endpoint | todo |
+| [TASK-070](wiki/work/tasks/TASK-070-rollback-endpoint.md) | Rollback endpoint | todo |
+| [TASK-071](wiki/work/tasks/TASK-071-checkpoint-ui.md) | Checkpoint UI in AgentDetailModal | todo |
 
 ## Recently Completed / Superseded
 

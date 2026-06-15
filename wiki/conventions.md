@@ -64,13 +64,37 @@ Adopting the corresponding behavior later is a frontmatter backfill via lint —
 
 [index.md](index.md) is the home Map of Content. Keep folders **shallow** — the link graph and the index carry the structure, not nesting. Status lives in frontmatter so it is greppable / Dataview-queryable without moving files. Tags are signals for discovery, not a replacement for links.
 
-**Per-family active indexes.** Each `wiki/work/<family>/` carries an `index.md` listing **only its active items** (see each family's `lifecycle.md` for the active status set). When an item leaves the active set, its line is deleted from the family index — the file itself never moves. Knowledge pages are listed in the home index; work items only in their family index (the home index links to the family indexes).
+**Per-family active indexes.** Each `wiki/work/<family>/` carries an `index.md` listing **only its active items** (see each family's `lifecycle.md` for the active status set). When an item leaves the active set, its line is deleted from the family index — the file itself stays put until explicitly archived. Knowledge pages are listed in the home index; work items only in their family index (the home index links to the family indexes).
 
 ## The two-domain rule
 
 Keep the two organizing laws separate — do not file a stateful artifact under `knowledge/` or a timeless synthesis under `work/`.
 
 - **`knowledge/`** — timeless, descriptive, **link-organized**. Files are revised in place as understanding evolves; there is no `status`. Sub-trees: `sources/`, `concepts/`, `entities/{people,organisations,tools,components}/`.
-- **`work/`** — stateful, **status-organized** lifecycle artifacts. Files are **never moved** after creation; state lives in the `status:` field; each family has a `lifecycle.md` defining its schema and valid transitions, and an `index.md` listing only active items. Sub-trees: `requirements/`, `decisions/`, `roadmaps/`, `tasks/`, `uat/`, `bugs/`.
+- **`work/`** — stateful, **status-organized** lifecycle artifacts. Active files are **never moved** after creation; state lives in the `status:` field; each family has a `lifecycle.md` defining its schema and valid transitions, an `index.md` listing only active items, and an `archive/` subdirectory for terminal items. Sub-trees: `requirements/`, `decisions/`, `roadmaps/`, `tasks/`, `uat/`, `bugs/`.
 
 Cross-domain links are encouraged and carry meaning — e.g. a decision `derived_from::` a source, a task `implements::` a requirement.
+
+---
+
+## 5. Archiving terminal items
+
+Work item files are **permanent while active**. Once a file reaches a terminal status (`done`, `trashed`, `closed`, `passed`, `skipped`, `retired`, `wontfix`, `duplicate`, `cannot-reproduce`, or all decisions `accepted`/`superseded`), it **may** be moved to `<family>/archive/` by `/wiki-archive` to keep the family directory navigable.
+
+**Why this is safe:** all links must use stable IDs (`[[TASK-023]]`, `[[BUG-0014]]`), not raw relative paths. Moving a file to `archive/TASK-023.md` changes only its storage location — the ID is unchanged. `/wiki-archive` updates `archive/index.md` and logs the operation.
+
+Archiving is a periodic **maintenance operation**, not part of the close/done workflow. Run `/wiki-archive [family]` when a family directory grows unwieldy.
+
+**`archive/index.md`** — each family's `archive/` carries its own index listing archived items with their final status and archive date. This file is **append-only**: archived items never move again.
+
+## 6. Log rotation
+
+`wiki/log.md` is append-only. When it grows past **~500 lines**, rotate it with `/wiki-rotate-log`:
+
+1. Rename `wiki/log.md` → `wiki/log-<timestamp>.md`, where `<timestamp>` is `YYYY_MM_DD_HHMMSS` (to the second, so filenames never collide across rotations)
+2. Create a fresh `wiki/log.md` with an archive-pointer header: `> Archives: [2026_06_14_153012](log-2026_06_14_153012.md) · [2025_12_31_092455](log-2025_12_31_092455.md)`
+3. Continue appending to the new `log.md`
+
+**Never truncate** — content always moves to a timestamped file, never deleted.
+
+**Index growth:** `wiki/index.md` stays lean because work items are **never listed individually** in the home index — they appear only in their family `index.md`. The home index links to `wiki/work/<family>/index.md` per family, not to individual items.

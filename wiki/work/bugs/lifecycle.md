@@ -7,7 +7,7 @@ updated: 2026-06-11
 
 Bug reports with reproduction, impact, root-cause, and resolution. ID scheme: **BUG-NNNN** (4-digit, zero-padded, globally unique). Filename: `BUG-NNNN-slug.md`.
 
-Files are **never moved** after creation; state lives in the `status:` frontmatter field. The active set is tracked in [`index.md`](index.md).
+Active files are **never moved** after creation; state lives in the `status:` frontmatter field. Terminal items (`closed`, `wontfix`, `duplicate`, `cannot-reproduce`) may be moved to [`archive/`](archive/) by `/wiki-archive`. The active set is tracked in [`index.md`](index.md).
 
 ## Frontmatter schema
 

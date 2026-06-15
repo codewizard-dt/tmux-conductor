@@ -62,12 +62,12 @@ const RELAY_TYPES = new Set<string>([
 ]);
 
 export function isRelayFrame(x: unknown): x is RelayFrame {
+  if (typeof x !== 'object' || x === null) return false;
+  const rec = x as Record<string, unknown>;
   return (
-    typeof x === 'object' && x !== null &&
-    'type' in x && typeof (x as Record<string, unknown>).type === 'string' &&
-    RELAY_TYPES.has((x as Record<string, unknown>).type as string) &&
-    'correlationId' in x &&
-    typeof (x as Record<string, unknown>).correlationId === 'string'
+    typeof rec['type'] === 'string' &&
+    RELAY_TYPES.has(rec['type'] as string) &&
+    typeof rec['correlationId'] === 'string'
   );
 }
 

@@ -1,7 +1,7 @@
 ---
 id: UAT-039
 title: "UAT: Create NavBar component with NavLink items for Agents and Projects"
-status: pending
+status: passed
 task: TASK-039
 created: 2026-06-13
 updated: 2026-06-13

@@ -2,25 +2,15 @@ import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type 
 import { API_BASE, sendAgentKeys, uploadAgentImage, type KeysPayload } from '../lib/api'
 import { useSSEEvent } from '../hooks/useSSE'
 
-const LINE_OPTIONS = [10, 20, 50, 100]
-const DEFAULT_LINES = 20
+const DEFAULT_LINES = 100
+const PAGE_SIZE = 100
+const MAX_LINES = 1000
 
 interface TailResponse {
   agent: string
   lines: number
   windowPresent: boolean
   text: string
-}
-
-function storageKey(agentName: string): string {
-  return `conductor:logLines:${agentName}`
-}
-
-function readStoredLines(agentName: string): number {
-  if (typeof window === 'undefined') return DEFAULT_LINES
-  const raw = window.localStorage.getItem(storageKey(agentName))
-  const parsed = raw === null ? NaN : parseInt(raw, 10)
-  return LINE_OPTIONS.includes(parsed) ? parsed : DEFAULT_LINES
 }
 
 /** Browser KeyboardEvent → /agents/:agent/keys payload, or null to let the browser handle it. */
@@ -31,7 +21,6 @@ function mapKey(e: KeyboardEvent<HTMLDivElement>): KeysPayload | null {
   }
   switch (e.key) {
     case 'Enter': return { keys: ['Enter'] }
-    case 'Escape': return { keys: ['Escape'] } // forwarded to the agent — exit interact via Stop/blur
     case 'Backspace': return { keys: ['BSpace'] }
     case 'Delete': return { keys: ['DC'] }
     case 'Tab': return { keys: [e.shiftKey ? 'BTab' : 'Tab'] }
@@ -48,9 +37,12 @@ function mapKey(e: KeyboardEvent<HTMLDivElement>): KeysPayload | null {
   }
 }
 
-const pendingDeletes = new Map<string, ReturnType<typeof setTimeout>>()
+const pendingDeletes = new Map<number, ReturnType<typeof setTimeout>>()
 
-export default function LogTail({ agentName, maxHeightClass, focused, fillContainer, interactSignal, onInteractChange }: {
+export default function LogTail({ agentId, agentName, maxHeightClass, focused, fillContainer, interactSignal, onInteractChange, onCloseModal }: {
+  /** Globally-unique agent id — used for all API calls and SSE filtering. */
+  agentId: number
+  /** Display name only (not unique across projects). */
   agentName: string
   maxHeightClass?: string | undefined
   /** When true, registers with the backend focus endpoint so the agent gets 200 ms SSE pushes instead of 2 s. */
@@ -61,71 +53,132 @@ export default function LogTail({ agentName, maxHeightClass, focused, fillContai
   interactSignal?: number | undefined
   /** Notifies the parent (e.g. a modal that closes on Escape) when Direct Input toggles. */
   onInteractChange?: ((interacting: boolean) => void) | undefined
+  /** Called when the user presses Esc twice in Direct Input mode to close the modal. */
+  onCloseModal?: (() => void) | undefined
 }) {
-  const [lines, setLines] = useState<number>(() => readStoredLines(agentName))
+  const [lines, setLines] = useState<number>(DEFAULT_LINES)
+  const [isLoadingMore, setIsLoadingMore] = useState(false)
   const [tail, setTail] = useState<TailResponse | null>(null)
   const [failed, setFailed] = useState(false)
   const [interacting, setInteracting] = useState(false)
-  const [sendText, setSendText] = useState('')
+  const [sendText, setSendText] = useState(() => {
+    try { return localStorage.getItem(`conductor:sendDraft:${agentId.toString()}`) ?? '' } catch { return '' }
+  })
   const [sendError, setSendError] = useState<string | null>(null)
   const [uploading, setUploading] = useState(false)
   const [dragOver, setDragOver] = useState(false)
+  const [escHint, setEscHint] = useState(false)
   // Serializes POSTs so keystroke order survives key repeat; .catch keeps the chain alive.
   const queueRef = useRef<Promise<void>>(Promise.resolve())
   const captureRef = useRef<HTMLDivElement>(null)
   const preRef = useRef<HTMLPreElement>(null)
-  // When true, the next tail update should scroll to bottom (initial load or after lines change).
-  const scrollToBottomRef = useRef(true)
+  const autoScrollRef = useRef(true)
+  const sendTextareaRef = useRef<HTMLTextAreaElement>(null)
+  const escHintAtRef = useRef<number | null>(null)
+  const escHintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const isLoadingMoreRef = useRef(false)
+  const prevScrollHeightRef = useRef(0)
+  const prevScrollTopRef = useRef(0)
+  const hasMoreRef = useRef(true)
+
+  useEffect(() => {
+    const el = sendTextareaRef.current
+    if (!el) return
+    el.style.height = 'auto'
+    const maxH = 80 // ~4 lines of 11px mono + 8px vertical padding
+    el.style.height = `${Math.min(el.scrollHeight, maxH)}px`
+    el.style.overflowY = el.scrollHeight > maxH ? 'auto' : 'hidden'
+  }, [sendText, tail?.windowPresent])
+
+  function handleScroll() {
+    if (!preRef.current) return
+    const { scrollTop, scrollHeight, clientHeight } = preRef.current
+    autoScrollRef.current = scrollHeight - scrollTop - clientHeight < 8
+    if (scrollTop < 20 && hasMoreRef.current && !isLoadingMoreRef.current) {
+      loadMore()
+    }
+  }
+
+  function loadMore() {
+    const nextLines = lines + PAGE_SIZE
+    if (nextLines > MAX_LINES || isLoadingMoreRef.current) return
+    isLoadingMoreRef.current = true
+    setIsLoadingMore(true)
+    prevScrollHeightRef.current = preRef.current?.scrollHeight ?? 0
+    prevScrollTopRef.current = preRef.current?.scrollTop ?? 0
+    setLines(nextLines)
+  }
 
   // One-shot backfill on mount/lines change; live updates arrive via the SSE subscription below.
   useEffect(() => {
     let cancelled = false
-    fetch(`${API_BASE}/agents/${encodeURIComponent(agentName)}/tail?lines=${String(lines)}`)
+    fetch(`${API_BASE}/agents/${agentId.toString()}/tail?lines=${String(lines)}`)
       .then((r) => {
         if (!r.ok) throw new Error(`HTTP ${r.status.toString()}`)
         return r.json() as Promise<TailResponse>
       })
-      .then((data) => { if (!cancelled) { setTail(data); setFailed(false) } })
+      .then((data) => {
+        if (!cancelled) {
+          const lineCount = data.text ? data.text.split('\n').length : 0
+          hasMoreRef.current = lineCount >= lines && lines < MAX_LINES
+          setTail(data)
+          setFailed(false)
+        }
+      })
       .catch(() => { if (!cancelled) setFailed(true) })
     return () => { cancelled = true }
-  }, [agentName, lines])
+  }, [agentId, lines])
 
   useEffect(() => {
     if (!focused) return
-    const pending = pendingDeletes.get(agentName)
+    const pending = pendingDeletes.get(agentId)
     if (pending !== undefined) {
       // StrictMode remount: cancel the queued DELETE — backend is already focused
       clearTimeout(pending)
-      pendingDeletes.delete(agentName)
+      pendingDeletes.delete(agentId)
     } else {
-      fetch(`${API_BASE}/agents/${encodeURIComponent(agentName)}/focus`, { method: 'POST' }).catch(() => { })
+      fetch(`${API_BASE}/agents/${agentId.toString()}/focus`, { method: 'POST' }).catch(() => { })
     }
     return () => {
-      pendingDeletes.set(agentName, setTimeout(() => {
-        pendingDeletes.delete(agentName)
-        fetch(`${API_BASE}/agents/${encodeURIComponent(agentName)}/focus`, { method: 'DELETE' }).catch(() => { })
+      pendingDeletes.set(agentId, setTimeout(() => {
+        pendingDeletes.delete(agentId)
+        fetch(`${API_BASE}/agents/${agentId.toString()}/focus`, { method: 'DELETE' }).catch(() => { })
       }, 0))
     }
-  }, [agentName, focused])
+  }, [agentId, focused])
 
-  useSSEEvent<{ agent: string; text: string; lines: number }>(
+  useSSEEvent<{ agentId: number; agent: string; text: string; lines: number }>(
     focused ? 'terminal-output-focus' : 'terminal-output',
     (payload) => {
-      if (payload.agent !== agentName) return
-      setTail({ agent: agentName, lines: payload.lines, windowPresent: true, text: payload.text })
+      if (payload.agentId !== agentId) return
+      if (lines > payload.lines) {
+        // Re-fetch at the expanded line count so SSE doesn't collapse the history view
+        fetch(`${API_BASE}/agents/${agentId.toString()}/tail?lines=${String(lines)}`)
+          .then((r) => r.json() as Promise<TailResponse>)
+          .then((data) => { setTail(data); setFailed(false) })
+          .catch(() => { /* non-fatal; next poll will retry */ })
+      } else {
+        setTail({ agent: agentName, lines: payload.lines, windowPresent: true, text: payload.text })
+      }
     },
   )
 
-  // On lines change, mark that the next tail load should scroll to bottom.
   useEffect(() => {
-    scrollToBottomRef.current = true
-  }, [lines])
+    if (focused) {
+      autoScrollRef.current = true
+      if (preRef.current) preRef.current.scrollTop = preRef.current.scrollHeight
+    }
+  }, [focused])
 
-  // Scroll to bottom only on initial load and after a lines change — not on every SSE update.
   useEffect(() => {
-    if (tail !== null && scrollToBottomRef.current && preRef.current) {
+    if (tail === null || !preRef.current) return
+    if (isLoadingMoreRef.current) {
+      const delta = preRef.current.scrollHeight - prevScrollHeightRef.current
+      preRef.current.scrollTop = prevScrollTopRef.current + delta
+      isLoadingMoreRef.current = false
+      setIsLoadingMore(false)
+    } else if (autoScrollRef.current) {
       preRef.current.scrollTop = preRef.current.scrollHeight
-      scrollToBottomRef.current = false
     }
   }, [tail])
 
@@ -145,13 +198,43 @@ export default function LogTail({ agentName, maxHeightClass, focused, fillContai
 
   function enqueue(payload: KeysPayload) {
     queueRef.current = queueRef.current
-      .then(() => sendAgentKeys(agentName, payload))
+      .then(() => sendAgentKeys(agentId, payload))
       .then(() => { setSendError(null) })
       .catch((err: unknown) => { setSendError(err instanceof Error ? err.message : 'Failed to send input') })
   }
 
   function handleKeyDown(e: KeyboardEvent<HTMLDivElement>) {
     if (e.nativeEvent.isComposing || e.key === 'Process') return // IME — use the send field instead
+
+    if (e.key === 'Escape') {
+      e.preventDefault()
+      e.stopPropagation()
+      // Cmd/Ctrl + Esc → forward Esc to the agent
+      if (e.metaKey || e.ctrlKey) {
+        enqueue({ keys: ['Escape'] })
+        return
+      }
+      // Double-esc within 800 ms → close the modal
+      const now = Date.now()
+      if (escHintAtRef.current !== null && now - escHintAtRef.current < 800) {
+        escHintAtRef.current = null
+        if (escHintTimerRef.current !== null) { clearTimeout(escHintTimerRef.current); escHintTimerRef.current = null }
+        setEscHint(false)
+        onCloseModal?.()
+        return
+      }
+      // First Esc: show hint toast
+      escHintAtRef.current = now
+      setEscHint(true)
+      if (escHintTimerRef.current !== null) clearTimeout(escHintTimerRef.current)
+      escHintTimerRef.current = setTimeout(() => {
+        setEscHint(false)
+        escHintAtRef.current = null
+        escHintTimerRef.current = null
+      }, 3000)
+      return
+    }
+
     const payload = mapKey(e)
     if (!payload) return
     e.preventDefault()
@@ -166,7 +249,7 @@ export default function LogTail({ agentName, maxHeightClass, focused, fillContai
     setUploading(true)
     for (const file of images) {
       queueRef.current = queueRef.current
-        .then(() => uploadAgentImage(agentName, file))
+        .then(() => uploadAgentImage(agentId, file))
         .then(() => { setSendError(null) })
         .catch((err: unknown) => { setSendError(err instanceof Error ? err.message : 'Failed to upload image') })
     }
@@ -208,35 +291,19 @@ export default function LogTail({ agentName, maxHeightClass, focused, fillContai
     if (text === '') return
     enqueue({ text, enter: true })
     setSendText('')
-  }
-
-  function handleLinesChange(value: string) {
-    const next = parseInt(value, 10)
-    if (!LINE_OPTIONS.includes(next)) return
-    setLines(next)
-    try { window.localStorage.setItem(storageKey(agentName), String(next)) } catch { /* storage unavailable — fine */ }
+    try { localStorage.removeItem(`conductor:sendDraft:${agentId.toString()}`) } catch { /**/ }
   }
 
   const windowPresent = tail?.windowPresent ?? false
 
   return (
     <div className={fillContainer ? 'flex flex-col flex-1 min-h-0' : undefined}>
-      <div className={`mb-1.5 flex items-center justify-between gap-2${fillContainer ? ' flex-shrink-0' : ''}`}>
+      <div className={`mb-1.5 flex items-center gap-2${fillContainer ? ' flex-shrink-0' : ''}`}>
         <p className="m-0 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-2">
           Log output
           {uploading && <span className="ml-2 normal-case tracking-normal text-accent-blue">uploading image…</span>}
+          {isLoadingMore && <span className="ml-2 normal-case tracking-normal text-muted-2">loading older output…</span>}
         </p>
-        <label className="flex items-center gap-1 text-[11px] text-muted">
-          lines
-          <select
-            value={lines}
-            onChange={(e) => { handleLinesChange(e.target.value) }}
-            className="cursor-pointer rounded-[5px] border border-line bg-white px-1 py-0.5 text-[11px] text-ink"
-            aria-label="Number of log lines"
-          >
-            {LINE_OPTIONS.map((n) => <option key={n} value={n}>{n}</option>)}
-          </select>
-        </label>
       </div>
       {tail === null ? (
         <p className="text-[12px] italic text-muted-2">{failed ? 'Could not load log output.' : 'Loading…'}</p>
@@ -252,7 +319,7 @@ export default function LogTail({ agentName, maxHeightClass, focused, fillContai
           onDragOver={handleDragOver}
           onDragLeave={() => { setDragOver(false) }}
           onDrop={handleDrop}
-          className={`${fillContainer ? 'flex flex-col flex-1 min-h-0 ' : ''}${dragOver
+          className={`relative ${fillContainer ? 'flex flex-col flex-1 min-h-0 ' : ''}${dragOver
             ? 'rounded-[10px] outline-none ring-[3px] ring-accent-blue'
             : interacting
               ? 'rounded-[10px] outline-none ring-[3px] ring-[#e0901a]'
@@ -271,21 +338,44 @@ export default function LogTail({ agentName, maxHeightClass, focused, fillContai
           )}
           <pre
             ref={preRef}
-            className={`${fillContainer ? 'scrollbar-dark' : 'scrollbar-none'} m-0 overflow-auto whitespace-pre ${interacting ? 'rounded-b-[10px]' : 'rounded-[10px]'} bg-[#0b0b0d] p-3 font-mono text-[11px] leading-[1.3] text-[#e7e8ea] ${fillContainer ? 'flex-1 min-h-0' : (maxHeightClass ?? '')} ${!interacting && onInteractChange !== undefined ? 'cursor-text' : ''}`}
+            onScroll={handleScroll}
+            className={`${fillContainer ? 'scrollbar-dark' : 'scrollbar-none'} m-0 overflow-auto whitespace-pre-wrap [overflow-wrap:anywhere] selection:bg-accent-blue selection:text-white ${interacting ? 'rounded-b-[10px]' : 'rounded-[10px]'} bg-[#0b0b0d] p-3 font-mono text-[11px] leading-[1.3] text-[#e7e8ea] ${fillContainer ? 'flex-1 min-h-0' : (maxHeightClass ?? '')} ${!interacting && onInteractChange !== undefined ? 'cursor-text' : ''}`}
             onClick={!interacting && onInteractChange !== undefined ? () => { setInteracting(true); captureRef.current?.focus() } : undefined}
           >{tail.text || ' '}</pre>
+          {interacting && escHint && (
+            <div
+              role="status"
+              aria-live="polite"
+              className="pointer-events-none absolute inset-x-4 bottom-4 z-10 rounded-[10px] bg-[#e0901a] px-5 py-4 text-center shadow-lg"
+            >
+              <p className="m-0 text-[15px] font-bold text-white">Press esc again to close the modal</p>
+              <p className="m-0 mt-1.5 text-[13px] font-medium text-white/80">Press ⌘/ctrl + esc to send esc to the agent</p>
+            </div>
+          )}
         </div>
       )}
       {windowPresent && (
         <form
           onSubmit={(e) => { e.preventDefault(); handleSendSubmit() }}
-          className="mt-1.5 flex items-center gap-1.5"
+          className="mt-1.5 flex items-end gap-1.5"
         >
-          <input
+          <textarea
+            ref={sendTextareaRef}
             value={sendText}
-            onChange={(e) => { setSendText(e.target.value) }}
+            rows={1}
+            onChange={(e) => {
+              const v = e.target.value
+              setSendText(v)
+              try { localStorage.setItem(`conductor:sendDraft:${agentId.toString()}`, v) } catch { /**/ }
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault()
+                handleSendSubmit()
+              }
+            }}
             placeholder={`Send one-off text commands to ${agentName}…`}
-            className="h-7 min-w-0 flex-1 rounded-[7px] border border-line bg-white px-2 font-mono text-[11px] text-ink placeholder:text-muted-2"
+            className="min-h-7 min-w-0 flex-1 resize-none overflow-hidden rounded-[7px] border border-line bg-white px-2 py-1 font-mono text-[11px] text-ink placeholder:text-muted-2"
             aria-label={`Send one-off text commands to ${agentName}`}
           />
           <button

@@ -4,7 +4,7 @@
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
     "outDir": "dist",
-    "rootDir": ".",
+    "rootDir": "..",
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "exactOptionalPropertyTypes": true,
@@ -19,6 +19,6 @@
     "declarationMap": true,
     "sourceMap": true
   },
-  "include": ["*.ts"],
+  "include": ["*.ts", "../shared/**/*.ts"],
   "exclude": ["node_modules", "dist"]
 }

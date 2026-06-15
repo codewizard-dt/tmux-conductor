@@ -19,13 +19,26 @@ fi
 
 CMD="$*"
 
-# Resolve the agent name to an agent_id. Escape single quotes for SQL by doubling
-# (same idiom as TASK-010's move_to_backlog). A name is UNIQUE, so at most one row.
+# Resolve the agent to an agent_id. Agent names are only unique per-project, so a
+# bare name lookup can return several rows. Disambiguate by also matching this
+# working directory (the dir the task is added from); fall back to name-only, and
+# bail to a global task if the name is still ambiguous. Escape single quotes for
+# SQL by doubling (same idiom as move_to_backlog).
 AGENT_SQL="${AGENT_NAME//\'/\'\'}"
-AGENT_ID="$(sql "SELECT id FROM agents WHERE name='${AGENT_SQL}'")"
+PWD_SQL="${PWD//\'/\'\'}"
+AGENT_ID="$(sql "SELECT id FROM agents WHERE name='${AGENT_SQL}' AND workdir='${PWD_SQL}' LIMIT 1")"
+if [[ -z "$AGENT_ID" ]]; then
+  MATCHES="$(sql "SELECT id FROM agents WHERE name='${AGENT_SQL}'")"
+  MATCH_COUNT="$(printf '%s' "$MATCHES" | grep -c '[0-9]' || true)"
+  if [[ "$MATCH_COUNT" == "1" ]]; then
+    AGENT_ID="$MATCHES"
+  elif [[ "$MATCH_COUNT" -gt 1 ]]; then
+    echo "Warning: agent name '${AGENT_NAME}' is ambiguous (${MATCH_COUNT} agents share it, none in $PWD); adding as a global (unscoped) task." >&2
+  fi
+fi
 
 if [[ -z "$AGENT_ID" ]]; then
-  echo "Warning: agent '${AGENT_NAME}' not found in DB; adding as a global (unscoped) task." >&2
+  [[ "${MATCH_COUNT:-0}" -gt 1 ]] || echo "Warning: agent '${AGENT_NAME}' not found in DB; adding as a global (unscoped) task." >&2
   AGENT_ID_SQL="NULL"
 else
   AGENT_ID_SQL="$AGENT_ID"

@@ -128,15 +128,14 @@ function isPaneDead(sessionName: string, windowName: string, launchCmd: string):
  *
  * @returns {'no-window'|'exited'|'idle'|'busy'|'awaiting'|'stalled'|'starting'|'unknown'}
  */
-export function detectAgentStatus(conf: ConductorConf, agentName: string, precapturedTail?: string): string {
+export function detectAgentStatus(conf: ConductorConf, windowName: string, launchCmd: string, precapturedTail?: string): string {
   const { sessionName, stateDir, idlePattern, busyPattern, awaitingPattern, pollInterval, stallTimeout } = conf;
 
-  if (!isTmuxWindowPresent(sessionName, agentName)) {
+  if (!isTmuxWindowPresent(sessionName, windowName)) {
     return 'no-window';
   }
 
-  const launchCmd = conf.agents.find((a) => a.name === agentName)?.launchCmd ?? '';
-  if (isPaneDead(sessionName, agentName, launchCmd)) {
+  if (isPaneDead(sessionName, windowName, launchCmd)) {
     return 'exited';
   }
 
@@ -148,13 +147,13 @@ export function detectAgentStatus(conf: ConductorConf, agentName: string, precap
     if (cachedTail === null) {
       cachedTail = precapturedTail !== undefined && precapturedTail !== ''
         ? precapturedTail.split('\n').slice(-15).join('\n')
-        : capturePaneTail(sessionName, agentName, 15);
+        : capturePaneTail(sessionName, windowName, 15);
     }
     return cachedTail;
   };
   const lastLine = (tail: string): string => tail.split('\n').at(-1) ?? '';
 
-  const filePath = path.join(stateDir, `${agentName}.state`);
+  const filePath = path.join(stateDir, `${windowName}.state`);
   try {
     const state = fs.readFileSync(filePath, 'utf8').replace(/\r/g, '').split('\n')[0]?.trim() ?? '';
     if (state === 'busy') {
@@ -164,7 +163,7 @@ export function detectAgentStatus(conf: ConductorConf, agentName: string, precap
         // Dialog open? Last-non-blank-line check mirrors monitor.sh's awaiting
         // detection. Not age-gated: the dashboard's 2s poll should flag a
         // waiting agent long before the monitor's next pass.
-        if (awaitingPattern !== '' && grepMatches(awaitingPattern, lastLine(tail))) {
+        if (awaitingPattern !== '' && grepMatches(awaitingPattern, tail.split('\n').slice(-8).join('\n'))) {
           return 'awaiting';
         }
         // Hook-failure safety net (mirrors monitor.sh): a busy file old enough
@@ -189,7 +188,7 @@ export function detectAgentStatus(conf: ConductorConf, agentName: string, precap
     }
     if (state === 'awaiting') {
       const tail = tail5();
-      if (tail !== '' && awaitingPattern !== '' && !grepMatches(awaitingPattern, lastLine(tail))) {
+      if (tail !== '' && awaitingPattern !== '' && !grepMatches(awaitingPattern, tail.split('\n').slice(-8).join('\n'))) {
         // Dialog gone — the agent resumed on its own. monitor.sh reverts the
         // state file on its next poll; report busy read-only meanwhile.
         return 'busy';
@@ -197,9 +196,10 @@ export function detectAgentStatus(conf: ConductorConf, agentName: string, precap
       return state;
     }
     if (state === 'idle') {
-      if (busyPattern) {
-        const tail = tail5();
-        if (tail !== '' && grepMatches(busyPattern, tail)) return 'busy';
+      const tail = tail5();
+      if (tail !== '' && busyPattern && grepMatches(busyPattern, tail)) return 'busy';
+      if (tail !== '' && awaitingPattern !== '' && grepMatches(awaitingPattern, tail.split('\n').slice(-8).join('\n'))) {
+        return 'awaiting';
       }
       return 'idle';
     }
@@ -257,6 +257,35 @@ export function isTmuxWindowPresent(sessionName: string, windowName: string): bo
     encoding: 'utf8',
   });
   return result.status === 0;
+}
+
+/**
+ * Classify the window(s) named `windowName` in `sessionName`:
+ *   - `count`: how many windows currently carry that exact name (duplicates are
+ *     possible when two agents resolve to the same window name; tmux can't then
+ *     address them individually).
+ *   - `live`: only meaningful when `count === 1` — true when the sole window's
+ *     pane is running the agent (not a plain shell). Reuses {@link isPaneDead}
+ *     so the shell-vs-agent rule matches `detectAgentStatus`. For `count !== 1`
+ *     `live` is `false` (a dead/absent window or an ambiguous duplicate set).
+ *
+ * Lets the wake path tell apart "agent already running" (refuse), "dead husk"
+ * (respawn), and "ambiguous duplicate" (refuse, ask the user to dedup).
+ */
+export function windowState(
+  sessionName: string,
+  windowName: string,
+  launchCmd: string,
+): { count: number; live: boolean } {
+  const result = spawnSync('tmux', ['list-windows', '-t', sessionName, '-F', '#{window_name}'], {
+    encoding: 'utf8',
+  });
+  if (result.status !== 0 || typeof result.stdout !== 'string') {
+    return { count: 0, live: false };
+  }
+  const count = result.stdout.split('\n').filter((l) => l === windowName).length;
+  if (count !== 1) return { count, live: false };
+  return { count, live: !isPaneDead(sessionName, windowName, launchCmd) };
 }
 
 export function sendTextToPane(sessionName: string, windowName: string, text: string): void {
@@ -338,13 +367,13 @@ function readLastDispatches(logDir: string): Map<string, DispatchRecord> {
  *     is skipped for 'awaiting' content — a permission dialog mid-task updates
  *     the mtime and would wrongly blank a genuinely dispatched task.
  */
-export function getActiveTask(conf: ConductorConf, agentName: string, state: string): string | null {
+export function getActiveTask(conf: ConductorConf, windowName: string, state: string): string | null {
   if (state !== 'busy' && state !== 'awaiting' && state !== 'stalled') return null;
 
-  const record = readLastDispatches(conf.logDir).get(agentName);
+  const record = readLastDispatches(conf.logDir).get(windowName);
   if (!record) return null;
 
-  const stateFilePath = path.join(conf.stateDir, `${agentName}.state`);
+  const stateFilePath = path.join(conf.stateDir, `${windowName}.state`);
   let fileState = '';
   let mtimeMs = 0;
   try {
@@ -358,4 +387,19 @@ export function getActiveTask(conf: ConductorConf, agentName: string, state: str
     return null;
   }
   return record.command;
+}
+
+/**
+ * Finds the most recent Claude Code task label in pane output.
+ * Labels appear as: ──────── label-text ──  (U+2500 horizontal box chars)
+ * Scans lines in reverse so the newest label wins.
+ */
+export function extractPaneLabel(tail: string): string | null {
+  const re = /^(?:─{4,}|-{4,})\s+(.+?)\s+(?:─{1,}|-{1,})/;
+  const lines = tail.split('\n');
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const m = re.exec(lines[i] ?? '');
+    if (m) return m[1]?.trim() ?? null;
+  }
+  return null;
 }

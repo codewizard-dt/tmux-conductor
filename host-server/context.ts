@@ -43,7 +43,10 @@ interface TranscriptInfo { modelId: string | null; contextTokens: number; }
 interface AgentMemo {
   transcriptPath: string | null;   // currently pinned main-session transcript
   sessionId: string | null;        // sidecar session_id — detects a real new session
+  trusted: boolean;                // pinned path came from the sidecar (this agent's own
+                                   // session), not the derived newest-by-mtime fallback
   lastGood: AgentContext | null;   // last reading with a non-null model/contextPct
+  prevModel: string | null;        // model from last good read; survives lastGood reset on /clear
 }
 const agentMemo = new Map<string, AgentMemo>();
 
@@ -187,9 +190,71 @@ export function modelDisplayName(modelId: string | null): string | null {
   return fam;
 }
 
+interface PaneInfo {
+  model: string | null;
+  contextLimit: number | null;  // parsed from "(1M context)" / "(200k context)"
+  hasSwitch: boolean;           // true when "Set model to X" is visible
+}
+
+function parseContextSize(s: string): number | null {
+  const lower = s.toLowerCase();
+  const num = parseFloat(lower);
+  if (isNaN(num)) return null;
+  if (lower.endsWith('m')) return Math.round(num * 1_000_000);
+  if (lower.endsWith('k')) return Math.round(num * 1_000);
+  return Math.round(num);
+}
+
+/**
+ * Parse model display name and context window size from a pane tail capture.
+ * Matches two patterns Claude Code writes to the terminal:
+ *   "Set model to Sonnet 4.6 and saved as…"  (after /model switch)
+ *   "Opus 4.8 (1M context) with high effort…" (session header on start or /clear)
+ * Returns LAST match so the most-recent event wins.
+ */
+// Known context-window sizes by model family. Used as a fallback when the
+// session header has scrolled off the pane and is not in the 15-line tail.
+function modelContextLimit(modelIdOrDisplay: string | null): number | null {
+  if (!modelIdOrDisplay) return null;
+  const id = modelIdOrDisplay.toLowerCase();
+  if (id.includes('opus')) return 1_000_000;
+  return null; // sonnet/haiku/fable all fit within the conf default (200k)
+}
+
+function parsePaneTail(tail: string): PaneInfo {
+  const lines = tail.split('\n');
+  let model: string | null = null;
+  let contextLimit: number | null = null;
+  let hasSwitch = false;
+  for (const line of lines) {
+    const switchM = line.match(/Set model to ((Opus|Sonnet|Haiku|Fable) \d+\.\d+)/);
+    if (switchM) { model = switchM[1] ?? null; hasSwitch = true; continue; }
+    // Header: "Opus 4.8 (1M context)" or "Sonnet 4.6 (200k context)"
+    const headerM = line.trim().match(/^((Opus|Sonnet|Haiku|Fable) \d+\.\d+) \((\d+(?:\.\d+)?[KkMm]?) context\)/);
+    if (headerM) {
+      model = headerM[1] ?? null;
+      contextLimit = parseContextSize(headerM[3] ?? '');
+      // /model switch clears hasSwitch when a fresh header follows it
+      hasSwitch = false;
+      continue;
+    }
+    // Startup/post-clear banner without explicit context size, e.g.
+    // "▝▜█████▛▘  Sonnet 4.6 with high effort · Claude Max".
+    // The ASCII logo may prefix the line so don't anchor to start-of-line.
+    // Only set model; contextLimit stays null (modelContextLimit() fills Opus).
+    const bannerM = line.match(/((?:Opus|Sonnet|Haiku|Fable) \d+\.\d+) with (?:high|normal) effort/);
+    if (bannerM) { model = bannerM[1] ?? null; hasSwitch = false; continue; }
+  }
+  return { model, contextLimit, hasSwitch };
+}
+
 /**
  * Full context snapshot for an agent. Returns null-valued fields (with the
  * configured limit) when no transcript is found so the UI hides the indicator.
+ *
+ * paneTail: optional recent pane output used to extract the model when the
+ * transcript has no assistant turns yet (new session, after /clear) or when an
+ * explicit /model switch is still visible in the pane.
  */
 export function getAgentContext(
   agentName: string,
@@ -197,10 +262,13 @@ export function getAgentContext(
   stateDir: string,
   contextLimit: number,
   isBusy: boolean,
+  paneTail?: string,
 ): AgentContext {
-  const empty: AgentContext = { model: null, modelId: null, contextTokens: null, contextPct: null, contextLimit };
+  const pane = paneTail ? parsePaneTail(paneTail) : { model: null, contextLimit: null, hasSwitch: false };
+  const effectiveLimit = pane.contextLimit ?? modelContextLimit(pane.model) ?? contextLimit;
+  const emptyWithLimit: AgentContext = { model: null, modelId: null, contextTokens: null, contextPct: null, contextLimit: effectiveLimit };
 
-  const memo = agentMemo.get(agentName) ?? { transcriptPath: null, sessionId: null, lastGood: null };
+  const memo = agentMemo.get(agentName) ?? { transcriptPath: null, sessionId: null, trusted: false, lastGood: null, prevModel: null };
   agentMemo.set(agentName, memo);
 
   // Decide which transcript to read. The sidecar is authoritative (always the
@@ -211,45 +279,102 @@ export function getAgentContext(
   let pinnedPath: string | null;
   if (resolved?.source === 'sidecar') {
     // A genuine new main session (session_id changed) resets the retained value.
-    if (memo.sessionId && resolved.sessionId && resolved.sessionId !== memo.sessionId) {
+    // Likewise a path change *into* the sidecar — e.g. healing off a derived
+    // fallback that had pinned (and cached lastGood from) a foreign session's
+    // transcript — must discard that poisoned reading so it can't survive here.
+    if (
+      (memo.sessionId && resolved.sessionId && resolved.sessionId !== memo.sessionId) ||
+      (memo.transcriptPath && resolved.path !== memo.transcriptPath)
+    ) {
+      memo.prevModel = memo.lastGood?.model ?? memo.prevModel ?? null;
       memo.lastGood = null;
     }
     memo.transcriptPath = resolved.path;
     memo.sessionId = resolved.sessionId;
+    memo.trusted = true;
     pinnedPath = resolved.path;
   } else if (memo.transcriptPath && fs.existsSync(memo.transcriptPath)) {
-    // Keep the path we already locked onto; ignore a newer derived candidate.
+    // Keep the path we already locked onto (and its trust level); ignore a newer
+    // derived candidate.
     pinnedPath = memo.transcriptPath;
   } else if (resolved) {
     // First sighting (or pinned file gone): adopt the derived path and pin it.
+    // Derived = newest-by-mtime in a workdir-keyed project dir that may be shared
+    // with other live sessions, so it is NOT trusted for the token count.
     if (memo.transcriptPath && resolved.path !== memo.transcriptPath) memo.lastGood = null;
     memo.transcriptPath = resolved.path;
     memo.sessionId = null;
+    memo.trusted = false;
     pinnedPath = resolved.path;
   } else {
     pinnedPath = memo.transcriptPath;
   }
 
-  if (!pinnedPath) return empty;
-
-  const info = readTranscriptInfo(pinnedPath);
-  if (!info) {
-    // Transient miss (mid-write read, partial line, momentary no-usage tail):
-    // keep showing the last good value while the agent is busy so the meter
-    // never blinks out. When idle/exited, allow it to clear normally.
-    return isBusy && memo.lastGood ? memo.lastGood : empty;
+  if (!pinnedPath) {
+    if (pane.model) {
+      const ctx = { ...emptyWithLimit, model: pane.model };
+      memo.lastGood = ctx;
+      memo.prevModel = pane.model;
+      return ctx;
+    }
+    return isBusy && memo.lastGood ? memo.lastGood : emptyWithLimit;
   }
 
-  const contextPct = contextLimit > 0
-    ? Math.min(100, Math.round((info.contextTokens / contextLimit) * 100))
+  // Only read a token count from a sidecar-pinned transcript (this agent's own
+  // main session). A derived newest-by-mtime path can point at a FOREIGN session
+  // sharing the same workdir-keyed project dir (e.g. another agent, or the
+  // conductor's own session in this repo) — reading its tokens makes a freshly
+  // spawned agent report a bogus non-zero %. Treat untrusted paths as "no turns
+  // yet" so the meter falls through to the pane-derived 0%/empty state below.
+  const info = memo.trusted ? readTranscriptInfo(pinnedPath) : null;
+  if (!info) {
+    // Session header visible in pane → context was just cleared (or fresh start).
+    // Show 0% bar so the user sees the reset; discard any stale lastGood.
+    if (pane.model && pane.contextLimit !== null) {
+      memo.lastGood = null;
+      memo.prevModel = pane.model;
+      return { ...emptyWithLimit, model: pane.model, contextPct: 0 };
+    }
+    // Transient miss mid-conversation: keep last good value while busy so the
+    // meter doesn't blink out during a tool call.
+    if (isBusy && memo.lastGood) return memo.lastGood;
+    if (pane.model) {
+      // Model visible in the pane but no transcript turns → context is empty
+      // (fresh session or post-/clear on a session with no prior work). Discard
+      // any stale lastGood that leaked in from a prior derived-path session so
+      // the meter shows 0 % instead of a ghost reading.
+      if (memo.lastGood) {
+        memo.prevModel = memo.lastGood.model ?? memo.prevModel ?? null;
+        memo.lastGood = null;
+      }
+      const ctx = { ...emptyWithLimit, model: pane.model, contextPct: 0 };
+      memo.lastGood = ctx;
+      memo.prevModel = pane.model;
+      return ctx;
+    }
+    // /clear transition: pane header not yet visible but model is known from the
+    // previous session. Show the chip at 0% until parsePaneTail finds the header.
+    if (memo.prevModel) {
+      return { ...emptyWithLimit, model: memo.prevModel, contextPct: 0 };
+    }
+    return emptyWithLimit;
+  }
+
+  const resolvedLimit = pane.contextLimit ?? modelContextLimit(info.modelId) ?? (effectiveLimit > 0 ? effectiveLimit : contextLimit);
+  const contextPct = resolvedLimit > 0
+    ? Math.min(100, Math.round((info.contextTokens / resolvedLimit) * 100))
     : null;
+  // When a /model switch is explicitly visible in the pane, it's more recent
+  // than the last transcript assistant turn — use the pane-derived display name
+  // until the next assistant response overwrites lastGood from the transcript.
   const ctx: AgentContext = {
-    model: modelDisplayName(info.modelId),
-    modelId: info.modelId,
+    model: (pane.hasSwitch && pane.model) ? pane.model : modelDisplayName(info.modelId),
+    modelId: (pane.hasSwitch && pane.model) ? null : info.modelId,
     contextTokens: info.contextTokens,
     contextPct,
-    contextLimit,
+    contextLimit: resolvedLimit,
   };
   if (ctx.model != null || ctx.contextPct != null) memo.lastGood = ctx;
+  if (ctx.model) memo.prevModel = ctx.model;
   return ctx;
 }

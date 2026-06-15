@@ -44,17 +44,16 @@ load_agents
 load_bg
 
 move_to_backlog() {
-  local agent_name="$1"
-  local agent_id
-  agent_id=$(sql "SELECT id FROM agents WHERE name='${agent_name//\'/''}'")
+  local agent_id="$1"
   if [[ -n "$agent_id" ]]; then
     sql "UPDATE tasks SET status='backlog' WHERE agent_id=$agent_id AND status='queued'"
   fi
 }
 
 pop_task() {
-  local agent_name="$1"
-  pop_task_sql "$agent_name"  # sets POPPED_TASK, LAST_QUEUE_KIND, LAST_QUEUE_REMAINING
+  local agent_id="$1"
+  local project_id="${2:-}"
+  pop_task_sql "$agent_id" "$project_id"  # sets POPPED_TASK, LAST_QUEUE_KIND, LAST_QUEUE_REMAINING
 }
 
 # True for plain shell process names (what a pane shows after its agent exits)
@@ -100,8 +99,9 @@ pane_tail5() {
 
 is_idle() {
   local target="$1"
-  local name="${2:-}"
-  local state_file="${STATE_DIR}/${name}.state"
+  local window_name="${2:-}"
+  local name="${3:-$window_name}"
+  local state_file="${STATE_DIR}/${window_name}.state"
 
   # Reset detection globals
   LAST_DETECTION=""
@@ -154,9 +154,9 @@ is_idle() {
         fi
         # Secondary: check if the pane is awaiting interactive input
         if [ -n "${AWAITING_PATTERN:-}" ]; then
-          local last_line
-          last_line=$(tmux capture-pane -t "$target" -p 2>/dev/null | grep -v '^[[:space:]]*$' | tail -1 || true)
-          if printf '%s\n' "$last_line" | grep -qE "$AWAITING_PATTERN"; then
+          local last_lines_aw
+          last_lines_aw=$(tmux capture-pane -t "$target" -p 2>/dev/null | grep -v '^[[:space:]]*$' | tail -8 || true)
+          if printf '%s\n' "$last_lines_aw" | grep -qE "$AWAITING_PATTERN"; then
             debug "is_idle: target=$target awaiting-input pattern matched — writing 'awaiting'"
             printf 'awaiting\n' > "$state_file" 2>/dev/null || true
           fi
@@ -189,9 +189,9 @@ is_idle() {
         LAST_STATE_VALUE="awaiting"
         LAST_STATE_AGE="$age"
         if [ -n "${AWAITING_PATTERN:-}" ]; then
-          local last_line_aw
-          last_line_aw=$(tmux capture-pane -t "$target" -p 2>/dev/null | grep -v '^[[:space:]]*$' | tail -1 || true)
-          if ! printf '%s\n' "$last_line_aw" | grep -qE "$AWAITING_PATTERN"; then
+          local last_lines_aw2
+          last_lines_aw2=$(tmux capture-pane -t "$target" -p 2>/dev/null | grep -v '^[[:space:]]*$' | tail -8 || true)
+          if ! printf '%s\n' "$last_lines_aw2" | grep -qE "$AWAITING_PATTERN"; then
             debug "is_idle: target=$target awaiting state but prompt gone — reverting to 'busy'"
             printf 'busy\n' > "$state_file" 2>/dev/null || true
           fi
@@ -243,9 +243,9 @@ check_usage() {
 }
 
 mark_busy() {
-  local name="$1"
-  [ -n "$name" ] || return 0
-  local state_file="${STATE_DIR}/${name}.state"
+  local window_name="$1"
+  [ -n "$window_name" ] || return 0
+  local state_file="${STATE_DIR}/${window_name}.state"
   printf 'busy\n' > "$state_file" 2>/dev/null || true
   debug "mark_busy: wrote 'busy' to $state_file"
 }
@@ -342,17 +342,18 @@ while true; do
   all_usage_hit=true
 
   for name in "${AGENT_NAMES[@]}"; do
-    target="$SESSION_NAME:$name"
-    debug "loop: checking agent '$name' (target=$target)"
+    window_name="${AGENT_WINDOW_NAMES[$name]:-$name}"
+    target="$SESSION_NAME:$window_name"
+    debug "loop: checking agent '$name' (window=$window_name target=$target)"
 
     # Skip if pane doesn't exist (agent crashed or was closed)
     if ! tmux has-session -t "$target" 2>/dev/null; then
-      log "WARN: $name — pane not found, skipping"
-      move_to_backlog "$name"
+      log "WARN: $name — pane not found (window=$window_name), skipping"
+      move_to_backlog "${AGENT_IDS[$name]}"
       continue
     fi
 
-    if is_idle "$target" "$name"; then
+    if is_idle "$target" "$window_name" "$name"; then
       log "$name — idle detected (detection=$LAST_DETECTION state=${LAST_STATE_VALUE:-n/a} age=${LAST_STATE_AGE:-n/a}s)"
 
       # Check usage before dispatching
@@ -363,15 +364,18 @@ while true; do
       all_usage_hit=false
 
       # Pop next task — if queue is empty, agent stays idle (no fallback)
-      if pop_task "$name"; then
+      if pop_task "${AGENT_IDS[$name]}" "${AGENT_PROJECT_IDS[$name]:-}"; then
         task="$POPPED_TASK"
         log "$name — dispatching task [queue=$LAST_QUEUE_KIND remaining=$LAST_QUEUE_REMAINING detection=$LAST_DETECTION]: $task"
-        emit_dispatch_jsonl "$name" "$task" "$LAST_QUEUE_KIND" "$LAST_QUEUE_REMAINING" "$target"
-        mark_busy "$name"
+        emit_dispatch_jsonl "$window_name" "$task" "$LAST_QUEUE_KIND" "$LAST_QUEUE_REMAINING" "$target"
+        mark_busy "$window_name"
+        if [[ "$LAST_QUEUE_KIND" == "project" ]]; then
+          dispatch "$target" "/clear"
+        fi
         dispatch "$target" "$task"
       else
         log "$name — queue empty, no task. Agent stays idle."
-        emit_dispatch_jsonl "$name" "" "none" "" "$target"
+        emit_dispatch_jsonl "$window_name" "" "none" "" "$target"
       fi
     else
       all_idle=false

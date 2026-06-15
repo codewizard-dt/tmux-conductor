@@ -19,11 +19,12 @@ import { deleteTask, reorderTasks, jumpTaskToHead, type Task } from '../lib/api'
 interface SortableItemProps {
   id: string;
   text: string;
+  isProject: boolean;
   onDelete: () => void;
   onJumpHead: () => void;
 }
 
-function SortableItem({ id, text, onDelete, onJumpHead }: SortableItemProps) {
+function SortableItem({ id, text, isProject, onDelete, onJumpHead }: SortableItemProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id });
 
@@ -40,6 +41,11 @@ function SortableItem({ id, text, onDelete, onJumpHead }: SortableItemProps) {
         {...listeners}
       >⠿</span>
       <span className="flex-1 font-mono text-[11px] text-ink-2">{text}</span>
+      {isProject && (
+        <span className="flex-shrink-0 rounded px-1 py-0.5 text-[10px] font-medium bg-violet-100 text-violet-700">
+          project
+        </span>
+      )}
       <button
         type="button"
         onClick={onJumpHead}
@@ -64,7 +70,84 @@ export interface TaskListProps {
   onReorder: (newTasks: Task[]) => void;
 }
 
+function ScopedTaskGroup({
+  tasks,
+  allTasks,
+  sensors,
+  onReorder,
+  onError,
+}: {
+  tasks: Task[];
+  allTasks: Task[];
+  sensors: ReturnType<typeof useSensors>;
+  onReorder: (newTasks: Task[]) => void;
+  onError: (msg: string) => void;
+}) {
+  const ids = tasks.map((t) => String(t.id));
+  const isProject = tasks[0]?.projectId != null;
 
+  async function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIndex = tasks.findIndex((t) => String(t.id) === String(active.id));
+    const newIndex = tasks.findIndex((t) => String(t.id) === String(over.id));
+    if (oldIndex === -1 || newIndex === -1) return;
+    const reordered = arrayMove(tasks, oldIndex, newIndex);
+    const otherTasks = allTasks.filter((t) =>
+      isProject ? t.projectId == null : t.projectId != null
+    );
+    onReorder(isProject ? [...otherTasks, ...reordered] : [...reordered, ...otherTasks]);
+    try {
+      await reorderTasks(reordered.map((t) => t.id));
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Unknown error';
+      onError(`Reorder failed: ${msg}`);
+      onReorder(allTasks);
+    }
+  }
+
+  async function handleDelete(task: Task) {
+    onReorder(allTasks.filter((t) => t.id !== task.id));
+    try {
+      await deleteTask(task.id);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Unknown error';
+      onError(`Delete failed: ${msg}`);
+      onReorder(allTasks);
+    }
+  }
+
+  async function handleJumpHead(task: Task) {
+    const otherTasks = allTasks.filter((t) => t.id !== task.id);
+    onReorder([task, ...otherTasks]);
+    try {
+      await jumpTaskToHead(task.id);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Unknown error';
+      onError(`Move to front failed: ${msg}`);
+      onReorder(allTasks);
+    }
+  }
+
+  return (
+    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={(e) => { void handleDragEnd(e); }}>
+      <SortableContext items={ids} strategy={verticalListSortingStrategy}>
+        <ul className="m-0 list-none p-0">
+          {tasks.map((task) => (
+            <SortableItem
+              key={task.id}
+              id={String(task.id)}
+              text={task.command}
+              isProject={task.projectId != null}
+              onDelete={() => { void handleDelete(task); }}
+              onJumpHead={() => { void handleJumpHead(task); }}
+            />
+          ))}
+        </ul>
+      </SortableContext>
+    </DndContext>
+  );
+}
 
 export default function TaskList({ tasks, onReorder }: TaskListProps) {
   const [error, setError] = React.useState<string | null>(null);
@@ -73,57 +156,8 @@ export default function TaskList({ tasks, onReorder }: TaskListProps) {
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
   );
 
-  const ids = tasks.map((task) => String(task.id));
-  async function handleDragEnd(event: DragEndEvent) {
-    const { active, over } = event;
-    if (!over || active.id === over.id) return;
-
-    const oldIndex = tasks.findIndex((t) => String(t.id) === String(active.id));
-    const newIndex = tasks.findIndex((t) => String(t.id) === String(over.id));
-    if (oldIndex === -1 || newIndex === -1) return;
-
-    const original = tasks;
-    const newTasks = arrayMove(tasks, oldIndex, newIndex);
-
-    onReorder(newTasks);
-    setError(null);
-
-    try {
-      await reorderTasks(newTasks.map((t) => t.id));
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Unknown error';
-      setError(`Reorder failed: ${msg}`);
-      onReorder(original);
-    }
-  }
-
-  async function handleDelete(task: Task) {
-    const original = tasks;
-    onReorder(tasks.filter((t) => t.id !== task.id));
-    setError(null);
-
-    try {
-      await deleteTask(task.id);
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Unknown error';
-      setError(`Delete failed: ${msg}`);
-      onReorder(original);
-    }
-  }
-
-  async function handleJumpHead(task: Task) {
-    const original = tasks;
-    onReorder([task, ...tasks.filter((t) => t.id !== task.id)]);
-    setError(null);
-
-    try {
-      await jumpTaskToHead(task.id);
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Unknown error';
-      setError(`Move to front failed: ${msg}`);
-      onReorder(original);
-    }
-  }
+  const agentTasks = tasks.filter((t) => t.projectId == null);
+  const projectTasks = tasks.filter((t) => t.projectId != null);
 
   if (tasks.length === 0) {
     return <p className="my-1 text-[11px] italic text-muted-2">No tasks in queue.</p>;
@@ -132,21 +166,24 @@ export default function TaskList({ tasks, onReorder }: TaskListProps) {
   return (
     <div>
       {error && <p className="mb-1 text-[11px] text-accent-red">{error}</p>}
-      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={(e) => { void handleDragEnd(e); }}>
-        <SortableContext items={ids} strategy={verticalListSortingStrategy}>
-          <ul className="m-0 list-none p-0">
-            {tasks.map((task) => (
-              <SortableItem
-                key={task.id}
-                id={String(task.id)}
-                text={task.command}
-                onDelete={() => { void handleDelete(task); }}
-                onJumpHead={() => { void handleJumpHead(task); }}
-              />
-            ))}
-          </ul>
-        </SortableContext>
-      </DndContext>
+      {agentTasks.length > 0 && (
+        <ScopedTaskGroup
+          tasks={agentTasks}
+          allTasks={tasks}
+          sensors={sensors}
+          onReorder={(next) => { setError(null); onReorder(next); }}
+          onError={setError}
+        />
+      )}
+      {projectTasks.length > 0 && (
+        <ScopedTaskGroup
+          tasks={projectTasks}
+          allTasks={tasks}
+          sensors={sensors}
+          onReorder={(next) => { setError(null); onReorder(next); }}
+          onError={setError}
+        />
+      )}
     </div>
   );
 }

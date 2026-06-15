@@ -53,36 +53,38 @@ tmux kill-session -t "$SESSION_NAME" 2>/dev/null || true
 
 # Create session with first agent
 name="${AGENT_NAMES[0]}"
+window_name="${AGENT_WINDOW_NAMES["$name"]}"
 workdir="${AGENT_DIRS["$name"]}"
 launch_cmd="${AGENT_CMDS["$name"]}"
-tmux new-session -d -s "$SESSION_NAME" -c "$workdir" -n "$name"
+tmux new-session -d -s "$SESSION_NAME" -c "$workdir" -n "$window_name"
 
 _linked_bg="${AGENT_BG["$name"]}"
 _bg_env=""
 if [ -n "$_linked_bg" ]; then
   _bg_env=" CONDUCTOR_BG_NAME='$_linked_bg' CONDUCTOR_BG_LOG='$LOG_DIR/bg-$_linked_bg.log' CONDUCTOR_BG_STATE='$STATE_DIR/bg-$_linked_bg.state'"
 fi
-env_prefix="CONDUCTOR_AGENT_NAME='$name' CONDUCTOR_STATE_DIR='$STATE_DIR' CONDUCTOR_LOG_DIR='$LOG_DIR'$_bg_env"
-tmux send-keys -t "$SESSION_NAME:$name" "$env_prefix $launch_cmd" Enter
+env_prefix="CONDUCTOR_AGENT_NAME='$window_name' CONDUCTOR_STATE_DIR='$STATE_DIR' CONDUCTOR_LOG_DIR='$LOG_DIR'$_bg_env"
+tmux send-keys -t "$SESSION_NAME:$window_name" "$env_prefix $launch_cmd" Enter
 
-echo "Spawned: $name ($launch_cmd) in $workdir"
+echo "Spawned: $name (window: $window_name) ($launch_cmd) in $workdir"
 
 # Spawn remaining agents as new windows
 for (( i=1; i<${#AGENT_NAMES[@]}; i++ )); do
   name="${AGENT_NAMES[$i]}"
+  window_name="${AGENT_WINDOW_NAMES["$name"]}"
   workdir="${AGENT_DIRS["$name"]}"
   launch_cmd="${AGENT_CMDS["$name"]}"
-  tmux new-window -t "$SESSION_NAME" -n "$name" -c "$workdir"
+  tmux new-window -t "$SESSION_NAME" -n "$window_name" -c "$workdir"
 
   _linked_bg="${AGENT_BG["$name"]}"
   _bg_env=""
   if [ -n "$_linked_bg" ]; then
     _bg_env=" CONDUCTOR_BG_NAME='$_linked_bg' CONDUCTOR_BG_LOG='$LOG_DIR/bg-$_linked_bg.log' CONDUCTOR_BG_STATE='$STATE_DIR/bg-$_linked_bg.state'"
   fi
-  env_prefix="CONDUCTOR_AGENT_NAME='$name' CONDUCTOR_STATE_DIR='$STATE_DIR' CONDUCTOR_LOG_DIR='$LOG_DIR'$_bg_env"
-  tmux send-keys -t "$SESSION_NAME:$name" "$env_prefix $launch_cmd" Enter
+  env_prefix="CONDUCTOR_AGENT_NAME='$window_name' CONDUCTOR_STATE_DIR='$STATE_DIR' CONDUCTOR_LOG_DIR='$LOG_DIR'$_bg_env"
+  tmux send-keys -t "$SESSION_NAME:$window_name" "$env_prefix $launch_cmd" Enter
 
-  echo "Spawned: $name ($launch_cmd) in $workdir"
+  echo "Spawned: $name (window: $window_name) ($launch_cmd) in $workdir"
 done
 
 # Spawn background processes as additional windows (host-side, no container wrap)

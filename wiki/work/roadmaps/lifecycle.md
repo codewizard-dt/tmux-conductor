@@ -7,7 +7,7 @@ updated: 2026-06-11
 
 Execution-plan roadmaps: a goal, phases, and a hybrid checklist where each item is either a **task link** (`[TASK-NNN](../tasks/TASK-NNN-slug.md)`) or an **inline** checkbox item. ID scheme: **ROADMAP-NNN** (3-digit, zero-padded). Filename: `ROADMAP-NNN-slug.md`.
 
-Files are **never moved** after creation; state lives in the `status:` frontmatter field. The active set is tracked in [`index.md`](index.md).
+Active files are **never moved** after creation; state lives in the `status:` frontmatter field. Terminal items (`done`) may be moved to [`archive/`](archive/) by `/wiki-archive`. The active set is tracked in [`index.md`](index.md).
 
 ## Frontmatter schema
 

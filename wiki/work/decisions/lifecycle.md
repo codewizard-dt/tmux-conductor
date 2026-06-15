@@ -7,7 +7,7 @@ updated: 2026-06-11
 
 Architecture Decision Records. Each file is a **Decision Group** containing one or more `## DM. <title>` decision blocks. ID scheme: **DEC-NNNN** (4-digit, zero-padded) for the group; **DEC-NNNN#DM** for an individual decision (e.g. `DEC-0001#D2`). Filename: `DEC-NNNN-slug.md`.
 
-Files are **never moved** after creation; per-decision state lives in each block's `status` field. The active set is tracked in [`index.md`](index.md) — a group stays listed while at least one of its decisions is `proposed`.
+Active files are **never moved** after creation; per-decision state lives in each block's `status` field. When all decisions in a group are `accepted` or `superseded`, the group may be moved to [`archive/`](archive/) by `/wiki-archive`. The active set is tracked in [`index.md`](index.md) — a group stays listed while at least one of its decisions is `proposed`.
 
 ## Frontmatter / per-decision schema
 

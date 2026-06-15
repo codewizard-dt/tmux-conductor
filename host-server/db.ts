@@ -19,7 +19,15 @@ export interface Agent {
   workdir: string;
   launchCmd: string;
   projectId: number | null;
+  projectName: string | null;
   createdAt: string;
+}
+
+/** Globally unique tmux window name for an agent. Project-scoped agents get
+ *  `${project}-${agent}` so two agents with the same short name in different
+ *  projects never collide in the shared tmux session namespace. */
+export function agentWindowName(agent: Pick<Agent, 'name' | 'projectName'>): string {
+  return agent.projectName ? `${agent.projectName}-${agent.name}` : agent.name;
 }
 
 export interface BgProcess {
@@ -75,6 +83,10 @@ interface AgentRow {
   created_at: string;
 }
 
+interface AgentWithProjectRow extends AgentRow {
+  project_name: string | null;
+}
+
 interface BgProcessRow {
   id: number;
   name: string;
@@ -115,8 +127,9 @@ function mapProject(r: ProjectRow): Project {
   return { id: r.id, name: r.name, workdir: r.workdir, defaultLaunchCmd: r.default_launch_cmd, createdAt: r.created_at };
 }
 
-function mapAgent(r: AgentRow): Agent {
-  return { id: r.id, name: r.name, workdir: r.workdir, launchCmd: r.launch_cmd, projectId: r.project_id, createdAt: r.created_at };
+function mapAgent(r: AgentRow | AgentWithProjectRow): Agent {
+  const projectName = 'project_name' in r ? r.project_name : null;
+  return { id: r.id, name: r.name, workdir: r.workdir, launchCmd: r.launch_cmd, projectId: r.project_id, projectName, createdAt: r.created_at };
 }
 
 function mapBgProcess(r: BgProcessRow): BgProcess {
@@ -222,6 +235,30 @@ function runMigrations(db: Database.Database): void {
     `);
     db.prepare(`INSERT OR REPLACE INTO meta VALUES ('schema_version', '1')`).run();
   }
+  if (version < 2) {
+    // Replace global UNIQUE on agents.name with per-project uniqueness.
+    // SQLite requires a full table rebuild to change constraints.
+    db.pragma('foreign_keys = OFF');
+    db.transaction(() => {
+      db.exec(`
+        CREATE TABLE agents_v2 (
+          id INTEGER PRIMARY KEY,
+          name TEXT NOT NULL CHECK (name GLOB '[A-Za-z0-9_-]*'),
+          workdir TEXT NOT NULL,
+          launch_cmd TEXT NOT NULL,
+          project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL,
+          created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))
+        );
+        INSERT INTO agents_v2 SELECT * FROM agents;
+        DROP TABLE agents;
+        ALTER TABLE agents_v2 RENAME TO agents;
+        CREATE UNIQUE INDEX idx_agents_project_name ON agents(project_id, name) WHERE project_id IS NOT NULL;
+        CREATE UNIQUE INDEX idx_agents_null_name ON agents(name) WHERE project_id IS NULL;
+      `);
+    })();
+    db.pragma('foreign_keys = ON');
+    db.prepare(`INSERT OR REPLACE INTO meta VALUES ('schema_version', '2')`).run();
+  }
 }
 
 // ─── Legacy seed (runs once) ──────────────────────────────────────────────────
@@ -298,7 +335,7 @@ export function deleteProject(db: Database.Database, id: number, force = false):
 export function nextAgentName(db: Database.Database, projectId: number): string {
   const project = db.prepare(`SELECT name FROM projects WHERE id=?`).get(projectId) as { name: string } | undefined;
   if (!project) throw new Error(`Project ${String(projectId)} not found`);
-  const existing = db.prepare(`SELECT name FROM agents WHERE project_id=?`).all(projectId) as { name: string }[];
+  const existing = db.prepare(`SELECT name FROM agents WHERE name GLOB ?`).all(project.name + '-*') as { name: string }[];
   const prefix = project.name + '-';
   let max = 0;
   for (const a of existing) {
@@ -313,18 +350,53 @@ export function nextAgentName(db: Database.Database, projectId: number): string 
 // ─── Agents CRUD ──────────────────────────────────────────────────────────────
 
 export function listAgents(db: Database.Database): Agent[] {
-  return (db.prepare(`SELECT * FROM agents ORDER BY name`).all() as AgentRow[]).map(mapAgent);
+  return (db.prepare(
+    `SELECT a.*, p.name AS project_name FROM agents a LEFT JOIN projects p ON a.project_id = p.id ORDER BY a.name`
+  ).all() as AgentWithProjectRow[]).map(mapAgent);
+}
+
+function findAgentById(db: Database.Database, id: number): Agent {
+  const agent = getAgentById(db, id);
+  if (!agent) throw new Error(`Agent ${String(id)} not found`);
+  return agent;
+}
+
+/** Resolve an agent by its globally-unique id, or undefined if absent. Agent
+ *  names are only unique per project, so HTTP routes must address agents by id. */
+export function getAgentById(db: Database.Database, id: number): Agent | undefined {
+  const row = db.prepare(
+    `SELECT a.*, p.name AS project_name FROM agents a LEFT JOIN projects p ON a.project_id = p.id WHERE a.id=?`
+  ).get(id) as AgentWithProjectRow | undefined;
+  return row ? mapAgent(row) : undefined;
 }
 
 export function createAgent(db: Database.Database, data: { name: string; workdir: string; launchCmd: string; projectId?: number }): Agent {
+  // Guard against two agents resolving to the same tmux window name. The DB's
+  // per-project name uniqueness doesn't catch cross-scope collisions on the
+  // computed `${project}-${name}` window name, and a duplicate window name is
+  // unaddressable in the shared tmux session (see the wake path's ambiguity
+  // branch). Reject up front rather than spawning an un-wakeable agent.
+  const projectName = data.projectId != null
+    ? (db.prepare(`SELECT name FROM projects WHERE id=?`).get(data.projectId) as { name: string } | undefined)?.name ?? null
+    : null;
+  const newWindowName = agentWindowName({ name: data.name, projectName });
+  if (listAgents(db).some((a) => agentWindowName(a) === newWindowName)) {
+    throw new Error(`an agent with tmux window name '${newWindowName}' already exists`);
+  }
   const row = db.prepare(
-    `INSERT INTO agents (name, workdir, launch_cmd, project_id) VALUES (?, ?, ?, ?) RETURNING *`
-  ).get(data.name, data.workdir, data.launchCmd, data.projectId ?? null) as AgentRow;
-  return mapAgent(row);
+    `INSERT INTO agents (name, workdir, launch_cmd, project_id) VALUES (?, ?, ?, ?) RETURNING id`
+  ).get(data.name, data.workdir, data.launchCmd, data.projectId ?? null) as { id: number };
+  return findAgentById(db, row.id);
 }
 
 export function deleteAgent(db: Database.Database, id: number): void {
   db.prepare(`DELETE FROM agents WHERE id=?`).run(id);
+}
+
+export function updateAgentName(db: Database.Database, id: number, newName: string): Agent {
+  const updated = db.prepare(`UPDATE agents SET name=? WHERE id=?`).run(newName, id);
+  if (updated.changes === 0) throw new Error(`Agent ${String(id)} not found`);
+  return findAgentById(db, id);
 }
 
 // ─── BgProcesses CRUD ────────────────────────────────────────────────────────
@@ -346,18 +418,28 @@ export function deleteBgProcess(db: Database.Database, id: number): void {
 
 // ─── Task queue ───────────────────────────────────────────────────────────────
 
-export function listTasksForAgent(db: Database.Database, agentName: string): Task[] {
+export function listTasksByProject(db: Database.Database, projectId: number): Task[] {
+  const rows = db.prepare(
+    `SELECT * FROM tasks WHERE project_id = ? AND status = 'queued' ORDER BY position ASC`
+  ).all(projectId) as TaskRow[];
+  return rows.map(mapTask);
+}
+
+/** Queue for one agent, addressed by its id (and its project for project-scoped
+ *  tasks). Keyed by id, not name — agent names are only unique per project, so a
+ *  name lookup would resolve two same-named agents to the same (first) row. */
+export function listTasksForAgentId(db: Database.Database, agentId: number, projectId: number | null): Task[] {
   const rows = db.prepare(`
     SELECT t.* FROM tasks t
     WHERE t.status = 'queued' AND (
-         (t.agent_id IS NOT NULL AND t.agent_id = (SELECT id FROM agents WHERE name=?))
-      OR (t.project_id IS NOT NULL AND t.project_id = (SELECT project_id FROM agents WHERE name=?))
+         (t.agent_id IS NOT NULL AND t.agent_id = ?)
+      OR (t.project_id IS NOT NULL AND ? IS NOT NULL AND t.project_id = ?)
       OR (t.agent_id IS NULL AND t.project_id IS NULL))
     ORDER BY
       CASE WHEN t.agent_id IS NOT NULL THEN 0
            WHEN t.project_id IS NOT NULL THEN 1 ELSE 2 END,
       t.position
-  `).all(agentName, agentName) as TaskRow[];
+  `).all(agentId, projectId, projectId) as TaskRow[];
   return rows.map(mapTask);
 }
 

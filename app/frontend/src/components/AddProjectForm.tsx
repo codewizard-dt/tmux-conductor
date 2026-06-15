@@ -1,7 +1,13 @@
 import { useState } from 'react';
 import { createProject } from '../lib/api';
+import {
+  commandForPreset,
+  DEFAULT_LAUNCH_COMMAND,
+  LAUNCH_COMMAND_PRESETS,
+  presetForCommand,
+  type LaunchCommandSelection,
+} from '../lib/launchCommands';
 
-const DEFAULT_LAUNCH_CMD = 'claude --dangerously-skip-permissions';
 const NAME_PATTERN = /^[A-Za-z0-9_-]+$/;
 
 const fieldCls = 'flex flex-col gap-1.5';
@@ -17,7 +23,8 @@ const inputCls = [
 export default function AddProjectForm() {
   const [name, setName] = useState('');
   const [workdir, setWorkdir] = useState('');
-  const [defaultLaunchCmd, setDefaultLaunchCmd] = useState(DEFAULT_LAUNCH_CMD);
+  const [defaultLaunchCmd, setDefaultLaunchCmd] = useState<string>(DEFAULT_LAUNCH_COMMAND);
+  const [launchPreset, setLaunchPreset] = useState<LaunchCommandSelection>('claude');
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -41,7 +48,8 @@ export default function AddProjectForm() {
       await createProject({ name, workdir, defaultLaunchCmd });
       setName('');
       setWorkdir('');
-      setDefaultLaunchCmd(DEFAULT_LAUNCH_CMD);
+      setDefaultLaunchCmd(DEFAULT_LAUNCH_COMMAND);
+      setLaunchPreset('claude');
       setSuccess(true);
       setTimeout(() => { setSuccess(false); }, 4000);
     } catch (err: unknown) {
@@ -89,13 +97,37 @@ export default function AddProjectForm() {
         </div>
 
         <div className={fieldCls}>
+          <label htmlFor="project-launch-preset" className={labelCls}>Launch Agent</label>
+          <select
+            id="project-launch-preset"
+            value={launchPreset}
+            onChange={(e) => {
+              const next = e.target.value as LaunchCommandSelection;
+              setLaunchPreset(next);
+              if (next !== 'custom') {
+                setDefaultLaunchCmd(commandForPreset(next));
+              }
+            }}
+            className={inputCls}
+          >
+            {LAUNCH_COMMAND_PRESETS.map((preset) => (
+              <option key={preset.id} value={preset.id}>{preset.label}</option>
+            ))}
+            <option value="custom">Custom</option>
+          </select>
+        </div>
+
+        <div className={fieldCls}>
           <label htmlFor="project-launch-cmd" className={labelCls}>Default Launch Command</label>
           <input
             id="project-launch-cmd"
             type="text"
             value={defaultLaunchCmd}
-            onChange={(e) => { setDefaultLaunchCmd(e.target.value); }}
-            placeholder={DEFAULT_LAUNCH_CMD}
+            onChange={(e) => {
+              setDefaultLaunchCmd(e.target.value);
+              setLaunchPreset(presetForCommand(e.target.value));
+            }}
+            placeholder={DEFAULT_LAUNCH_COMMAND}
             className={inputCls}
           />
         </div>

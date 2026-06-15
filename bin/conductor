@@ -185,6 +185,71 @@ print(d.get('sessionName', ''))
     esac
     ;;
 
+  pair)
+    PORTAL=""
+    CODE=""
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --portal) PORTAL="${2:-}"; shift 2 ;;
+        --code)   CODE="${2:-}";   shift 2 ;;
+        --help|-h)
+          echo "Usage: conductor pair [--portal <url>] [--code <code>]"
+          echo ""
+          echo "Pairs this device with the tmux-conductor portal."
+          echo "If --portal or --code are omitted, you will be prompted interactively."
+          echo ""
+          echo "Options:"
+          echo "  --portal <url>   Portal base URL (e.g. https://portal.example.com)"
+          echo "  --code <code>    Pairing code generated from the portal (XXXX-XXXX)"
+          exit 0
+          ;;
+        *) echo "Unknown flag: $1" >&2; exit 1 ;;
+      esac
+    done
+    PORTAL_FLAG=""
+    CODE_FLAG=""
+    [ -n "$PORTAL" ] && PORTAL_FLAG="--portal $PORTAL"
+    [ -n "$CODE" ]   && CODE_FLAG="--code $CODE"
+    # shellcheck disable=SC2086
+    node --import tsx/esm "$REPO_ROOT/daemon/pair.ts" $PORTAL_FLAG $CODE_FLAG
+    ;;
+
+  unpair)
+    REVOKE=0
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --revoke) REVOKE=1; shift ;;
+        --help|-h)
+          echo "Usage: conductor unpair [--revoke]"
+          echo ""
+          echo "Removes the local device credentials (~/.local/share/tmux-conductor/device.json)."
+          echo ""
+          echo "Options:"
+          echo "  --revoke   Also call DELETE /api/devices/:deviceId on the portal before removing."
+          exit 0
+          ;;
+        *) echo "Unknown flag: $1" >&2; exit 1 ;;
+      esac
+    done
+    CONDUCTOR_HOME_DIR="${CONDUCTOR_HOME:-$HOME/.local/share/tmux-conductor}"
+    DEVICE_JSON="$CONDUCTOR_HOME_DIR/device.json"
+    if [ "$REVOKE" -eq 1 ] && [ -f "$DEVICE_JSON" ]; then
+      PORTAL_URL=$(python3 -c "import json,sys; d=json.load(open('$DEVICE_JSON')); print(d['portalUrl'])" 2>/dev/null || true)
+      DEVICE_ID=$(python3 -c "import json,sys; d=json.load(open('$DEVICE_JSON')); print(d['deviceId'])" 2>/dev/null || true)
+      TOKEN=$(python3 -c "import json,sys; d=json.load(open('$DEVICE_JSON')); print(d['token'])" 2>/dev/null || true)
+      if [ -n "$PORTAL_URL" ] && [ -n "$DEVICE_ID" ] && [ -n "$TOKEN" ]; then
+        curl -s -X DELETE \
+          -H "Authorization: Bearer $TOKEN" \
+          "$PORTAL_URL/api/devices/$DEVICE_ID" >/dev/null 2>&1 || \
+          echo "Warning: revoke request failed (the device may already be removed from the portal)." >&2
+      else
+        echo "Warning: could not read credentials from $DEVICE_JSON — skipping portal revoke." >&2
+      fi
+    fi
+    rm -f "$DEVICE_JSON"
+    echo "Unpaired. Credentials removed from $DEVICE_JSON."
+    ;;
+
   help|--help|-h)
     echo "Usage: conductor <command> [args]"
     echo ""
@@ -193,10 +258,13 @@ print(d.get('sessionName', ''))
     echo "  start [path]      Start a session for a repo (default: current directory)"
     echo "  connect [path]    Start a session and attach to it"
     echo "  stop <name>       Stop a named session"
+    echo "  pair              Pair this device with the portal (prompts for code)"
+    echo "  unpair            Remove local device credentials (--revoke to also call portal)"
     echo "  daemon <sub>      Manage the conductor daemon (start|stop|status|install)"
     echo ""
     echo "Environment:"
     echo "  CONDUCTOR_DAEMON_SOCK  Path to daemon Unix socket (default: ~/.local/share/tmux-conductor/daemon.sock)"
+    echo "  CONDUCTOR_HOME         Conductor data directory (default: ~/.local/share/tmux-conductor)"
     ;;
 
   *)

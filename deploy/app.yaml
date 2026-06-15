@@ -11,6 +11,9 @@ services:
     source_dir: /
     dockerfile_path: app/api/Dockerfile
     http_port: 8080
+    # instance_count MUST stay at 1 — the relay connection registry is in-process memory.
+    # Horizontal scale requires a pub/sub layer (Phase 5). See app/api/relay/registry.ts.
+    instance_count: 1
     health_check:
       http_path: /healthz
     envs:

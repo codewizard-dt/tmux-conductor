@@ -2,10 +2,11 @@ import * as path from 'path';
 import * as fs from 'fs';
 import Fastify from 'fastify';
 import fastifyCors from '@fastify/cors';
-import { DATA_DIR, ensureDataDir, reconcileRegistry, addSession, removeSession, listSessions } from './registry.ts';
+import { ensureDataDir, reconcileRegistry, addSession, removeSession, listSessions } from './registry.ts';
 import { startSession, stopSession, isTmuxSessionAlive } from './launch.ts';
-
-export const SOCKET_PATH = path.join(DATA_DIR, 'daemon.sock');
+import { startConnector, type RelayConnector } from './connector.ts';
+import { readCredentials } from './credentials.ts';
+import { SOCKET_PATH } from './paths.ts';
 
 ensureDataDir();
 
@@ -62,3 +63,24 @@ fastify.get('/healthz', async (_req, reply) => reply.send({ ok: true }));
 await fastify.listen({ path: SOCKET_PATH });
 fs.chmodSync(SOCKET_PATH, 0o600);
 console.log(`Daemon listening on ${SOCKET_PATH}`);
+
+let connector: RelayConnector | undefined;
+
+if (readCredentials() !== null) {
+  connector = startConnector();
+} else {
+  console.log('daemon not paired — relay connector not started; run `conductor pair` to enable remote access');
+}
+
+let shuttingDown = false;
+async function shutdown(signal: NodeJS.Signals): Promise<void> {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`Received ${signal}, shutting down`);
+  connector?.stop();
+  await fastify.close();
+  process.exit(0);
+}
+
+process.on('SIGINT', () => { void shutdown('SIGINT'); });
+process.on('SIGTERM', () => { void shutdown('SIGTERM'); });

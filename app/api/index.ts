@@ -4,12 +4,39 @@
 // Mounts the better-auth web-standard handler at /api/auth/* via a Fastify catch-all.
 
 import Fastify from 'fastify';
+import cors from '@fastify/cors';
+import rateLimit from '@fastify/rate-limit';
 import { fromNodeHeaders } from 'better-auth/node';
 import { env } from './env.ts';
 import { auth } from './auth.ts';
 import { runMigrations } from './migrate.ts';
+import pairRoutes from './routes/pair.ts';
+import devicesRoutes from './routes/devices.ts';
+import { inviteCodesRoutes } from './routes/invite-codes.js';
+import relayRoutes from './routes/relay.ts';
 
 const app = Fastify({ logger: true });
+
+// Raw-body parser for binary/relayed bodies. Without this, Fastify has no parser
+// for application/octet-stream and req.body is left undefined, so relayed request
+// bodies (image uploads, POST inserts forwarded via the mux) are silently dropped.
+// Mirrors host-server/index.ts. The default JSON/text parsers remain in place for
+// the /api/auth/* routes, and mux.ts handles Buffer | string | object bodies.
+app.addContentTypeParser('application/octet-stream', { parseAs: 'buffer' }, (_req, body, done) => {
+  done(null, body);
+});
+
+app.register(cors, {
+  origin: process.env['CORS_ORIGIN'] ?? `http://localhost:${process.env['FRONTEND_PORT'] ?? '4321'}`,
+  credentials: true,
+});
+
+// Rate-limiter registered with global:false so it only applies where a route
+// opts in via config.rateLimit (e.g. the unauthenticated POST /api/pair/redeem).
+app.register(rateLimit, { global: false });
+
+app.register(pairRoutes);
+app.register(devicesRoutes);
 
 // GET /healthz — liveness only — DB readiness deferred to a future /readyz.
 // Returns { ok: true } without touching the DB so health checks stay green
@@ -45,6 +72,9 @@ app.route({
     }
   },
 });
+
+app.register(inviteCodesRoutes);
+app.register(relayRoutes);
 
 async function start(): Promise<void> {
   // Run migrations first — this validates DB connectivity at boot.

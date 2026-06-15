@@ -1,13 +1,13 @@
 import { spawnSync, execSync } from 'child_process';
-import { existsSync, unlinkSync, readFileSync, mkdirSync, writeFileSync, readdirSync, statSync, appendFileSync } from 'fs';
+import { existsSync, unlinkSync, renameSync, readFileSync, mkdirSync, writeFileSync, readdirSync, statSync, appendFileSync } from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
 import Fastify, { type FastifyReply } from 'fastify';
 import fastifyCors from '@fastify/cors';
 import fastifyStatic from '@fastify/static';
 import { readConductorConf, DEFAULT_CONF_PATH, appendBgProcessToConf, removeBgProcessFromConf, removeBgLink, addBgLink, clearConfCache } from './config.ts';
-import { openDb, getDbPath, listAgents, createAgent, deleteAgent, addTask, deleteTask, reorderTasks, jumpTaskToHead, listTasksForAgent, listProjects, createProject, updateProject, deleteProject, nextAgentName, listSchedules, createSchedule, updateSchedule, deleteSchedule, dueSchedules, fireSchedule } from './db.ts';
-import { detectAgentStatus, detectAgentMode, isTmuxWindowPresent, getActiveTask, capturePaneTail, capturePaneTailRaw, sendTextToPane, type AgentMode } from './state.ts';
+import { openDb, getDbPath, listAgents, getAgentById, createAgent, deleteAgent, updateAgentName, agentWindowName, addTask, deleteTask, reorderTasks, jumpTaskToHead, listTasksForAgentId, listTasksByProject, listProjects, createProject, updateProject, deleteProject, nextAgentName, listSchedules, createSchedule, updateSchedule, deleteSchedule, dueSchedules, fireSchedule } from './db.ts';
+import { detectAgentStatus, detectAgentMode, isTmuxWindowPresent, windowState, getActiveTask, capturePaneTail, capturePaneTailRaw, sendTextToPane, extractPaneLabel, type AgentMode } from './state.ts';
 import { getAgentContext, type AgentContext } from './context.ts';
 import dotenv from 'dotenv';
 import { getUserSkills, getPluginSkills, getProjectSkills } from './skills.ts';
@@ -147,14 +147,15 @@ function buildBgStatuses(conf: ReturnType<typeof readConductorConf>): BgStatus[]
 // ── Shared tmux helpers ───────────────────────────────────────────────────────
 
 function spawnAgentWindow(
-  agent: { name: string; workdir: string; launchCmd: string },
+  agent: { name: string; workdir: string; launchCmd: string; projectName?: string | null },
   conf: ReturnType<typeof readConductorConf>,
 ): void {
   const { sessionName, stateDir, logDir } = conf;
-  execSync(`tmux new-window -t ${sessionName} -n ${agent.name} -c ${agent.workdir}`);
+  const winName = agent.projectName ? `${agent.projectName}-${agent.name}` : agent.name;
+  execSync(`tmux new-window -t ${sessionName} -n ${winName} -c ${agent.workdir}`);
   execSync(
-    `tmux send-keys -t ${sessionName}:${agent.name} ` +
-    `"CONDUCTOR_AGENT_NAME='${agent.name}' CONDUCTOR_STATE_DIR='${stateDir}' CONDUCTOR_LOG_DIR='${logDir}' ${agent.launchCmd}" Enter`,
+    `tmux send-keys -t ${sessionName}:${winName} ` +
+    `"CONDUCTOR_AGENT_NAME='${winName}' CONDUCTOR_STATE_DIR='${stateDir}' CONDUCTOR_LOG_DIR='${logDir}' ${agent.launchCmd}" Enter`,
   );
 }
 
@@ -167,6 +168,10 @@ function broadcastSSE(eventName: string, data: unknown): void {
   for (const reply of sseClients) {
     try { reply.raw.write(msg); } catch { sseClients.delete(reply); }
   }
+}
+
+function sendSSE(reply: FastifyReply, eventName: string, data: unknown): void {
+  try { reply.raw.write(`event: ${eventName}\ndata: ${JSON.stringify(data)}\n\n`); } catch { /* ignore */ }
 }
 
 // ── API routes (/api prefix) ─────────────────────────────────────────────────
@@ -190,23 +195,30 @@ await fastify.register((api) => {
     const sessionAlive = sessionExists && isTmuxWindowPresent(sessionName, 'monitor');
 
     const agentStatuses = agents.map((agent) => {
-      const windowPresent = isTmuxWindowPresent(sessionName, agent.name);
+      // Project-scoped agents live in a `${project}-${name}` window, and their
+      // hooks write the state file under that same window name — so every tmux
+      // and state lookup must key off the window name, not the short agent name.
+      const win = agentWindowName(agent);
+      const windowPresent = isTmuxWindowPresent(sessionName, win);
       // One capture-pane per agent, shared by status (last 5 lines) and mode
       // (full 15) detection.
-      const tail15 = windowPresent ? capturePaneTail(sessionName, agent.name, 15) : '';
-      const state = detectAgentStatus(conf, agent.name, tail15 || undefined);
+      const tail15 = windowPresent ? capturePaneTail(sessionName, win, 15) : '';
+      const state = detectAgentStatus(conf, win, agent.launchCmd, tail15 || undefined);
       const isBusy = state === 'busy' || state === 'awaiting' || state === 'stalled';
-      const ctx = getAgentContext(agent.name, agent.workdir, conf.stateDir, conf.contextWindow, isBusy);
+      const ctx = getAgentContext(win, agent.workdir, conf.stateDir, conf.contextWindow, isBusy, tail15 || undefined);
       return {
+        id: agent.id,
         name: agent.name,
+        projectId: agent.projectId,
+        projectName: agent.projectName,
         state,
-        mode: windowPresent ? detectAgentMode(conf, agent.name, tail15) : 'unknown',
+        mode: windowPresent ? detectAgentMode(conf, win, tail15) : 'unknown',
         windowPresent,
-        queuedTasks: listTasksForAgent(db, agent.name).length,
+        queuedTasks: listTasksForAgentId(db, agent.id, agent.projectId).length,
         launchCmd: agent.launchCmd,
         workdir: agent.workdir,
         linkedBg: agentBgLinks[agent.name] ?? null,
-        activeTask: getActiveTask(conf, agent.name, state),
+        activeTask: getActiveTask(conf, win, state),
         ...ctx,
       };
     });
@@ -262,16 +274,29 @@ await fastify.register((api) => {
 
   // ── Task Queue CRUD ──────────────────────────────────────────────────────
 
-  api.get<{ Params: { agent: string } }>('/queue/:agent', async (req, reply) => {
-    const { agent } = req.params;
-    const tasks = listTasksForAgent(db, agent);
-    reply.send({ agent, tasks });
+  api.get<{ Params: { id: string } }>('/queue/:id', async (req, reply) => {
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) return reply.status(400).send({ error: 'invalid agent id' });
+    const entry = getAgentById(db, id);
+    if (!entry) return reply.status(404).send({ error: `agent ${String(id)} not found` });
+    const tasks = listTasksForAgentId(db, entry.id, entry.projectId);
+    reply.send({ agent: entry.name, agentId: entry.id, tasks });
   });
 
   // ── Task Queue CRUD (DB-backed /api/tasks) ───────────────────────────────
 
-  api.post<{ Body: { command?: unknown; agentName?: unknown; projectId?: unknown; placement?: unknown } }>('/tasks', async (req, reply) => {
-    const { command, agentName, projectId, placement } = req.body;
+  api.get<{ Querystring: { projectId?: string } }>('/tasks', async (req, reply) => {
+    const { projectId } = req.query;
+    if (projectId !== undefined) {
+      const id = parseInt(projectId, 10);
+      if (isNaN(id)) return reply.status(400).send({ error: 'projectId must be an integer' });
+      return reply.send(listTasksByProject(db, id));
+    }
+    return reply.status(400).send({ error: 'projectId query param is required' });
+  });
+
+  api.post<{ Body: { command?: unknown; agentId?: unknown; projectId?: unknown; placement?: unknown } }>('/tasks', async (req, reply) => {
+    const { command, agentId: agentIdRaw, projectId, placement } = req.body;
 
     if (typeof command !== 'string' || command.trim() === '') {
       return reply.status(400).send({ error: 'command is required and must be a non-empty string' });
@@ -284,35 +309,39 @@ await fastify.register((api) => {
     }
 
     let agentId: number | undefined;
-    if (agentName !== undefined) {
-      if (typeof agentName !== 'string') {
-        return reply.status(400).send({ error: 'agentName must be a string' });
+    let foundAgent: ReturnType<typeof getAgentById> | undefined;
+    if (agentIdRaw !== undefined) {
+      if (!Number.isInteger(agentIdRaw)) {
+        return reply.status(400).send({ error: 'agentId must be an integer' });
       }
-      const agents = listAgents(db);
-      const found = agents.find((a) => a.name === agentName);
+      const found = getAgentById(db, agentIdRaw as number);
       if (!found) {
-        return reply.status(404).send({ error: `agent '${agentName}' not found` });
+        return reply.status(404).send({ error: `agent ${String(agentIdRaw)} not found` });
       }
       agentId = found.id;
+      foundAgent = found;
     }
 
     // Fast-path: agent is idle and has no pending DB tasks — dispatch immediately.
+    // Key all tmux/state operations off the window name (project-scoped agents
+    // live in a `${project}-${name}` window and the hooks write that state file).
     if (
-      typeof agentName === 'string' &&
-      detectAgentStatus(readConductorConf(), agentName) === 'idle' &&
-      listTasksForAgent(db, agentName).length === 0
+      foundAgent !== undefined &&
+      detectAgentStatus(readConductorConf(), agentWindowName(foundAgent), foundAgent.launchCmd) === 'idle' &&
+      listTasksForAgentId(db, foundAgent.id, foundAgent.projectId).length === 0
     ) {
       const conf = readConductorConf();
+      const win = agentWindowName(foundAgent);
       const cmdText = command.trim();
       writeFileSync(
-        `${conf.stateDir}/${agentName}.state`,
+        `${conf.stateDir}/${win}.state`,
         'busy\n',
         'utf8',
       );
-      const paneTail = capturePaneTail(conf.sessionName, agentName, 5);
+      const paneTail = capturePaneTail(conf.sessionName, win, 5);
       const dispatchRecord = {
         ts: new Date().toISOString(),
-        agent: agentName,
+        agent: win,
         command: cmdText,
         state: 'idle',
         state_age_s: 0,
@@ -322,7 +351,7 @@ await fastify.register((api) => {
         pane_tail: paneTail,
       };
       appendFileSync(`${conf.logDir}/dispatch.jsonl`, JSON.stringify(dispatchRecord) + '\n', 'utf8');
-      sendTextToPane(conf.sessionName, agentName, cmdText);
+      sendTextToPane(conf.sessionName, win, cmdText);
       broadcastSSE('snapshot', buildSnapshot());
       return reply.status(200).send({ ok: true, dispatched: true });
     }
@@ -407,35 +436,75 @@ await fastify.register((api) => {
     }
 
     const newAgent = createAgent(db, { name, workdir, launchCmd });
+    const winName = agentWindowName(newAgent);
     spawnAgentWindow(newAgent, conf);
+
+    // Immediately notify SSE clients — don't wait for the next poll tick.
+    {
+      const windowPresent = isTmuxWindowPresent(conf.sessionName, winName);
+      const tail15 = windowPresent ? capturePaneTail(conf.sessionName, winName, 15) : '';
+      const state = detectAgentStatus(conf, winName, launchCmd, tail15 || undefined);
+      const isBusy = state === 'busy' || state === 'awaiting' || state === 'stalled';
+      const ctx = getAgentContext(winName, workdir, conf.stateDir, conf.contextWindow, isBusy, tail15 || undefined);
+      broadcastSSE('agent-update', {
+        id: newAgent.id, name, projectId: newAgent.projectId, projectName: newAgent.projectName,
+        state, mode: windowPresent ? detectAgentMode(conf, winName, tail15) : 'unknown',
+        windowPresent, queuedTasks: 0, launchCmd, workdir, linkedBg: null, activeTask: null, ...ctx,
+      });
+    }
 
     return reply.status(201).send({ ok: true, agent: newAgent });
   });
 
   // Recreate the tmux window for an agent that already exists in the DB but
   // whose window has died. Unlike POST /agents this does not write to the DB.
-  api.post<{ Params: { agent: string } }>('/agents/:agent/window', async (req, reply) => {
-    const { agent: name } = req.params;
+  api.post<{ Params: { id: string } }>('/agents/:id/window', async (req, reply) => {
+    const agentId = parseInt(req.params.id, 10);
+    if (isNaN(agentId)) return reply.status(400).send({ error: 'invalid agent id' });
     const conf = readConductorConf();
     const { sessionName } = conf;
 
-    const entry = listAgents(db).find((a) => a.name === name);
+    const entry = getAgentById(db, agentId);
     if (!entry) {
-      return reply.status(404).send({ error: `agent '${name}' not found` });
+      return reply.status(404).send({ error: `agent ${String(agentId)} not found` });
     }
+    const name = entry.name;
 
     const sessionCheck = spawnSync('tmux', ['has-session', '-t', sessionName], { encoding: 'utf8' });
     if (sessionCheck.status !== 0) {
       return reply.status(409).send({ error: 'session not running', sessionAlive: false });
     }
 
-    if (isTmuxWindowPresent(sessionName, name)) {
-      return reply.status(409).send({ error: 'window already exists' });
+    const winName = agentWindowName(entry);
+    const { count, live } = windowState(sessionName, winName, entry.launchCmd);
+
+    if (count > 1) {
+      return reply.status(409).send({
+        error: `ambiguous: ${String(count)} windows named '${winName}' — remove the duplicate agent`,
+      });
+    }
+    if (count === 1 && live) {
+      return reply.status(409).send({ error: 'agent already running' });
     }
 
-    spawnAgentWindow(entry, conf);
+    // count === 0 (cold) or count === 1 && !live (dead husk — exited agent left a
+    // bare shell). Reap the husk so the name is free, then spawn fresh.
+    let action: 'spawned' | 'respawned' = 'spawned';
+    try {
+      if (count === 1) {
+        spawnSync('tmux', ['kill-window', '-t', `${sessionName}:${winName}`], { encoding: 'utf8' });
+        action = 'respawned';
+      }
+      spawnAgentWindow(entry, conf);
+    } catch {
+      return reply.status(500).send({ error: 'failed to spawn agent window' });
+    }
 
-    return reply.status(201).send({ ok: true, agent: { name, workdir: entry.workdir, launchCmd: entry.launchCmd } });
+    return reply.status(201).send({
+      ok: true,
+      action,
+      agent: { name, workdir: entry.workdir, launchCmd: entry.launchCmd },
+    });
   });
 
   // Switch the agent's Claude Code permission mode by pressing shift+tab
@@ -443,8 +512,9 @@ await fastify.register((api) => {
   // output. 409 if a full cycle returns to the starting mode without ever
   // showing the target (e.g. acceptEdits is unreachable when the agent was
   // launched with --dangerously-skip-permissions).
-  api.post<{ Params: { agent: string }; Body: { mode?: string } }>('/agents/:agent/mode', async (req, reply) => {
-    const { agent: name } = req.params;
+  api.post<{ Params: { id: string }; Body: { mode?: string } }>('/agents/:id/mode', async (req, reply) => {
+    const agentId = parseInt(req.params.id, 10);
+    if (isNaN(agentId)) return reply.status(400).send({ error: 'invalid agent id' });
     const target = req.body.mode;
     if (typeof target !== 'string' || !(VALID_MODES as readonly string[]).includes(target)) {
       return reply.status(400).send({ error: `mode must be one of ${VALID_MODES.join('|')}` });
@@ -453,20 +523,21 @@ await fastify.register((api) => {
     const conf = readConductorConf();
     const { sessionName } = conf;
 
-    const entry = listAgents(db).find((a) => a.name === name);
+    const entry = getAgentById(db, agentId);
     if (!entry) {
-      return reply.status(404).send({ error: `agent '${name}' not found` });
+      return reply.status(404).send({ error: `agent ${String(agentId)} not found` });
     }
-    if (!isTmuxWindowPresent(sessionName, name)) {
+    const wn = agentWindowName(entry);
+    if (!isTmuxWindowPresent(sessionName, wn)) {
       return reply.status(409).send({ error: 'agent window not present' });
     }
-    if (modeSwitchInFlight.has(name)) {
+    if (modeSwitchInFlight.has(wn)) {
       return reply.status(409).send({ error: 'mode switch already in progress for this agent' });
     }
 
-    modeSwitchInFlight.add(name);
+    modeSwitchInFlight.add(wn);
     try {
-      const origin = detectAgentMode(conf, name);
+      const origin = detectAgentMode(conf, wn);
       if (origin === 'unknown') {
         return await reply.status(409).send({
           error: 'cannot detect current permission mode (agent may not be Claude Code, or is showing a dialog)',
@@ -481,14 +552,14 @@ await fastify.register((api) => {
       const seen: AgentMode[] = [origin];
 
       for (let press = 1; press <= MAX_PRESSES; press++) {
-        spawnSync('tmux', ['send-keys', '-t', `${sessionName}:${name}`, 'BTab'], { encoding: 'utf8' });
+        spawnSync('tmux', ['send-keys', '-t', `${sessionName}:${wn}`, 'BTab'], { encoding: 'utf8' });
         await sleep(SETTLE_MS);
 
         // The footer can be mid-redraw right after a press — re-detect briefly.
-        let current = detectAgentMode(conf, name);
+        let current = detectAgentMode(conf, wn);
         for (let retry = 0; retry < 2 && current === 'unknown'; retry++) {
           await sleep(SETTLE_MS);
-          current = detectAgentMode(conf, name);
+          current = detectAgentMode(conf, wn);
         }
 
         seen.push(current);
@@ -505,7 +576,7 @@ await fastify.register((api) => {
       }
       return await reply.status(500).send({ error: `mode did not stabilize after ${String(MAX_PRESSES)} presses`, modesSeen: seen });
     } finally {
-      modeSwitchInFlight.delete(name);
+      modeSwitchInFlight.delete(wn);
     }
   });
 
@@ -513,24 +584,27 @@ await fastify.register((api) => {
   // POST /agents/:agent/window. conductor.conf and queued tasks are untouched;
   // the state file is removed so a later window recreate starts clean. The
   // agent shows as 'no-window' until recreated.
-  api.delete<{ Params: { agent: string } }>('/agents/:agent/window', (req, reply) => {
-    const { agent: name } = req.params;
+  api.delete<{ Params: { id: string } }>('/agents/:id/window', (req, reply) => {
+    const agentId = parseInt(req.params.id, 10);
+    if (isNaN(agentId)) return reply.status(400).send({ error: 'invalid agent id' });
     const conf = readConductorConf();
     const { sessionName, stateDir } = conf;
 
-    const entry = listAgents(db).find((a) => a.name === name);
+    const entry = getAgentById(db, agentId);
     if (!entry) {
-      return reply.status(404).send({ error: `agent '${name}' not found` });
+      return reply.status(404).send({ error: `agent ${String(agentId)} not found` });
     }
-    if (!isTmuxWindowPresent(sessionName, name)) {
+    const name = entry.name;
+    const winName = agentWindowName(entry);
+    if (!isTmuxWindowPresent(sessionName, winName)) {
       return reply.status(409).send({ error: 'agent window not present' });
     }
 
-    const r = spawnSync('tmux', ['kill-window', '-t', `${sessionName}:${name}`], { encoding: 'utf8' });
+    const r = spawnSync('tmux', ['kill-window', '-t', `${sessionName}:${winName}`], { encoding: 'utf8' });
     if (r.status !== 0) {
       return reply.status(500).send({ error: 'tmux kill-window failed', stderr: r.stderr });
     }
-    try { unlinkSync(path.join(stateDir, `${name}.state`)); } catch { /* no state file — fine */ }
+    try { unlinkSync(path.join(stateDir, `${winName}.state`)); } catch { /* no state file — fine */ }
 
     return reply.send({ ok: true, closed: name });
   });
@@ -541,18 +615,19 @@ await fastify.register((api) => {
   // unstick a stalled agent. keys = whitelisted tmux key names; text = literal
   // single-line string; enter appends a separate Enter press (dispatch.sh
   // convention). Same trust model as /mode and /queue: localhost bind, no auth.
-  api.post<{ Params: { agent: string }; Body: { keys?: unknown; text?: unknown; enter?: unknown } }>('/agents/:agent/keys', async (req, reply) => {
-    const { agent: name } = req.params;
+  api.post<{ Params: { id: string }; Body: { keys?: unknown; text?: unknown; enter?: unknown } }>('/agents/:id/keys', async (req, reply) => {
+    const agentId = parseInt(req.params.id, 10);
+    if (isNaN(agentId)) return reply.status(400).send({ error: 'invalid agent id' });
     const { keys, text, enter } = req.body;
 
     const conf = readConductorConf();
     const { sessionName } = conf;
 
-    const entry = listAgents(db).find((a) => a.name === name);
+    const entry = getAgentById(db, agentId);
     if (!entry) {
-      return reply.status(404).send({ error: `agent '${name}' not found` });
+      return reply.status(404).send({ error: `agent ${String(agentId)} not found` });
     }
-    if (!isTmuxWindowPresent(sessionName, name)) {
+    if (!isTmuxWindowPresent(sessionName, agentWindowName(entry))) {
       return reply.status(409).send({ error: 'agent window not present' });
     }
 
@@ -578,31 +653,58 @@ await fastify.register((api) => {
     }
     let textStr: string | undefined;
     if (hasText) {
-      if (typeof text !== 'string' || text.length < 1 || text.length > MAX_TEXT) {
+      if (typeof text !== 'string') {
+        return reply.status(400).send({ error: 'text must be a string' });
+      }
+      // Normalize CRLF/CR to LF so pasted, multi-line content sends as plain newlines.
+      const normalized = text.replace(/\r\n?/g, '\n');
+      if (normalized.length < 1 || normalized.length > MAX_TEXT) {
         return reply.status(400).send({ error: `text must be a string of 1–${String(MAX_TEXT)} characters` });
       }
-      if (/[\x00-\x1f\x7f]/.test(text)) {
-        return reply.status(400).send({ error: 'text must be a single line without control characters; use enter:true to submit' });
+      // Newlines and tabs are allowed — multi-line prompts and indented snippets
+      // are first-class. Other control characters (NUL, ESC, …) are rejected
+      // because they would inject raw terminal escape sequences, not literal text.
+      if (/[\x00-\x08\x0b-\x1f\x7f]/.test(normalized)) {
+        return reply.status(400).send({ error: 'text may not contain control characters other than newline and tab' });
       }
-      textStr = text;
+      textStr = normalized;
     }
     if (enter !== undefined && typeof enter !== 'boolean') {
       return reply.status(400).send({ error: 'enter must be a boolean' });
     }
 
-    const target = `${sessionName}:${name}`;
+    const target = `${sessionName}:${agentWindowName(entry)}`;
+    const multiline = textStr !== undefined && textStr.includes('\n');
     const sends: string[][] = [];
     if (keyList) sends.push(['send-keys', '-t', target, ...keyList]);
-    // `--` ends option parsing so text beginning with '-' is never read as a
-    // flag; the literal send and the Enter press are separate invocations,
-    // exactly like scripts/dispatch.sh.
-    if (textStr !== undefined) sends.push(['send-keys', '-t', target, '-l', '--', textStr]);
+    if (textStr !== undefined) {
+      if (multiline) {
+        // Multi-line text is delivered via tmux bracketed paste so the receiving
+        // TUI (e.g. Claude Code) inserts the newlines into its prompt buffer
+        // instead of treating each one as a submit. A per-agent named buffer
+        // avoids clobbering unrelated paste activity; -p = bracketed paste,
+        // -d = delete the buffer afterwards.
+        const buf = `conductor-keys-${String(agentId)}`;
+        sends.push(['set-buffer', '-b', buf, '--', textStr]);
+        sends.push(['paste-buffer', '-t', target, '-b', buf, '-p', '-d']);
+      } else {
+        // `--` ends option parsing so text beginning with '-' is never read as a
+        // flag; the literal send and the Enter press are separate invocations,
+        // exactly like scripts/dispatch.sh.
+        sends.push(['send-keys', '-t', target, '-l', '--', textStr]);
+      }
+    }
     if (enter === true) sends.push(['send-keys', '-t', target, 'Enter']);
 
     for (const args of sends) {
+      // Let the TUI absorb a bracketed paste before the submit Enter, mirroring
+      // scripts/dispatch.sh's pre-Enter settle delay.
+      if (multiline && args[args.length - 1] === 'Enter') {
+        await new Promise<void>((resolve) => setTimeout(resolve, 300));
+      }
       const r = spawnSync('tmux', args, { encoding: 'utf8' });
       if (r.status !== 0) {
-        return reply.status(409).send({ error: 'tmux send-keys failed', stderr: r.stderr });
+        return reply.status(409).send({ error: 'tmux send failed', stderr: r.stderr });
       }
     }
 
@@ -619,21 +721,26 @@ await fastify.register((api) => {
   // Save a dropped/pasted dashboard image to disk and "type" its path into the
   // agent's pane — mirrors dropping a file onto a real terminal, which inserts
   // the file's path as text. No Enter is sent; the user finishes the prompt.
-  api.post<{ Params: { agent: string }; Querystring: { filename?: string; type?: string } }>(
-    '/agents/:agent/upload',
+  api.post<{ Params: { id: string }; Querystring: { filename?: string; type?: string; paneInsert?: string } }>(
+    '/agents/:id/upload',
     { bodyLimit: UPLOAD_MAX_BYTES },
     async (req, reply) => {
-      const { agent: name } = req.params;
-      const { filename, type } = req.query;
+      const agentId = parseInt(req.params.id, 10);
+      if (isNaN(agentId)) return reply.status(400).send({ error: 'invalid agent id' });
+      const { filename, type, paneInsert } = req.query;
+      // Default true: a dropped image gets typed into the pane (terminal drop).
+      // paneInsert=false just saves the file and returns its path — used by the
+      // task textarea, which inserts the path itself rather than into the pane.
+      const insertIntoPane = paneInsert !== 'false';
 
       const conf = readConductorConf();
       const { sessionName } = conf;
 
-      const entry = listAgents(db).find((a) => a.name === name);
+      const entry = getAgentById(db, agentId);
       if (!entry) {
-        return reply.status(404).send({ error: `agent '${name}' not found` });
+        return reply.status(404).send({ error: `agent ${String(agentId)} not found` });
       }
-      if (!isTmuxWindowPresent(sessionName, name)) {
+      if (insertIntoPane && !isTmuxWindowPresent(sessionName, agentWindowName(entry))) {
         return reply.status(409).send({ error: 'agent window not present' });
       }
 
@@ -658,9 +765,11 @@ await fastify.register((api) => {
       writeFileSync(filePath, body);
       pruneOldUploads();
 
-      const r = spawnSync('tmux', ['send-keys', '-t', `${sessionName}:${name}`, '-l', '--', `${filePath} `], { encoding: 'utf8' });
-      if (r.status !== 0) {
-        return reply.status(409).send({ error: 'tmux send-keys failed', stderr: r.stderr });
+      if (insertIntoPane) {
+        const r = spawnSync('tmux', ['send-keys', '-t', `${sessionName}:${agentWindowName(entry)}`, '-l', '--', `${filePath} `], { encoding: 'utf8' });
+        if (r.status !== 0) {
+          return reply.status(409).send({ error: 'tmux send-keys failed', stderr: r.stderr });
+        }
       }
 
       return reply.send({ ok: true, path: filePath });
@@ -670,75 +779,141 @@ await fastify.register((api) => {
   // Remove an agent entirely: kill its tmux window (if alive), delete its entry
   // from conductor.conf, drop its scoped queue lines, and remove its state file.
   // Global (unscoped) queue lines are left untouched.
-  api.delete<{ Params: { agent: string } }>('/agents/:agent', async (req, reply) => {
-    const { agent: name } = req.params;
+  api.delete<{ Params: { id: string } }>('/agents/:id', async (req, reply) => {
+    const agentId = parseInt(req.params.id, 10);
+    if (isNaN(agentId)) return reply.status(400).send({ error: 'invalid agent id' });
     const conf = readConductorConf();
     const { sessionName, stateDir } = conf;
 
-    const agents = listAgents(db);
-    const entry = agents.find((a) => a.name === name);
+    const entry = getAgentById(db, agentId);
     if (!entry) {
-      return reply.status(404).send({ error: `agent '${name}' not found` });
+      return reply.status(404).send({ error: `agent ${String(agentId)} not found` });
     }
+    const name = entry.name;
 
-    if (isTmuxWindowPresent(sessionName, name)) {
-      execSync(`tmux kill-window -t ${sessionName}:${name}`);
+    const winName = agentWindowName(entry);
+    if (isTmuxWindowPresent(sessionName, winName)) {
+      execSync(`tmux kill-window -t ${sessionName}:${winName}`);
     }
 
     deleteAgent(db, entry.id);
 
-    try { unlinkSync(path.join(stateDir, `${name}.state`)); } catch { /* no state file — fine */ }
+    try { unlinkSync(path.join(stateDir, `${winName}.state`)); } catch { /* no state file — fine */ }
+
+    broadcastSSE('agent-removed', { id: entry.id, name });
 
     return reply.send({ ok: true, removed: name });
   });
 
+  // Rename an agent: updates the DB, renames the tmux window and state file.
+  api.patch<{ Params: { id: string }; Body: { name?: string } }>('/agents/:id', (req, reply) => {
+    const agentId = parseInt(req.params.id, 10);
+    if (isNaN(agentId)) return reply.status(400).send({ error: 'invalid agent id' });
+    const { name: newName } = req.body;
+
+    if (typeof newName !== 'string' || !/^[a-zA-Z0-9_-]+$/.test(newName)) {
+      return reply.status(400).send({ error: 'name must match ^[a-zA-Z0-9_-]+$' });
+    }
+
+    const conf = readConductorConf();
+    const { sessionName, stateDir } = conf;
+
+    const agents = listAgents(db);
+    const entry = agents.find((a) => a.id === agentId);
+    if (!entry) {
+      return reply.status(404).send({ error: `agent ${String(agentId)} not found` });
+    }
+    const oldName = entry.name;
+
+    if (newName === oldName) {
+      return reply.send({ ok: true, agent: entry });
+    }
+
+    // Per-project name uniqueness (DB constraint)
+    const nameConflict = agents.find((a) => a.name === newName && a.projectId === entry.projectId && a.id !== entry.id);
+    if (nameConflict) {
+      return reply.status(409).send({ error: `an agent named '${newName}' already exists in this project` });
+    }
+
+    // Global tmux window-name uniqueness: two agents from different projects with
+    // the same short name produce different window names (projectName-agentName),
+    // but two agents where the compound names happen to collide must be rejected.
+    const oldWindowName = agentWindowName(entry);
+    const newWindowName = entry.projectName ? `${entry.projectName}-${newName}` : newName;
+    const windowConflict = agents.find((a) => agentWindowName(a) === newWindowName && a.id !== entry.id);
+    if (windowConflict) {
+      return reply.status(409).send({ error: `window name '${newWindowName}' is already in use by another agent` });
+    }
+
+    const updated = updateAgentName(db, entry.id, newName);
+
+    if (isTmuxWindowPresent(sessionName, oldWindowName)) {
+      spawnSync('tmux', ['rename-window', '-t', `${sessionName}:${oldWindowName}`, newWindowName], { encoding: 'utf8' });
+    }
+
+    try { renameSync(path.join(stateDir, `${oldWindowName}.state`), path.join(stateDir, `${newWindowName}.state`)); } catch { /* no state file — fine */ }
+
+    // focusedAgents / prevTailMap* are keyed by the stable agent id, so a rename
+    // needs no juggling — the streams keep flowing under the same id.
+
+    broadcastSSE('agent-renamed', { id: updated.id, oldName, newName });
+
+    return reply.send({ ok: true, agent: updated });
+  });
+
   // Read-only tail of an agent's tmux pane output (including scrollback), so
   // the dashboard can show what the agent is printing.
-  api.get<{ Params: { agent: string }; Querystring: { lines?: string } }>('/agents/:agent/tail', (req, reply) => {
-    const { agent: name } = req.params;
+  api.get<{ Params: { id: string }; Querystring: { lines?: string } }>('/agents/:id/tail', (req, reply) => {
+    const agentId = parseInt(req.params.id, 10);
+    if (isNaN(agentId)) return reply.status(400).send({ error: 'invalid agent id' });
     const conf = readConductorConf();
-    const entry = listAgents(db).find((a) => a.name === name);
+    const entry = getAgentById(db, agentId);
     if (!entry) {
-      return reply.status(404).send({ error: `agent '${name}' not found` });
+      return reply.status(404).send({ error: `agent ${String(agentId)} not found` });
     }
+    const name = entry.name;
 
     const parsed = parseInt(req.query.lines ?? '', 10);
-    const lines = Number.isNaN(parsed) ? 20 : Math.min(500, Math.max(1, parsed));
+    const lines = Number.isNaN(parsed) ? 100 : Math.min(1000, Math.max(1, parsed));
 
-    if (!isTmuxWindowPresent(conf.sessionName, name)) {
-      return reply.send({ agent: name, lines, windowPresent: false, text: '' });
+    const winName = agentWindowName(entry);
+    if (!isTmuxWindowPresent(conf.sessionName, winName)) {
+      return reply.send({ agent: name, agentId, lines, windowPresent: false, text: '' });
     }
 
-    const text = capturePaneTailRaw(conf.sessionName, name, lines);
-    return reply.send({ agent: name, lines, windowPresent: true, text });
+    const text = capturePaneTailRaw(conf.sessionName, winName, lines);
+    return reply.send({ agent: name, agentId, lines, windowPresent: true, text });
   });
 
   // Focus registration: modal/detail views POST on open, DELETE on close.
   // The fast tail-poll loop (200 ms) only runs for focused agents; the slow
   // loop (2 s) skips them, so overall capture-pane load stays constant.
-  api.post<{ Params: { agent: string } }>('/agents/:agent/focus', (req, reply) => {
-    const { agent: name } = req.params;
-    focusedAgents.add(name);
-    prevTailMapFocus.delete(name); // force immediate push on first fast tick
+  api.post<{ Params: { id: string } }>('/agents/:id/focus', (req, reply) => {
+    const agentId = parseInt(req.params.id, 10);
+    if (isNaN(agentId)) return reply.status(400).send({ error: 'invalid agent id' });
+    focusedAgents.add(agentId);
+    prevTailMapFocus.delete(agentId); // force immediate push on first fast tick
     return reply.status(204).send();
   });
 
-  api.delete<{ Params: { agent: string } }>('/agents/:agent/focus', (req, reply) => {
-    const { agent: name } = req.params;
-    focusedAgents.delete(name);
-    prevTailMapFocus.delete(name);
+  api.delete<{ Params: { id: string } }>('/agents/:id/focus', (req, reply) => {
+    const agentId = parseInt(req.params.id, 10);
+    if (isNaN(agentId)) return reply.status(400).send({ error: 'invalid agent id' });
+    focusedAgents.delete(agentId);
+    prevTailMapFocus.delete(agentId);
     return reply.status(204).send();
   });
 
-  api.get<{ Params: { agent: string } }>('/agents/:agent/skills', async (req, reply) => {
-    const { agent: name } = req.params;
-    const entry = listAgents(db).find((a) => a.name === name);
+  api.get<{ Params: { id: string } }>('/agents/:id/skills', async (req, reply) => {
+    const agentId = parseInt(req.params.id, 10);
+    if (isNaN(agentId)) return reply.status(400).send({ error: 'invalid agent id' });
+    const entry = getAgentById(db, agentId);
     if (!entry) {
-      return reply.status(404).send({ error: `agent '${name}' not found` });
+      return reply.status(404).send({ error: `agent ${String(agentId)} not found` });
     }
     const project = getProjectSkills(entry.workdir);
     const user = getUserSkills();
-    return reply.send({ agent: name, workdir: entry.workdir, project, user });
+    return reply.send({ agent: entry.name, workdir: entry.workdir, project, user });
   });
 
   // List all agents from the database.
@@ -991,7 +1166,23 @@ await fastify.register((api) => {
     });
 
     const conf = readConductorConf();
+    const winName = agentWindowName(newAgent);
     spawnAgentWindow(newAgent, conf);
+
+    // Immediately notify SSE clients — don't wait for the next poll tick.
+    {
+      const windowPresent = isTmuxWindowPresent(conf.sessionName, winName);
+      const tail15 = windowPresent ? capturePaneTail(conf.sessionName, winName, 15) : '';
+      const state = detectAgentStatus(conf, winName, project.defaultLaunchCmd, tail15 || undefined);
+      const isBusy = state === 'busy' || state === 'awaiting' || state === 'stalled';
+      const ctx = getAgentContext(winName, project.workdir, conf.stateDir, conf.contextWindow, isBusy, tail15 || undefined);
+      broadcastSSE('agent-update', {
+        id: newAgent.id, name: agentName, projectId: newAgent.projectId, projectName: newAgent.projectName,
+        state, mode: windowPresent ? detectAgentMode(conf, winName, tail15) : 'unknown',
+        windowPresent, queuedTasks: 0, launchCmd: project.defaultLaunchCmd, workdir: project.workdir,
+        linkedBg: null, activeTask: null, ...ctx,
+      });
+    }
 
     return reply.status(201).send(newAgent);
   });
@@ -1093,6 +1284,24 @@ await fastify.register((api) => {
     reply.raw.write(': connected\n\n');
     sseClients.add(reply);
 
+    // Send the current full state to this client so reconnects and late-connecting
+    // clients are immediately consistent without waiting for the next diff tick.
+    if (prevSnapshot !== null) {
+      sendSSE(reply, 'session-update', { sessionAlive: prevSnapshot.sessionAlive, sessionExists: prevSnapshot.sessionExists });
+      for (const agent of prevSnapshot.agents) {
+        sendSSE(reply, 'agent-update', {
+          name: agent.name, state: agent.state, mode: agent.mode,
+          queuedTasks: agent.queuedTasks, windowPresent: agent.windowPresent,
+          launchCmd: agent.launchCmd, workdir: agent.workdir, activeTask: agent.activeTask,
+          model: agent.model, modelId: agent.modelId,
+          contextTokens: agent.contextTokens, contextPct: agent.contextPct, contextLimit: agent.contextLimit,
+        });
+      }
+      for (const bg of prevSnapshot.bgProcesses) {
+        sendSSE(reply, 'bg-update', bg);
+      }
+    }
+
     const heartbeat = setInterval(() => {
       try { reply.raw.write(': ping\n\n'); } catch { /* ignore */ }
     }, 15000);
@@ -1112,14 +1321,17 @@ await fastify.register((api) => {
 interface Snapshot {
   sessionAlive: boolean;
   sessionExists: boolean;
-  agents: Array<{ name: string; state: string; mode: AgentMode; windowPresent: boolean; queuedTasks: number; launchCmd: string; workdir: string; activeTask: string | null } & AgentContext>;
+  agents: Array<{ id: number; name: string; projectId: number | null; projectName: string | null; state: string; mode: AgentMode; windowPresent: boolean; queuedTasks: number; launchCmd: string; workdir: string; activeTask: string | null; label: string | null } & AgentContext>;
   bgProcesses: BgStatus[];
 }
 
 let prevSnapshot: Snapshot | null = null;
-const prevTailMap = new Map<string, string>();
-const prevTailMapFocus = new Map<string, string>();
-const focusedAgents = new Set<string>();
+// Keyed by the stable agent id (names are only unique per project, so name keys
+// would conflate two same-named agents' tail streams / focus registrations).
+const prevTailMap = new Map<number, string>();
+const prevTailMapFocus = new Map<number, string>();
+const focusedAgents = new Set<number>();
+const agentLabelCache = new Map<number, string | null>();
 
 function buildSnapshot(): Snapshot {
   const conf = readConductorConf();
@@ -1128,21 +1340,34 @@ function buildSnapshot(): Snapshot {
   const sessionExists = tmuxSessionExists(sessionName);
   const sessionAlive = sessionExists && isTmuxWindowPresent(sessionName, 'monitor');
   const agentStatuses = agents.map((agent) => {
-    const windowPresent = isTmuxWindowPresent(sessionName, agent.name);
+    const wn = agentWindowName(agent);
+    const windowPresent = isTmuxWindowPresent(sessionName, wn);
     // One capture-pane per agent per tick, shared by status and mode detection.
-    const tail15 = windowPresent ? capturePaneTail(sessionName, agent.name, 15) : '';
-    const state = detectAgentStatus(conf, agent.name, tail15 || undefined);
+    const tail15 = windowPresent ? capturePaneTail(sessionName, wn, 15) : '';
+    const state = detectAgentStatus(conf, wn, agent.launchCmd, tail15 || undefined);
     const isBusy = state === 'busy' || state === 'awaiting' || state === 'stalled';
-    const ctx = getAgentContext(agent.name, agent.workdir, conf.stateDir, conf.contextWindow, isBusy);
+    const ctx = getAgentContext(wn, agent.workdir, conf.stateDir, conf.contextWindow, isBusy, tail15 || undefined);
+    // Clear label when window is gone; re-seed whenever cache is null (covers server restart + no-window reopen).
+    if (state === 'no-window') {
+      agentLabelCache.set(agent.id, null);
+    } else if (agentLabelCache.get(agent.id) == null && windowPresent) {
+      const rawSeed = capturePaneTailRaw(sessionName, wn, TAIL_LINES);
+      agentLabelCache.set(agent.id, extractPaneLabel(rawSeed));
+    }
+    const label = agentLabelCache.get(agent.id) ?? null;
     return {
+      id: agent.id,
       name: agent.name,
+      projectId: agent.projectId,
+      projectName: agent.projectName,
       state,
-      mode: windowPresent ? detectAgentMode(conf, agent.name, tail15) : 'unknown',
+      mode: windowPresent ? detectAgentMode(conf, wn, tail15) : 'unknown',
       windowPresent,
-      queuedTasks: listTasksForAgent(db, agent.name).length,
+      queuedTasks: listTasksForAgentId(db, agent.id, agent.projectId).length,
       launchCmd: agent.launchCmd,
       workdir: agent.workdir,
-      activeTask: getActiveTask(conf, agent.name, state),
+      activeTask: getActiveTask(conf, wn, state),
+      label,
       ...ctx,
     };
   });
@@ -1180,7 +1405,7 @@ function pollAndDiff() {
   }
 
   for (const agent of current.agents) {
-    const prev = prevSnapshot.agents.find((a) => a.name === agent.name);
+    const prev = prevSnapshot.agents.find((a) => a.id === agent.id);
     if (
       !prev ||
       prev.state !== agent.state ||
@@ -1189,10 +1414,14 @@ function pollAndDiff() {
       prev.windowPresent !== agent.windowPresent ||
       prev.activeTask !== agent.activeTask ||
       prev.modelId !== agent.modelId ||
-      prev.contextPct !== agent.contextPct
+      prev.contextPct !== agent.contextPct ||
+      prev.label !== agent.label
     ) {
       broadcastSSE('agent-update', {
+        id: agent.id,
         name: agent.name,
+        projectId: agent.projectId,
+        projectName: agent.projectName,
         state: agent.state,
         mode: agent.mode,
         queuedTasks: agent.queuedTasks,
@@ -1200,6 +1429,7 @@ function pollAndDiff() {
         launchCmd: agent.launchCmd,
         workdir: agent.workdir,
         activeTask: agent.activeTask,
+        label: agent.label,
         model: agent.model,
         modelId: agent.modelId,
         contextTokens: agent.contextTokens,
@@ -1210,8 +1440,8 @@ function pollAndDiff() {
   }
 
   for (const prev of prevSnapshot.agents) {
-    if (!current.agents.some((a) => a.name === prev.name)) {
-      broadcastSSE('agent-removed', { name: prev.name });
+    if (!current.agents.some((a) => a.id === prev.id)) {
+      broadcastSSE('agent-removed', { id: prev.id, name: prev.name });
     }
   }
 
@@ -1235,13 +1465,16 @@ function tailPollLoop() {
   try {
     const conf = readConductorConf();
     const agents = listAgents(db).filter(
-      (a) => !focusedAgents.has(a.name) && isTmuxWindowPresent(conf.sessionName, a.name),
+      (a) => !focusedAgents.has(a.id) && isTmuxWindowPresent(conf.sessionName, agentWindowName(a)),
     );
     for (const a of agents) {
-      const text = capturePaneTailRaw(conf.sessionName, a.name, TAIL_LINES);
-      if (prevTailMap.get(a.name) !== text) {
-        broadcastSSE('terminal-output', { agent: a.name, text, lines: TAIL_LINES });
-        prevTailMap.set(a.name, text);
+      const wn = agentWindowName(a);
+      const text = capturePaneTailRaw(conf.sessionName, wn, TAIL_LINES);
+      if (prevTailMap.get(a.id) !== text) {
+        broadcastSSE('terminal-output', { agentId: a.id, agent: a.name, text, lines: TAIL_LINES });
+        prevTailMap.set(a.id, text);
+        const found = extractPaneLabel(text);
+        if (found !== null) agentLabelCache.set(a.id, found);
       }
     }
   } catch { /* tail poll is best-effort */ }
@@ -1252,13 +1485,16 @@ function tailPollLoopFocus() {
   try {
     const conf = readConductorConf();
     const agents = listAgents(db).filter(
-      (a) => focusedAgents.has(a.name) && isTmuxWindowPresent(conf.sessionName, a.name),
+      (a) => focusedAgents.has(a.id) && isTmuxWindowPresent(conf.sessionName, agentWindowName(a)),
     );
     for (const a of agents) {
-      const text = capturePaneTailRaw(conf.sessionName, a.name, TAIL_LINES);
-      if (prevTailMapFocus.get(a.name) !== text) {
-        broadcastSSE('terminal-output-focus', { agent: a.name, text, lines: TAIL_LINES });
-        prevTailMapFocus.set(a.name, text);
+      const wn = agentWindowName(a);
+      const text = capturePaneTailRaw(conf.sessionName, wn, TAIL_LINES);
+      if (prevTailMapFocus.get(a.id) !== text) {
+        broadcastSSE('terminal-output-focus', { agentId: a.id, agent: a.name, text, lines: TAIL_LINES });
+        prevTailMapFocus.set(a.id, text);
+        const found = extractPaneLabel(text);
+        if (found !== null) agentLabelCache.set(a.id, found);
       }
     }
   } catch { /* tail poll is best-effort */ }
@@ -1274,18 +1510,83 @@ if (existsSync(uiDist)) {
 // ── Start ─────────────────────────────────────────────────────────────────────
 
 const port = parseInt(process.env['PORT'] || '8788', 10);
+const host = process.env['HOST'] ?? '127.0.0.1';
 
-try {
-  const host = process.env['HOST'] ?? '127.0.0.1';
-  await fastify.listen({ port, host });
-  console.log(`Dashboard server listening on http://${host}:${String(port)}`);
+// Background interval handles — hoisted so gracefulShutdown can clear them.
+const intervals: NodeJS.Timeout[] = [];
 
-  const pollInterval = setInterval(pollAndDiff, 2000);
+/**
+ * Bind the listen port, retrying on EADDRINUSE. A stale host-server from a
+ * prior `make dev` (or one mid-reload) can briefly hold the port; rather than
+ * crashing into a wedged `tsx watch` (which only relaunches on file change),
+ * we back off and retry so we bind automatically once it releases the port.
+ * Total budget ~30s, then exit cleanly. Non-EADDRINUSE errors fail fast.
+ */
+async function listenWithRetry(): Promise<void> {
+  const delays = [2000, 4000, 8000, 8000, 8000]; // ~30s total
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await fastify.listen({ port, host });
+      console.log(`Dashboard server listening on http://${host}:${String(port)}`);
+      return;
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code === 'EADDRINUSE' && attempt < delays.length) {
+        const delay = delays[attempt] ?? 8000;
+        console.warn(
+          `Port ${String(port)} in use — likely a stale host-server still shutting down. ` +
+            `Retrying in ${String(delay / 1000)}s (attempt ${String(attempt + 1)}/${String(delays.length)})…`,
+        );
+        await new Promise((r) => setTimeout(r, delay));
+        continue;
+      }
+      if (code === 'EADDRINUSE') {
+        console.error(
+          `Port ${String(port)} still in use after retries. Another host-server is holding it — ` +
+            `stop it (e.g. \`kill\` the stale process) and restart.`,
+        );
+      } else {
+        console.error('Failed to start dashboard server:', err);
+      }
+      process.exit(1);
+    }
+  }
+}
 
-  setInterval(tailPollLoop, TAIL_POLL_MS);
-  setInterval(tailPollLoopFocus, TAIL_POLL_FOCUS_MS);
+let shuttingDown = false;
+/**
+ * Release the port and other resources on exit so we never orphan a listener
+ * that blocks the next start. tsx watch sends SIGTERM on reload, so this also
+ * makes hot-reload clean. Idempotent.
+ */
+async function gracefulShutdown(signal: string): Promise<void> {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`Received ${signal} — shutting down host-server…`);
+  for (const i of intervals) clearInterval(i);
+  try {
+    await fastify.close(); // drains SSE clients and frees the port
+  } catch (err) {
+    console.error('Error closing Fastify:', err);
+  }
+  try {
+    db.close();
+  } catch {
+    /* db may already be closed */
+  }
+  process.exit(0);
+}
 
-  const schedulerInterval = setInterval(() => {
+process.on('SIGINT', () => void gracefulShutdown('SIGINT'));
+process.on('SIGTERM', () => void gracefulShutdown('SIGTERM'));
+
+await listenWithRetry();
+
+intervals.push(setInterval(pollAndDiff, 2000));
+intervals.push(setInterval(tailPollLoop, TAIL_POLL_MS));
+intervals.push(setInterval(tailPollLoopFocus, TAIL_POLL_FOCUS_MS));
+intervals.push(
+  setInterval(() => {
     const now = Math.floor(Date.now() / 1000);
     for (const s of dueSchedules(db, now)) {
       const task = fireSchedule(db, s, now);
@@ -1294,10 +1595,5 @@ try {
         broadcastSSE('task-added', task);
       }
     }
-  }, 5000);
-
-  process.on('SIGTERM', () => { clearInterval(pollInterval); clearInterval(schedulerInterval); });
-} catch (err) {
-  console.error('Failed to start dashboard server:', err);
-  process.exit(1);
-}
+  }, 5000),
+);

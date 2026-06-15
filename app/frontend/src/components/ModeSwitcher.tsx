@@ -9,8 +9,8 @@ const MODES: { key: Exclude<AgentMode, 'unknown'>; label: string }[] = [
   { key: 'bypass',      label: 'Bypass' },
 ]
 
-export default function ModeSwitcher({ agentName, mode, windowPresent }: {
-  agentName: string
+export default function ModeSwitcher({ agentId, mode, windowPresent }: {
+  agentId: number
   mode: AgentMode
   windowPresent: boolean
 }) {
@@ -22,7 +22,7 @@ export default function ModeSwitcher({ agentName, mode, windowPresent }: {
     setPending(target)
     setError(null)
     try {
-      const res = await fetch(`${API_BASE}/agents/${encodeURIComponent(agentName)}/mode`, {
+      const res = await fetch(`${API_BASE}/agents/${agentId.toString()}/mode`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ mode: target }),

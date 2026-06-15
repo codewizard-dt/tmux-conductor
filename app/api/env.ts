@@ -39,6 +39,12 @@ if (!BETTER_AUTH_SECRET) {
   );
 }
 
+// --- BOOTSTRAP_ADMIN_EMAIL (required: the single account that bypasses the invite-code gate) ---
+const BOOTSTRAP_ADMIN_EMAIL = process.env['BOOTSTRAP_ADMIN_EMAIL'];
+if (!BOOTSTRAP_ADMIN_EMAIL) {
+  errors.push('BOOTSTRAP_ADMIN_EMAIL is required but not set');
+}
+
 // --- Fail fast: report ALL errors together ---
 if (errors.length > 0) {
   console.error('[app/api] Environment validation failed:\n' + errors.map((e) => `  - ${e}`).join('\n'));
@@ -59,20 +65,18 @@ if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
 // --- HOST_SERVER_URL (URL of the host-side conductor backend reachable from the container) ---
 const HOST_SERVER_URL = process.env['HOST_SERVER_URL'] ?? 'http://host.docker.internal:8788';
 
-// --- ALLOWLIST_EMAILS ---
-const ALLOWLIST_EMAILS: string[] = (process.env['ALLOWLIST_EMAILS'] ?? '')
-  .split(',')
-  .map((s) => s.trim())
-  .filter(Boolean);
+// --- CORS_ORIGIN (frontend origin allowed by @fastify/cors AND better-auth trustedOrigins) ---
+const CORS_ORIGIN = process.env['CORS_ORIGIN'] ?? 'http://localhost:4321';
 
 // Export a single typed frozen env object.
 export const env = Object.freeze({
   DATABASE_URL: DATABASE_URL as string,
   BETTER_AUTH_SECRET: BETTER_AUTH_SECRET as string,
   HOST_SERVER_URL,
+  CORS_ORIGIN,
   GOOGLE_CLIENT_ID: GOOGLE_CLIENT_ID as string | undefined,
   GOOGLE_CLIENT_SECRET: GOOGLE_CLIENT_SECRET as string | undefined,
   PUBLIC_BASE_URL: PUBLIC_BASE_URL as string | undefined,
-  ALLOWLIST_EMAILS,
+  BOOTSTRAP_ADMIN_EMAIL: BOOTSTRAP_ADMIN_EMAIL as string,
   API_PORT,
 });

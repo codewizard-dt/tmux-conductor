@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
-import { listProjects, spawnAgentInProject, type Project } from '../lib/api';
+import { listProjects, spawnAgentInProject, deleteProject, type Project } from '../lib/api';
+
+import { Link } from 'react-router-dom';
 
 export default function ProjectList() {
   const [projects, setProjects] = useState<Project[]>([]);
@@ -8,6 +10,8 @@ export default function ProjectList() {
   const [rowBusy, setRowBusy] = useState<number | null>(null);
   const [rowError, setRowError] = useState<number | null>(null);
   const [rowErrorMsg, setRowErrorMsg] = useState<string | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState<number | null>(null);
 
   async function refetch() {
     try {
@@ -43,6 +47,24 @@ export default function ProjectList() {
     }
   }
 
+  async function handleDelete(project: Project) {
+    if (deleteConfirm !== project.id) {
+      setDeleteConfirm(project.id);
+      return;
+    }
+    setDeleteBusy(project.id);
+    setDeleteConfirm(null);
+    try {
+      await deleteProject(project.id);
+      await refetch();
+    } catch (err: unknown) {
+      setRowError(project.id);
+      setRowErrorMsg(err instanceof Error ? err.message : 'Failed to delete project');
+    } finally {
+      setDeleteBusy(null);
+    }
+  }
+
   return (
     <div className="animate-riseIn rounded-card border border-line bg-white px-5 py-4 shadow-card">
       <h2 className="mb-4 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted">
@@ -59,6 +81,8 @@ export default function ProjectList() {
         <ul className="m-0 flex list-none flex-col gap-1.5 p-0">
           {projects.map((project) => {
             const busy = rowBusy === project.id;
+            const deleting = deleteBusy === project.id;
+            const confirming = deleteConfirm === project.id;
             const failed = rowError === project.id;
             return (
               <li
@@ -67,17 +91,31 @@ export default function ProjectList() {
               >
                 <div className="flex items-center gap-3">
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate font-mono text-[12px] font-semibold text-ink">{project.name}</span>
+                    <Link
+                      to={`/projects/${project.id.toString()}`}
+                      className="block truncate font-mono text-[12px] font-semibold text-ink hover:underline"
+                    >
+                      {project.name}
+                    </Link>
                     <span className="block truncate text-[10px] text-muted-2">{project.workdir}</span>
                     <span className="block truncate text-[10px] text-muted-2">{project.defaultLaunchCmd}</span>
                   </span>
                   <button
                     type="button"
                     onClick={() => { void handleSpawn(project); }}
-                    disabled={busy}
+                    disabled={busy || deleting}
                     className="inline-flex h-7 flex-shrink-0 cursor-pointer items-center rounded-[7px] bg-accent-blue px-3 text-[12px] font-medium text-white transition hover:opacity-85 active:scale-[0.985] disabled:pointer-events-none disabled:opacity-40"
                   >
                     {busy ? 'Spawning…' : 'Spawn agent'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { void handleDelete(project); }}
+                    disabled={busy || deleting}
+                    onBlur={() => { if (confirming) setDeleteConfirm(null); }}
+                    className={`inline-flex h-7 flex-shrink-0 cursor-pointer items-center rounded-[7px] px-3 text-[12px] font-medium transition active:scale-[0.985] disabled:pointer-events-none disabled:opacity-40 ${confirming ? 'bg-accent-red text-white hover:opacity-85' : 'border border-line bg-canvas text-muted hover:text-accent-red hover:border-accent-red'}`}
+                  >
+                    {deleting ? 'Deleting…' : confirming ? 'Confirm?' : 'Delete'}
                   </button>
                 </div>
                 {failed && rowErrorMsg && (

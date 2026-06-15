@@ -7,7 +7,7 @@ updated: 2026-06-11
 
 User-acceptance test files, one per task. ID scheme: **UAT-NNN** (3-digit, zero-padded) — the number **mirrors the task it verifies** (`UAT-014` ↔ `TASK-014`). Filename: `UAT-NNN-slug.md`.
 
-Files are **never moved** after creation; state lives in the `status:` frontmatter field. The active set is tracked in [`index.md`](index.md).
+Active files are **never moved** after creation; state lives in the `status:` frontmatter field. Terminal items (`passed`, `skipped`, `trashed`) may be moved to [`archive/`](archive/) by `/wiki-archive`. The active set is tracked in [`index.md`](index.md).
 
 ## Frontmatter schema
 
