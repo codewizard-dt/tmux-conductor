@@ -997,11 +997,16 @@ export default function AgentList() {
       })
       .then((data) => {
         if (!hasReceivedSSEState) {
-          setAgents(data.agents)
-          for (const agent of data.agents) {
+          // The /status payload is forwarded verbatim from whichever daemon the
+          // relay is bound to, so a stale/older host-server may omit array fields.
+          // Coerce to arrays so a missing agents/bgProcesses can't crash the render
+          // (e.g. BgProcessSection's `bgs.length` on an undefined value).
+          const agentList = Array.isArray(data.agents) ? data.agents : []
+          setAgents(agentList)
+          for (const agent of agentList) {
             prevStatusRef.current.set(agent.id, deriveStatus(agent))
           }
-          setBgs(data.bgProcesses)
+          setBgs(Array.isArray(data.bgProcesses) ? data.bgProcesses : [])
           setSessionAlive(data.sessionAlive)
           setSessionExists(data.sessionExists)
         }
