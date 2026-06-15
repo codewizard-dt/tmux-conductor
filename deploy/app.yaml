@@ -1,7 +1,22 @@
 # DigitalOcean App Platform spec. Deploy: doctl apps create --spec deploy/app.yaml
-# (or doctl apps update <app-id> --spec deploy/app.yaml). Replace OWNER below.
+# (or doctl apps update <app-id> --spec deploy/app.yaml, i.e. `make deploy-app`).
+#
+# ⚠️  Applying this spec with `doctl apps update --spec` REPLACES the whole app
+#     config. Two footguns that have caused outages:
+#     1. SECRET envs (DATABASE_URL, BETTER_AUTH_SECRET) are declared here with NO
+#        `value:` — applying the spec CLEARS them (the container then crash-loops on
+#        "X is required but not set"). Before `make deploy-app`, re-supply the
+#        encrypted `EV[1:...]` values (read them from `doctl apps get <id> -o json`)
+#        or set them in the App Platform UI immediately after.
+#     2. The `domains:` block below MUST stay — omitting it DETACHES
+#        tmux.davidtaylor.codes, which breaks TLS (handshake_failure) for everyone
+#        while the default *.ondigitalocean.app hostname keeps working.
 name: tmux-conductor
 region: nyc
+domains:
+  - domain: tmux.davidtaylor.codes
+    type: PRIMARY
+    zone: davidtaylor.codes
 services:
   - name: api
     github:
