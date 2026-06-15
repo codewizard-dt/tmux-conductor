@@ -64,14 +64,20 @@ static_sites:
         value: doctordeetz@gmail.com
 # DATABASE_URL points at the pre-existing managed cluster "tmux-conductor-db"
 # (set as a SECRET on the api service), so no App Platform-managed database block.
-# Ingress: frontend owns "/", the api is mounted under "/api" so the two
-# components don't collide on the same path prefix. NOTE: no `rewrite` — the
-# "/api" prefix is preserved so it reaches app/api's own "/api/auth/*" routes.
+# Ingress: frontend owns "/", the api is mounted under "/api" and "/relay".
+# NOTE: no `rewrite` — the prefix is preserved so it reaches app/api's own
+# "/api/auth/*" and "/relay/:deviceId" routes. The "/relay" rule MUST come
+# before the "/" catch-all so daemon WebSocket upgrades reach the api service.
 ingress:
   rules:
     - match:
         path:
           prefix: /api
+      component:
+        name: api
+    - match:
+        path:
+          prefix: /relay
       component:
         name: api
     - match:

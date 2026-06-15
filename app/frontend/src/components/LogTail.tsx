@@ -39,7 +39,7 @@ function mapKey(e: KeyboardEvent<HTMLDivElement>): KeysPayload | null {
 
 const pendingDeletes = new Map<number, ReturnType<typeof setTimeout>>()
 
-export default function LogTail({ agentId, agentName, maxHeightClass, focused, fillContainer, interactSignal, onInteractChange, onCloseModal }: {
+export default function LogTail({ agentId, agentName, maxHeightClass, focused, fillContainer, interactSignal, onInteractChange, onCloseModal, expanded, onToggleExpand }: {
   /** Globally-unique agent id — used for all API calls and SSE filtering. */
   agentId: number
   /** Display name only (not unique across projects). */
@@ -55,6 +55,10 @@ export default function LogTail({ agentId, agentName, maxHeightClass, focused, f
   onInteractChange?: ((interacting: boolean) => void) | undefined
   /** Called when the user presses Esc twice in Direct Input mode to close the modal. */
   onCloseModal?: (() => void) | undefined
+  /** When true, signals the log is in full-height expanded mode (controls icon state). */
+  expanded?: boolean | undefined
+  /** When provided, renders an expand/collapse toggle button in the log header. */
+  onToggleExpand?: (() => void) | undefined
 }) {
   const [lines, setLines] = useState<number>(DEFAULT_LINES)
   const [isLoadingMore, setIsLoadingMore] = useState(false)
@@ -304,6 +308,25 @@ export default function LogTail({ agentId, agentName, maxHeightClass, focused, f
           {uploading && <span className="ml-2 normal-case tracking-normal text-accent-blue">uploading image…</span>}
           {isLoadingMore && <span className="ml-2 normal-case tracking-normal text-muted-2">loading older output…</span>}
         </p>
+        {onToggleExpand && (
+          <button
+            type="button"
+            onClick={onToggleExpand}
+            className="ml-auto flex h-5 w-5 cursor-pointer items-center justify-center rounded-[5px] text-muted-2 transition hover:bg-canvas hover:text-ink"
+            aria-label={expanded ? 'Collapse log' : 'Expand log'}
+            title={expanded ? 'Collapse log' : 'Expand log'}
+          >
+            {expanded ? (
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+                <path d="M4.5 1.5H1.5v3M10.5 1.5h-3v3M4.5 10.5H1.5v-3M10.5 10.5h-3v-3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            ) : (
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+                <path d="M1.5 4.5V1.5h3M7.5 1.5h3v3M1.5 7.5v3h3M7.5 10.5h3v-3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            )}
+          </button>
+        )}
       </div>
       {tail === null ? (
         <p className="text-[12px] italic text-muted-2">{failed ? 'Could not load log output.' : 'Loading…'}</p>

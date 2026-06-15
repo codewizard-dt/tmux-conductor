@@ -335,6 +335,7 @@ function AgentDetailModal({ agent, project, projectId, status, onClose, armInter
   const [showRenameInput, setShowRenameInput] = useState(false)
   const [renameError, setRenameError] = useState<string | null>(null)
   const [interacting, setInteracting] = useState(false)
+  const [logExpanded, setLogExpanded] = useState(false)
   // Incrementing signal (re)enables Direct Input in LogTail; seeded by the card CTA.
   const interactSignal = armInteract ? 1 : 0
   const [skills, setSkills] = useState<SkillsResponse | null>(null)
@@ -561,7 +562,7 @@ function AgentDetailModal({ agent, project, projectId, status, onClose, armInter
           )}
 
           <div className="flex flex-col flex-1 overflow-hidden p-5">
-            <div className="grid grid-cols-1 gap-5 md:grid-cols-[1fr_1.5fr] flex-shrink-0">
+            <div className={`grid grid-cols-1 gap-5 md:grid-cols-[1fr_1.5fr] flex-shrink-0${logExpanded ? ' hidden' : ''}`}>
               <div>
                 <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-2">Details</p>
                 <dl className="mb-4 grid grid-cols-[max-content_1fr] gap-x-3 gap-y-1 text-[11px]">
@@ -599,14 +600,14 @@ function AgentDetailModal({ agent, project, projectId, status, onClose, armInter
               </div>
             </div>
 
-            <div className="flex flex-col flex-1 min-h-0 mt-5 border-t border-line pt-4">
+            <div className={`flex flex-col flex-1 min-h-0${logExpanded ? '' : ' mt-5 border-t border-line pt-4'}`}>
               <ErrorBoundary>
-                <LogTail key={agent.id} agentId={agent.id} agentName={agent.name} focused fillContainer interactSignal={interactSignal} onInteractChange={setInteracting} onCloseModal={onClose} />
+                <LogTail key={agent.id} agentId={agent.id} agentName={agent.name} focused fillContainer interactSignal={interactSignal} onInteractChange={setInteracting} onCloseModal={onClose} expanded={logExpanded} onToggleExpand={() => { setLogExpanded((v) => !v) }} />
               </ErrorBoundary>
             </div>
 
             {/* Skills section */}
-            {skills && (
+            {skills && !logExpanded && (
               <details className="mt-3 flex-shrink-0">
                 <summary className="cursor-pointer text-[11px] font-semibold uppercase tracking-[0.08em] text-muted select-none">
                   Skills ({skills.project.length + skills.user.length})

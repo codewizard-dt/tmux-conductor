@@ -468,16 +468,20 @@ export function getAgentContext(
     // meter doesn't blink out during a tool call.
     if (isBusy && memo.lastGood) return memo.lastGood;
     if (pane.model) {
-      // Model visible in the pane but no transcript turns → context is empty
-      // (fresh session or post-/clear on a session with no prior work). Discard
-      // any stale lastGood that leaked in from a prior derived-path session so
-      // the meter shows 0 % instead of a ghost reading.
+      // Model visible in the pane but no transcript turns.
+      // Trusted path (sidecar pinned): context is genuinely empty (fresh start /
+      // post-/clear) — show 0% so the user sees the reset.
+      // Untrusted derived path: we can't distinguish "actually empty" from "wrong
+      // transcript" — show model chip only (contextPct: null) so we don't
+      // falsely imply 0% for an agent that's been working for minutes. Also skip
+      // caching into lastGood so `isBusy && lastGood` can't get stuck at 0%.
       if (memo.lastGood) {
         memo.prevModel = memo.lastGood.model ?? memo.prevModel ?? null;
         memo.lastGood = null;
       }
-      const ctx = { ...emptyWithLimit, model: pane.model, contextPct: 0 };
-      memo.lastGood = ctx;
+      const contextPct = memo.trusted ? 0 : null;
+      const ctx = { ...emptyWithLimit, model: pane.model, contextPct };
+      if (contextPct !== null) memo.lastGood = ctx;
       memo.prevModel = pane.model;
       return ctx;
     }
