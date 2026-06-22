@@ -1,11 +1,11 @@
 # Project Status
 
-**Last updated:** 2026-06-14
+**Last updated:** 2026-06-21
 
 ## Current Focus
 
-- Architecture simplification merged to main: `host-server/` (native tmux, systemd), `app/api/` (Fastify + better-auth, App Platform Docker service), `app/frontend/` (Vite SPA, App Platform static site). Local Docker via `app/docker-compose.yml`; DO App Platform spec at `deploy/app.yaml`.
-- Next: live App Platform deploy (TASK-050); git worktree per-agent support (TASK-060–063); diff panel + checkpoint/rollback UI (TASK-064–071).
+- Reverted to a simple single-user, fully-local system: `host-server/` (native tmux + SQLite on :8788) and `frontend/` (Vite SPA on :4321, talking directly to the host-server via the Vite `/api` proxy). Removed the hosted portal (`app/api`), the relay daemon, device pairing, invite codes, better-auth/Postgres, Docker, and the App Platform deploy. SQLite remains the operational data store.
+- Next: git worktree per-agent support (TASK-060–063); diff panel + checkpoint/rollback UI (TASK-064–071).
 
 ## Active Tasks
 
@@ -32,6 +32,7 @@
 
 ## Recently Completed / Superseded
 
+- **Revert to single-user local (2026-06-21, `revert-to-simplicity` branch):** Deleted `app/api/`, `daemon/`, `shared/`, `deploy/`, all Dockerfiles/compose, `bin/conductor`, and the daemon plist. Flattened `app/frontend/` → `frontend/` and collapsed it to direct-only (removed auth/relay/device/pairing UI and the runtime mode probe). Simplified the Makefile, `.env.example`, CI matrix, and `install.sh`. Supersedes the App Platform deploy work (TASK-050 and the relay/portal task line).
 - **Architecture simplification (2026-06-13, `simplify-architecture` branch):**
   - Deleted 5 Dockerfiles + 3 compose files + 2 CI workflows (Docker/GHCR infrastructure removed)
   - `backend/` → `host-server/` (native only, systemd deploy via `deploy/host-server.service`)

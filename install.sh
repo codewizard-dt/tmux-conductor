@@ -13,8 +13,6 @@ set -euo pipefail
 #   CONDUCTOR_HOME          install dir            (default: $HOME/.tmux-conductor)
 #   CONDUCTOR_REPO_URL      git remote            (default: HTTPS origin)
 #   CONDUCTOR_BRANCH        branch to track       (default: main)
-#   CONDUCTOR_PAIRING_CODE  pairing code          (default: empty)
-#   CONDUCTOR_DAEMON_SOCK   daemon unix socket    (default: standard data dir)
 
 # ----------------------------------------------------------------------------
 # Helpers (defined before main; the only top-level CALL is `main "$@"`).
@@ -93,8 +91,6 @@ main() {
   INSTALL_DIR="${CONDUCTOR_HOME:-$HOME/.tmux-conductor}"
   REPO_URL="${CONDUCTOR_REPO_URL:-https://github.com/codewizard-dt/tmux-conductor.git}"
   BRANCH="${CONDUCTOR_BRANCH:-main}"
-  CONDUCTOR_PAIRING_CODE="${CONDUCTOR_PAIRING_CODE:-}"
-  SOCK="${CONDUCTOR_DAEMON_SOCK:-$HOME/.local/share/tmux-conductor/daemon.sock}"
 
   log "install dir: $INSTALL_DIR"
   log "repo url:    $REPO_URL"
@@ -160,10 +156,9 @@ main() {
 
   # node >= 22.12 hard floor; warn if < 26.0.
   # Hard floor 22.12.0 comes from frontend/package.json engines.node (>=22.12.0).
-  # Warn threshold 26.0.0 comes from backend/package.json engines.node (>=26.0.0);
-  # the backend declares a stricter floor and will refuse to run below it, but we
-  # only WARN here so a frontend/daemon-only user is not blocked. (daemon declares
-  # no engines.node floor.)
+  # Warn threshold 26.0.0 comes from host-server/package.json engines.node (>=26.0.0);
+  # the host-server declares a stricter floor and will refuse to run below it, but
+  # we only WARN here so a frontend-only user is not blocked.
   if command -v node >/dev/null 2>&1; then
     node_raw="$(node -v 2>/dev/null || echo '')"
     # Format: "v22.12.0" -> strip leading v.
@@ -171,7 +166,7 @@ main() {
     if [ "$(version_ge "$node_ver" "22.12")" = "ge" ]; then
       log "PASS: node $node_ver (>= 22.12.0)"
       if [ "$(version_ge "$node_ver" "26.0")" = "lt" ]; then
-        warn "node $node_ver is below 26.0.0 — backend/package.json declares engines.node >=26.0.0 and will refuse to run; upgrade Node to run the backend."
+        warn "node $node_ver is below 26.0.0 — host-server/package.json declares engines.node >=26.0.0 and will refuse to run; upgrade Node to run the host-server."
       fi
     else
       log "FAIL: node $node_ver (< 22.12.0)"
@@ -297,7 +292,7 @@ main() {
   # Section 4 — npm installs
   # --------------------------------------------------------------------------
   log "--- installing npm dependencies ---"
-  for pkg in backend frontend daemon; do
+  for pkg in host-server frontend; do
     if [ -d "$INSTALL_DIR/$pkg" ]; then
       log "npm install in $pkg/"
       (cd "$INSTALL_DIR/$pkg" && npm install) 2>&1 | tee -a "$LOG_FILE"
@@ -329,21 +324,21 @@ main() {
   mkdir -p "$INSTALL_DIR/data"
 
   # db:migrate (warn-skip if the npm script is absent).
-  if node -e "process.exit(require('$INSTALL_DIR/backend/package.json').scripts['db:migrate']?0:1)" 2>/dev/null; then
+  if node -e "process.exit(require('$INSTALL_DIR/host-server/package.json').scripts['db:migrate']?0:1)" 2>/dev/null; then
     log "running db:migrate"
-    (cd "$INSTALL_DIR/backend" && npm run db:migrate) 2>&1 | tee -a "$LOG_FILE"
+    (cd "$INSTALL_DIR/host-server" && npm run db:migrate) 2>&1 | tee -a "$LOG_FILE"
     migrate_status="${PIPESTATUS[0]}"
     if [ "$migrate_status" -ne 0 ]; then
       warn "db:migrate exited $migrate_status — see $LOG_FILE."
     fi
   else
-    warn "db:migrate script not wired yet — skipping (ROADMAP-001 surface)."
+    warn "db:migrate script not wired — skipping."
   fi
 
   # db:verify (always warn-only, never die).
-  if node -e "process.exit(require('$INSTALL_DIR/backend/package.json').scripts['db:verify']?0:1)" 2>/dev/null; then
+  if node -e "process.exit(require('$INSTALL_DIR/host-server/package.json').scripts['db:verify']?0:1)" 2>/dev/null; then
     log "running db:verify"
-    (cd "$INSTALL_DIR/backend" && npm run db:verify) 2>&1 | tee -a "$LOG_FILE"
+    (cd "$INSTALL_DIR/host-server" && npm run db:verify) 2>&1 | tee -a "$LOG_FILE"
     verify_status="${PIPESTATUS[0]}"
     if [ "$verify_status" -ne 0 ]; then
       warn "db:verify exited $verify_status — continuing (verify is advisory)."
@@ -369,106 +364,19 @@ main() {
   fi
 
   # --------------------------------------------------------------------------
-  # Section 7 — Symlink the conductor CLI
-  # --------------------------------------------------------------------------
-  log "--- linking conductor CLI ---"
-  mkdir -p "$HOME/.local/bin"
-  ln -sf "$INSTALL_DIR/bin/conductor" "$HOME/.local/bin/conductor"
-  log "linked conductor -> $HOME/.local/bin/conductor"
-
-  PATH_HINT_NEEDED="no"
-  case ":$PATH:" in
-    *":$HOME/.local/bin:"*) : ;;
-    *) PATH_HINT_NEEDED="yes" ;;
-  esac
-  if [ "$PATH_HINT_NEEDED" = "yes" ]; then
-    log "NOTE: $HOME/.local/bin is not on PATH."
-    echo "  Add this line to your shell rc (~/.zshrc or ~/.bashrc):" >&2
-    echo "    export PATH=\"\$HOME/.local/bin:\$PATH\"" >&2
-  fi
-
-  # --------------------------------------------------------------------------
-  # Section 8 — Daemon service install + health poll
-  # --------------------------------------------------------------------------
-  log "--- installing daemon service ---"
-  DAEMON_HEALTHY="no"
-  if "$INSTALL_DIR/bin/conductor" daemon install 2>&1 | tee -a "$LOG_FILE"; then
-    log "daemon service installed."
-  else
-    warn "conductor daemon install exited non-zero — continuing; you can re-run 'conductor daemon install' later."
-  fi
-
-  log "polling daemon health at $SOCK"
-  tries=0
-  while [ "$tries" -lt 10 ]; do
-    if curl -s --unix-socket "$SOCK" http://localhost/healthz >/dev/null 2>&1; then
-      DAEMON_HEALTHY="yes"
-      break
-    fi
-    tries=$((tries + 1))
-    sleep 1
-  done
-  if [ "$DAEMON_HEALTHY" = "yes" ]; then
-    log "daemon healthy"
-  else
-    warn "daemon did not become healthy within 10s — check ~/.local/share/tmux-conductor/daemon.log and run 'conductor daemon status'."
-  fi
-
-  # --------------------------------------------------------------------------
-  # Section 9 — Pairing, graceful degrade
-  # --------------------------------------------------------------------------
-  log "--- pairing ---"
-  PAIRED="skipped"
-  # Detect whether the `pair` subcommand exists. With no `pair)` case in the CLI,
-  # this hits the Unknown-command branch and exits non-zero -> treat as ABSENT.
-  if "$INSTALL_DIR/bin/conductor" pair --help >/dev/null 2>&1; then
-    if [ -n "$CONDUCTOR_PAIRING_CODE" ]; then
-      if "$INSTALL_DIR/bin/conductor" pair "$CONDUCTOR_PAIRING_CODE" 2>&1 | tee -a "$LOG_FILE"; then
-        PAIRED="yes"
-        log "paired with provided code."
-      else
-        warn "pairing with provided code failed — re-run 'conductor pair <code>' manually."
-      fi
-    elif [ -r /dev/tty ]; then
-      printf 'Pairing code (blank to skip): '
-      read -r code </dev/tty || code=""
-      if [ -n "$code" ]; then
-        if "$INSTALL_DIR/bin/conductor" pair "$code" 2>&1 | tee -a "$LOG_FILE"; then
-          PAIRED="yes"
-          log "paired with entered code."
-        else
-          warn "pairing failed — re-run 'conductor pair <code>' manually."
-        fi
-      else
-        log "no pairing code entered — skipping."
-      fi
-    else
-      log "non-interactive, no pairing code — skipping."
-    fi
-  else
-    log "pairing not available yet — skipping."
-  fi
-
-  # --------------------------------------------------------------------------
-  # Section 10 — Summary + next steps
+  # Section 7 — Summary + next steps
   # --------------------------------------------------------------------------
   log "=== install complete ==="
   echo ""
   echo "tmux-conductor installation summary"
   echo "-----------------------------------"
   echo "  install dir:    $INSTALL_DIR"
-  echo "  daemon health:  $DAEMON_HEALTHY"
-  echo "  paired:         $PAIRED"
-  echo "  conductor CLI:  $HOME/.local/bin/conductor"
-  if [ "$PATH_HINT_NEEDED" = "yes" ]; then
-    echo "  PATH note:      add 'export PATH=\"\$HOME/.local/bin:\$PATH\"' to your shell rc"
-  fi
   echo ""
   echo "Next steps:"
-  echo "  conductor start          # create the tmux session and spawn agents"
-  echo "  conductor list           # list configured agents / queue"
-  echo "  Backend dashboard API:   http://localhost:8788"
-  echo "  Frontend dashboard:      http://localhost:4321"
+  echo "  cd $INSTALL_DIR"
+  echo "  ./scripts/conductor.sh   # create the tmux session and spawn agents"
+  echo "  make dev                 # run the host-server (:8788) + dashboard (:4321)"
+  echo "  ./scripts/teardown.sh    # graceful shutdown"
   echo ""
   echo "  Install log: $LOG_FILE"
 }

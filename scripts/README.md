@@ -18,7 +18,7 @@ flowchart TD
   Pane["agent pane"]:::ext
   BgPane["bg process window<br/>(host-side, no wrap)"]:::ext
   DashServer["host-server/index.ts<br/>(Fastify :8788)"]:::ext
-  DashUI["app/frontend/<br/>(Vite React :4321)"]:::ext
+  DashUI["frontend/<br/>(Vite React :4321)"]:::ext
   Monitor["monitor.sh"]:::ext
 
   User -->|"start session"| Conductor
@@ -186,20 +186,16 @@ Usage:
 cd host-server && npm start
 ```
 
-## app/frontend/ (was `frontend/`)
+## frontend/
 
-The Vite React single-page app that consumes the host-server. Runs on `localhost:4321` (env `FRONTEND_PORT`). Displays a real-time accordion list of agents with state indicators and an inline queue editor; subscribes to the `GET /events` SSE stream for live updates. The Vite dev proxy splits `/api/*`: auth/portal prefixes (`/api/auth`, `/api/invite-codes`, `/api/admin/invite-codes`, `/api/devices`, `/api/pair`) go to `app/api`, everything else under `/api/*` goes to the host-server on :8788.
+The Vite React single-page app that consumes the host-server. Runs on `localhost:4321` (env `FRONTEND_PORT`). Displays a real-time accordion list of agents with state indicators and an inline queue editor; subscribes to the `GET /events` SSE stream for live updates. The Vite dev proxy forwards all `/api/*` requests to the host-server on :8788 (env `PROXY_TARGET`).
 
 Usage:
 ```
-cd app/frontend && npm run dev
+cd frontend && npm run dev
 ```
 
 Open `http://localhost:4321` in your browser.
-
-## Remote access (relay & pairing)
-
-For remote/hosted access, `app/api` (Fastify + better-auth + Postgres, App Platform) fronts the host-server: browser → `app/api` → outbound **WSS** → daemon relay connector → host-server (:8788). New users sign up behind **invite-code gating** (`POST /api/admin/invite-codes` mints, `POST /api/invite-codes/validate` checks). Both halves are shipped: the server-side pairing endpoints (`POST /api/pair/code`, `POST /api/pair/redeem`) **and** the **pairing client** — `conductor pair --portal <url> --code XXXX-XXXX` (the `pair)` subcommand in `bin/conductor`, which calls `daemon/pair.ts`), the `device.json` writer (`daemon/credentials.ts`, writing `$CONDUCTOR_HOME/device.json`), the daemon relay connector (`daemon/connector.ts`, dialing `GET /relay/:deviceId` over outbound WSS), and the `install.sh` bootstrap (repo root) that runs the optional pairing step. The only pending item is the live public App Platform deployment (TASK-050) — the hosted portal URL isn't up yet. **Note:** `bin/conductor` is the user-facing CLI (`install`, `daemon`, `pair`, `unpair`) and is distinct from `scripts/conductor.sh`, the tmux session orchestrator. See [`../CLAUDE.md`](../CLAUDE.md) for the full relay data path.
 
 ---
 
@@ -215,8 +211,7 @@ For remote/hosted access, `app/api` (Fastify + better-auth + Postgres, App Platf
 | `teardown.sh` | **Essential** |
 | `add-task.sh` | **Useful** |
 | `host-server/` | **Active** |
-| `app/frontend/` | **Active** |
-| `app/api/` (relay + auth) | **Active** |
+| `frontend/` | **Active** |
 | `.archive/scaffold.sh` | **Archived — Docker era** |
 | `.archive/agent_exec.sh` | **Archived — Docker era** |
 
