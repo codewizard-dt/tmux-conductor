@@ -1,6 +1,7 @@
 import { spawnSync, execSync } from 'child_process';
 import { existsSync, unlinkSync, renameSync, readFileSync, mkdirSync, writeFileSync, readdirSync, statSync, appendFileSync } from 'fs';
 import * as path from 'path';
+import os from 'os';
 import { fileURLToPath } from 'url';
 import Fastify, { type FastifyReply } from 'fastify';
 import fastifyCors from '@fastify/cors';
@@ -1097,6 +1098,37 @@ await fastify.register((api) => {
       isInsideRepo: gitRoot !== p,
       gitRoot,
     });
+  });
+
+  // Browse local filesystem directories. Used by the frontend folder picker.
+  api.get<{ Querystring: { path?: string } }>('/browse', (req, reply) => {
+    const rawPath = req.query.path ?? os.homedir();
+    const resolved = rawPath.startsWith('~')
+      ? path.join(os.homedir(), rawPath.slice(1))
+      : path.resolve(rawPath);
+
+    let stat;
+    try {
+      stat = statSync(resolved);
+    } catch {
+      return reply.status(400).send({ error: 'Path does not exist' });
+    }
+    if (!stat.isDirectory()) {
+      return reply.status(400).send({ error: 'Path is not a directory' });
+    }
+
+    let entries: { name: string; path: string }[] = [];
+    try {
+      entries = readdirSync(resolved, { withFileTypes: true })
+        .filter((e) => e.isDirectory() && !e.name.startsWith('.'))
+        .map((e) => ({ name: e.name, path: path.join(resolved, e.name) }))
+        .sort((a, b) => a.name.localeCompare(b.name));
+    } catch {
+      // Permission denied — return empty list rather than an error.
+    }
+
+    const parent = resolved === '/' ? null : path.dirname(resolved);
+    return reply.send({ path: resolved, parent, entries });
   });
 
   // ── Projects API ─────────────────────────────────────────────────────────
