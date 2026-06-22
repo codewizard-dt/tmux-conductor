@@ -256,6 +256,7 @@ out/
 .next/
 .nuxt/
 .cache/
+.vite/
 coverage/
 *.tgz
 *.tsbuildinfo
