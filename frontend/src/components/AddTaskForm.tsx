@@ -26,7 +26,7 @@ export default function AddTaskForm({ agentId, onAdded, projectId, projectName }
     if (!el) return;
     el.style.height = 'auto';
     const maxH = 88;
-    el.style.height = `${Math.min(el.scrollHeight, maxH)}px`;
+    el.style.height = `${String(Math.min(el.scrollHeight, maxH))}px`;
     el.style.overflowY = el.scrollHeight > maxH ? 'auto' : 'hidden';
   }, [value]);
 
@@ -36,8 +36,8 @@ export default function AddTaskForm({ agentId, onAdded, projectId, projectName }
       setValue((v) => v + text);
       return;
     }
-    const start = el.selectionStart ?? value.length;
-    const end = el.selectionEnd ?? value.length;
+    const start = el.selectionStart;
+    const end = el.selectionEnd;
     const next = value.slice(0, start) + text + value.slice(end);
     setValue(next);
     try { localStorage.setItem(`conductor:taskDraft:${agentId.toString()}`, next) } catch { /**/ }

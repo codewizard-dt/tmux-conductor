@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type SyntheticEvent } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import {
   listProjects,
@@ -29,25 +29,29 @@ export default function ProjectDetailPage() {
   const [taskBusy, setTaskBusy] = useState(false)
   const [taskError, setTaskError] = useState<string | null>(null)
 
-  async function loadAll() {
-    const [projects, allAgents, projectTasks] = await Promise.all([
+  useEffect(() => {
+    let cancelled = false
+    Promise.all([
       listProjects(),
       fetchAgents(),
       fetchProjectTasks(projectId),
-    ])
-    const found = projects.find((p) => p.id === projectId)
-    if (!found) {
-      setNotFound(true)
+    ]).then(([projects, allAgents, projectTasks]) => {
+      if (cancelled) return
+      const found = projects.find((p) => p.id === projectId)
+      if (!found) {
+        setNotFound(true)
+        setLoading(false)
+        return
+      }
+      setProject(found)
+      setAgents(allAgents.filter((a) => a.projectId === projectId))
+      setTasks(projectTasks)
       setLoading(false)
-      return
-    }
-    setProject(found)
-    setAgents(allAgents.filter((a) => a.projectId === projectId))
-    setTasks(projectTasks)
-    setLoading(false)
-  }
-
-  useEffect(() => { void loadAll() }, [])
+    }).catch(() => {
+      if (!cancelled) setLoading(false)
+    })
+    return () => { cancelled = true }
+  }, [projectId])
 
   async function handleSpawn() {
     if (!project) return
@@ -64,7 +68,7 @@ export default function ProjectDetailPage() {
     }
   }
 
-  async function handleAddTask(e: React.FormEvent) {
+  async function handleAddTask(e: SyntheticEvent) {
     e.preventDefault()
     if (!taskInput.trim() || !project) return
     setTaskBusy(true)

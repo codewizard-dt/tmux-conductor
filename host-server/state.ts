@@ -53,17 +53,42 @@ export function capturePaneTail(sessionName: string, windowName: string, n: numb
  * Returns '' if the pane can't be captured.
  */
 export function capturePaneTailRaw(sessionName: string, windowName: string, n: number): string {
+  const target = `${sessionName}:${windowName}`;
   const result = spawnSync(
     'tmux',
-    ['capture-pane', '-t', `${sessionName}:${windowName}`, '-p', '-S', `-${String(n)}`],
+    ['capture-pane', '-t', target, '-p', '-e', '-S', `-${String(n)}`],
     { encoding: 'utf8' },
   );
   if (result.status !== 0 || typeof result.stdout !== 'string') return '';
-  const lines = result.stdout.split('\n');
-  while (lines.length > 0 && (lines[lines.length - 1] ?? '').trim() === '') {
-    lines.pop();
+  // Strip only the single trailing-newline artifact; KEEP tmux's bottom padding rows so the
+  // visible screen remains exactly the last pane_height lines (needed for cursor positioning).
+  const body = result.stdout.endsWith('\n') ? result.stdout.slice(0, -1) : result.stdout;
+  const text = body.split('\n').slice(-n).join('\n');
+
+  // Mirror the pane's real cursor. capture-pane carries no cursor, so xterm.js would otherwise
+  // park it after the last character written. The cursor sits (pane_height-1-cursor_y) rows above
+  // the bottom of the visible screen; emit a relative move up + absolute column so it lands there
+  // regardless of how the browser terminal is sized.
+  const meta = spawnSync(
+    'tmux',
+    ['display-message', '-p', '-t', target, '-F', '#{cursor_y} #{cursor_x} #{pane_height}'],
+    { encoding: 'utf8' },
+  );
+  if (meta.status === 0 && typeof meta.stdout === 'string') {
+    const [cy, cx, ph] = meta.stdout.trim().split(/\s+/).map(Number);
+    if (
+      cy !== undefined && cx !== undefined && ph !== undefined &&
+      Number.isInteger(cy) && Number.isInteger(cx) && Number.isInteger(ph)
+    ) {
+      const rowsUp = ph - 1 - cy;
+      let seq = '';
+      if (rowsUp > 0) seq += `\x1b[${rowsUp.toString()}A`;
+      else if (rowsUp < 0) seq += `\x1b[${String(-rowsUp)}B`;
+      seq += `\x1b[${(cx + 1).toString()}G`;
+      return text + seq;
+    }
   }
-  return lines.slice(-n).join('\n');
+  return text;
 }
 
 /**

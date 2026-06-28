@@ -43,7 +43,7 @@ export function useAgents(): { agents: Agent[]; sessionAlive: boolean; loading: 
       try {
         const updated = JSON.parse(e.data as string) as Agent
         setAgents((prev) => {
-          const idx = prev.findIndex((a) => a.name === updated.name)
+          const idx = prev.findIndex((a) => a.id === updated.id)
           if (idx === -1) return [...prev, updated]
           const next = [...prev]
           next[idx] = { ...next[idx], ...updated }
@@ -54,9 +54,9 @@ export function useAgents(): { agents: Agent[]; sessionAlive: boolean; loading: 
 
     es.addEventListener('agent-removed', (e: MessageEvent) => {
       try {
-        const data = JSON.parse(e.data as string) as { name?: string }
-        if (typeof data.name === 'string') {
-          setAgents((prev) => prev.filter((a) => a.name !== data.name))
+        const data = JSON.parse(e.data as string) as { id?: number; name?: string }
+        if (typeof data.id === 'number') {
+          setAgents((prev) => prev.filter((a) => a.id !== data.id))
         }
       } catch { /* ignore malformed events */ }
     })

@@ -20,17 +20,20 @@ The wiki is split into two domains with opposite organizing laws:
 ## Knowledge
 
 ### Sources
-_(none yet)_ — one summary page per ingested `raw/` source. See [knowledge/sources/](knowledge/sources/).
+- [Web Terminal Emulators — Full ANSI Color + Cursor Support](knowledge/sources/web-terminal-emulators.md) — xterm.js is the answer; two-change integration (backend `-e` flag + frontend xterm.js); critical split between display and detection capture paths
 
 ### Concepts
-_(none yet)_ — patterns, ideas, conventions, recurring themes. See [knowledge/concepts/](knowledge/concepts/).
+- [ANSI Terminal Emulation in the Browser](knowledge/concepts/ansi-terminal-emulation-browser.md) — why `<pre>` falls short; stateful terminal emulator model; xterm-256color + truecolor support
+- [tmux capture-pane and Escape Sequences](knowledge/concepts/tmux-capture-pane-escape-sequences.md) — `-e` flag for display path only; detection path must stay plain-text
 
 ### Entities
-_(none yet)_ — one page per entity, filed by sub-type:
 - People — [knowledge/entities/people/](knowledge/entities/people/)
 - Organisations — [knowledge/entities/organisations/](knowledge/entities/organisations/)
-- Tools — [knowledge/entities/tools/](knowledge/entities/tools/)
-- Components — [knowledge/entities/components/](knowledge/entities/components/) (this project's own modules, services, scripts)
+- Tools:
+  - [xterm.js](knowledge/entities/tools/xterm-js.md) — `@xterm/xterm` v6; VS Code's terminal engine; full VT100/xterm-256color; `convertEol`/`disableStdin` for tmux read-only display
+  - [hterm](knowledge/entities/tools/hterm.md) — Google's HTML Terminal; stale (2020); not on npm; not recommended
+- Components:
+  - [LogTail](knowledge/entities/components/log-tail.md) — `frontend/src/components/LogTail.tsx`; currently plain-text `<pre>`; planned upgrade to xterm.js
 
 ---
 

@@ -66,6 +66,10 @@ interface SessionState {
   timestamp: string
 }
 
+function isLogExpandShortcut(e: KeyboardEvent): boolean {
+  return e.altKey && !e.metaKey && !e.ctrlKey && (e.code === 'KeyF' || e.key.toLowerCase() === 'f')
+}
+
 // ── Status ────────────────────────────────────────────────────────────────
 
 const STATUS_CONFIG: Record<AgentStatus, { bg: string; color: string; dot: string; label: string }> = {
@@ -163,7 +167,7 @@ export function ProjectBadge({ name }: { name: string | null }) {
   if (name === null) {
     return (
       <span
-        className="inline-flex flex-shrink-0 items-center rounded-pill bg-[#f1f2f4] px-2 py-0.5 text-[11px] font-semibold text-[#9a9da5]"
+        className="inline-flex flex-shrink-0 items-center rounded-pill bg-[#f1f2f4] px-2 py-0.5 text-[13px] font-semibold text-[#9a9da5]"
         title="No project assigned"
       >
         Unassigned
@@ -173,7 +177,7 @@ export function ProjectBadge({ name }: { name: string | null }) {
   const hue = projectHue(name)
   return (
     <span
-      className="inline-flex flex-shrink-0 items-center rounded-pill px-2 py-0.5 text-[11px] font-semibold"
+      className="inline-flex flex-shrink-0 items-center rounded-pill px-2 py-0.5 text-[13px] font-semibold"
       style={{ background: `hsl(${String(hue)} 65% 94%)`, color: `hsl(${String(hue)} 55% 32%)` }}
       title={`Project: ${name}`}
     >
@@ -363,8 +367,13 @@ function AgentDetailModal({ agent, project, projectId, status, onClose, armInter
     // While interact mode is active, Escape belongs to the agent's dialog
     // (LogTail forwards it via send-keys) — don't close the modal.
     const handler = (e: KeyboardEvent) => {
+      if (isLogExpandShortcut(e)) {
+        e.preventDefault()
+        setLogExpanded((v) => !v)
+        return
+      }
       if (e.key === 'Escape' && !interacting) { onClose(); return }
-      const tag = (e.target as HTMLElement)?.tagName
+      const tag = (e.target as HTMLElement).tagName
       if (tag === 'TEXTAREA' || tag === 'INPUT') return
       if (e.metaKey || e.ctrlKey) {
         if (e.key === 'ArrowRight') { e.preventDefault(); onNavigate('next') }
@@ -661,10 +670,11 @@ function AgentItem({ agent, project, onExpand }: {
       className="mb-2 flex flex-col gap-1.5 animate-popIn cursor-pointer select-none rounded-[10px] border border-line bg-white px-3.5 py-2.5 shadow-card transition-shadow last:mb-0 hover:shadow-card-hover"
       aria-label={`${agent.name} detail`}
     >
-      {/* Row 1 — project + name (left) / status (right) */}
+      {/* Row 1 — project + name (left) / type + status (right) */}
       <div className="flex items-center gap-2">
         <ProjectBadge name={project} />
         <span className="min-w-0 flex-1 truncate text-[13px] font-semibold tracking-tight text-ink">{agent.name}</span>
+        <AgentTypeBadge agent={agent} />
         <StatusBadge status={status} />
       </div>
 
@@ -979,7 +989,9 @@ export default function AgentList() {
       const next = dir === 'next'
         ? (idx + 1) % orderedAgentIds.length
         : (idx - 1 + orderedAgentIds.length) % orderedAgentIds.length
-      return { id: orderedAgentIds[next]!, armInteract: false }
+      const nextAgentId = orderedAgentIds[next]
+      if (nextAgentId === undefined) return prev
+      return { id: nextAgentId, armInteract: false }
     })
   }, [orderedAgentIds])
   const prevStatusRef = useRef<Map<number, AgentStatus>>(new Map())
@@ -1038,7 +1050,7 @@ export default function AgentList() {
           } else {
             playDoorbell(ctx)
           }
-        } else if (wasWorking && isDone && prevStatus !== undefined) {
+        } else if (wasWorking && isDone) {
           if (!audioCtxRef.current) audioCtxRef.current = new AudioContext()
           const ctx = audioCtxRef.current
           if (ctx.state === 'suspended') {

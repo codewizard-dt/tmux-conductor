@@ -1,7 +1,7 @@
 import { spawnSync, execSync } from 'child_process';
 import { existsSync, unlinkSync, renameSync, readFileSync, mkdirSync, writeFileSync, readdirSync, statSync, appendFileSync } from 'fs';
 import * as path from 'path';
-import os from 'os';
+import * as os from 'os';
 import { fileURLToPath } from 'url';
 import Fastify, { type FastifyReply } from 'fastify';
 import fastifyCors from '@fastify/cors';
@@ -111,6 +111,9 @@ const MONITOR_HEAL_COOLDOWN_MS = 30_000;
 const TAIL_POLL_MS = 2000;
 const TAIL_POLL_FOCUS_MS = 200;
 const TAIL_LINES = 100;
+// The focused agent (open detail modal) gets a deeper capture so its xterm scrollback
+// holds real history; unfocused card polling stays shallow to keep SSE payloads small.
+const TAIL_LINES_FOCUS = 500;
 
 // ── Background-process status (shared by /status and the poll loop) ──────────
 
@@ -337,12 +340,13 @@ await fastify.register((api) => {
     let agentId: number | undefined;
     let foundAgent: ReturnType<typeof getAgentById> | undefined;
     if (agentIdRaw !== undefined) {
-      if (!Number.isInteger(agentIdRaw)) {
+      if (typeof agentIdRaw !== 'number' || !Number.isInteger(agentIdRaw)) {
         return reply.status(400).send({ error: 'agentId must be an integer' });
       }
-      const found = getAgentById(db, agentIdRaw as number);
+      const agentIdValue = agentIdRaw;
+      const found = getAgentById(db, agentIdValue);
       if (!found) {
-        return reply.status(404).send({ error: `agent ${String(agentIdRaw)} not found` });
+        return reply.status(404).send({ error: `agent ${agentIdValue.toString()} not found` });
       }
       agentId = found.id;
       foundAgent = found;
@@ -526,6 +530,24 @@ await fastify.register((api) => {
       spawnAgentWindow(entry, conf);
     } catch {
       return reply.status(500).send({ error: 'failed to spawn agent window' });
+    }
+
+    // Immediately notify SSE clients — don't wait for the next poll tick.
+    {
+      const windowPresent = isTmuxWindowPresent(conf.sessionName, winName);
+      const tail15 = windowPresent ? capturePaneTail(conf.sessionName, winName, 15) : '';
+      const state = detectAgentStatus(conf, winName, entry.launchCmd, tail15 || undefined);
+      const isBusy = state === 'busy' || state === 'awaiting' || state === 'stalled';
+      const agentType = detectAgentType(entry.launchCmd);
+      const ctx = getContextForAgent(conf, agentType, winName, entry.workdir, isBusy, tail15 || undefined);
+      broadcastSSE('agent-update', {
+        id: entry.id, name, projectId: entry.projectId, projectName: entry.projectName,
+        state, mode: windowPresent ? detectAgentMode(conf, winName, entry.launchCmd, tail15) : 'unknown',
+        agentType,
+        windowPresent, queuedTasks: listTasksForAgentId(db, entry.id, entry.projectId).length,
+        launchCmd: entry.launchCmd, workdir: entry.workdir, linkedBg: conf.agentBgLinks[entry.name] ?? null,
+        activeTask: getActiveTask(conf, winName, state), ...ctx,
+      });
     }
 
     return reply.status(201).send({
@@ -1358,6 +1380,12 @@ await fastify.register((api) => {
       sendSSE(reply, 'session-update', { sessionAlive: prevSnapshot.sessionAlive, sessionExists: prevSnapshot.sessionExists });
       for (const agent of prevSnapshot.agents) {
         sendSSE(reply, 'agent-update', {
+          id: agent.id,
+          projectId: agent.projectId,
+          projectName: agent.projectName,
+          agentType: agent.agentType,
+          label: agent.label,
+          linkedBg: agent.linkedBg,
           name: agent.name, state: agent.state, mode: agent.mode,
           queuedTasks: agent.queuedTasks, windowPresent: agent.windowPresent,
           launchCmd: agent.launchCmd, workdir: agent.workdir, activeTask: agent.activeTask,
@@ -1389,7 +1417,7 @@ await fastify.register((api) => {
 interface Snapshot {
   sessionAlive: boolean;
   sessionExists: boolean;
-  agents: Array<{ id: number; name: string; projectId: number | null; projectName: string | null; state: string; mode: AgentMode; agentType: AgentType; windowPresent: boolean; queuedTasks: number; launchCmd: string; workdir: string; activeTask: string | null; label: string | null } & AgentContext>;
+  agents: Array<{ id: number; name: string; projectId: number | null; projectName: string | null; state: string; mode: AgentMode; agentType: AgentType; windowPresent: boolean; queuedTasks: number; launchCmd: string; workdir: string; activeTask: string | null; label: string | null; linkedBg: string | null } & AgentContext>;
   bgProcesses: BgStatus[];
 }
 
@@ -1438,6 +1466,7 @@ function buildSnapshot(): Snapshot {
       workdir: agent.workdir,
       activeTask: getActiveTask(conf, wn, state),
       label,
+      linkedBg: conf.agentBgLinks[agent.name] ?? null,
       ...ctx,
     };
   });
@@ -1492,6 +1521,7 @@ function pollAndDiff() {
         name: agent.name,
         projectId: agent.projectId,
         projectName: agent.projectName,
+        agentType: agent.agentType,
         state: agent.state,
         mode: agent.mode,
         queuedTasks: agent.queuedTasks,
@@ -1500,6 +1530,7 @@ function pollAndDiff() {
         workdir: agent.workdir,
         activeTask: agent.activeTask,
         label: agent.label,
+        linkedBg: agent.linkedBg,
         model: agent.model,
         modelId: agent.modelId,
         contextTokens: agent.contextTokens,
@@ -1559,9 +1590,9 @@ function tailPollLoopFocus() {
     );
     for (const a of agents) {
       const wn = agentWindowName(a);
-      const text = capturePaneTailRaw(conf.sessionName, wn, TAIL_LINES);
+      const text = capturePaneTailRaw(conf.sessionName, wn, TAIL_LINES_FOCUS);
       if (prevTailMapFocus.get(a.id) !== text) {
-        broadcastSSE('terminal-output-focus', { agentId: a.id, agent: a.name, text, lines: TAIL_LINES });
+        broadcastSSE('terminal-output-focus', { agentId: a.id, agent: a.name, text, lines: TAIL_LINES_FOCUS });
         prevTailMapFocus.set(a.id, text);
         const found = extractPaneLabel(text);
         if (found !== null) agentLabelCache.set(a.id, found);

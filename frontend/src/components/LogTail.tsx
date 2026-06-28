@@ -1,10 +1,15 @@
 import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type FocusEvent, type KeyboardEvent } from 'react'
+import { Terminal } from '@xterm/xterm'
+import { FitAddon } from '@xterm/addon-fit'
+import '@xterm/xterm/css/xterm.css'
 import { API_BASE, sendAgentKeys, uploadAgentImage, type KeysPayload } from '../lib/api'
 import { useSSEEvent } from '../hooks/useSSE'
 
-const DEFAULT_LINES = 100
-const PAGE_SIZE = 100
-const MAX_LINES = 1000
+const TAIL_LINES = 500
+
+function isExpandShortcut(e: Pick<KeyboardEvent<HTMLDivElement>, 'altKey' | 'code' | 'ctrlKey' | 'key' | 'metaKey'>): boolean {
+  return e.altKey && !e.metaKey && !e.ctrlKey && (e.code === 'KeyF' || e.key.toLowerCase() === 'f')
+}
 
 interface TailResponse {
   agent: string
@@ -47,7 +52,7 @@ export default function LogTail({ agentId, agentName, maxHeightClass, focused, f
   maxHeightClass?: string | undefined
   /** When true, registers with the backend focus endpoint so the agent gets 200 ms SSE pushes instead of 2 s. */
   focused?: boolean | undefined
-  /** When true, the component grows to fill its flex parent and the <pre> scrolls internally. */
+  /** When true, the component grows to fill its flex parent and the terminal scrolls internally. */
   fillContainer?: boolean | undefined
   /** Increment to (re)enable Direct Input mode from outside (banner button, needs-attention CTA). */
   interactSignal?: number | undefined
@@ -60,9 +65,9 @@ export default function LogTail({ agentId, agentName, maxHeightClass, focused, f
   /** When provided, renders an expand/collapse toggle button in the log header. */
   onToggleExpand?: (() => void) | undefined
 }) {
-  const [lines, setLines] = useState<number>(DEFAULT_LINES)
-  const [isLoadingMore, setIsLoadingMore] = useState(false)
-  const [tail, setTail] = useState<TailResponse | null>(null)
+  const isMac = /mac/i.test(navigator.userAgent)
+  const [loaded, setLoaded] = useState(false)
+  const [windowPresent, setWindowPresent] = useState(false)
   const [failed, setFailed] = useState(false)
   const [interacting, setInteracting] = useState(false)
   const [sendText, setSendText] = useState(() => {
@@ -75,69 +80,130 @@ export default function LogTail({ agentId, agentName, maxHeightClass, focused, f
   // Serializes POSTs so keystroke order survives key repeat; .catch keeps the chain alive.
   const queueRef = useRef<Promise<void>>(Promise.resolve())
   const captureRef = useRef<HTMLDivElement>(null)
-  const preRef = useRef<HTMLPreElement>(null)
-  const autoScrollRef = useRef(true)
+  const xtermContainerRef = useRef<HTMLDivElement>(null)
+  const termRef = useRef<Terminal | null>(null)
+  const fitAddonRef = useRef<FitAddon | null>(null)
+  const initialTextRef = useRef('')
+  // Follow-mode: while the user is at the bottom we repaint live; once they scroll up we stop
+  // repainting so their scrollback view holds still, then re-apply the latest snapshot when they
+  // return to the bottom. This is what makes scrollback usable despite full-screen repaints.
+  const followRef = useRef(true)
+  const pendingTextRef = useRef<string | null>(null)
+  const lastWrittenRef = useRef('')
+  const writingRef = useRef(false)
   const sendTextareaRef = useRef<HTMLTextAreaElement>(null)
   const escHintAtRef = useRef<number | null>(null)
   const escHintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const isLoadingMoreRef = useRef(false)
-  const prevScrollHeightRef = useRef(0)
-  const prevScrollTopRef = useRef(0)
-  const hasMoreRef = useRef(true)
+
+  // Repaint the terminal from a full pane snapshot in a SINGLE write: the leading ESC c (RIS)
+  // resets/clears and the content redraws in the same render frame, so there's no blank
+  // intermediate frame — that two-frame reset()+write() gap was the periodic flicker. Records the
+  // text written so follow-mode can re-apply a snapshot that arrived while scrolled up.
+  function applySnapshot(text: string) {
+    const term = termRef.current
+    if (!term) return
+    writingRef.current = true
+    term.write('\x1bc' + text, () => {
+      term.scrollToBottom()
+      lastWrittenRef.current = text
+      writingRef.current = false
+    })
+  }
 
   useEffect(() => {
     const el = sendTextareaRef.current
     if (!el) return
     el.style.height = 'auto'
-    const maxH = 80 // ~4 lines of 11px mono + 8px vertical padding
-    el.style.height = `${Math.min(el.scrollHeight, maxH)}px`
+    const maxH = 80
+    el.style.height = `${String(Math.min(el.scrollHeight, maxH))}px`
     el.style.overflowY = el.scrollHeight > maxH ? 'auto' : 'hidden'
-  }, [sendText, tail?.windowPresent])
+  }, [sendText, windowPresent])
 
-  function handleScroll() {
-    if (!preRef.current) return
-    const { scrollTop, scrollHeight, clientHeight } = preRef.current
-    autoScrollRef.current = scrollHeight - scrollTop - clientHeight < 8
-    if (scrollTop < 20 && hasMoreRef.current && !isLoadingMoreRef.current) {
-      loadMore()
-    }
-  }
-
-  function loadMore() {
-    const nextLines = lines + PAGE_SIZE
-    if (nextLines > MAX_LINES || isLoadingMoreRef.current) return
-    isLoadingMoreRef.current = true
-    setIsLoadingMore(true)
-    prevScrollHeightRef.current = preRef.current?.scrollHeight ?? 0
-    prevScrollTopRef.current = preRef.current?.scrollTop ?? 0
-    setLines(nextLines)
-  }
-
-  // One-shot backfill on mount/lines change; live updates arrive via the SSE subscription below.
+  // Fetch initial tail to determine windowPresent and capture the first text snapshot.
   useEffect(() => {
     let cancelled = false
-    fetch(`${API_BASE}/agents/${agentId.toString()}/tail?lines=${String(lines)}`)
+    queueMicrotask(() => {
+      if (cancelled) return
+      setLoaded(false)
+      setWindowPresent(false)
+    })
+    fetch(`${API_BASE}/agents/${agentId.toString()}/tail?lines=${String(TAIL_LINES)}`)
       .then((r) => {
         if (!r.ok) throw new Error(`HTTP ${r.status.toString()}`)
         return r.json() as Promise<TailResponse>
       })
       .then((data) => {
         if (!cancelled) {
-          const lineCount = data.text ? data.text.split('\n').length : 0
-          hasMoreRef.current = lineCount >= lines && lines < MAX_LINES
-          setTail(data)
+          initialTextRef.current = data.text
+          setWindowPresent(data.windowPresent)
+          setLoaded(true)
           setFailed(false)
         }
       })
       .catch(() => { if (!cancelled) setFailed(true) })
     return () => { cancelled = true }
-  }, [agentId, lines])
+  }, [agentId])
+
+  // Create the xterm.js terminal once windowPresent is true and the container div is in the DOM.
+  useEffect(() => {
+    if (!windowPresent || !xtermContainerRef.current) return
+    const term = new Terminal({
+      theme: { background: '#0b0b0d', foreground: '#e7e8ea', cursor: '#e7e8ea', cursorAccent: '#0b0b0d' },
+      fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+      fontSize: 11,
+      lineHeight: 1.3,
+      scrollback: 1000,
+      convertEol: true,
+      disableStdin: true,
+      // Read-only mirror: the xterm textarea never holds focus (keys are captured by the
+      // wrapper div), so force a steady block cursor that stays visible while blurred — this
+      // is what makes the browser cursor track the tmux pane's cursor.
+      cursorBlink: false,
+      cursorStyle: 'block',
+      cursorInactiveStyle: 'block',
+    })
+    const fitAddon = new FitAddon()
+    term.loadAddon(fitAddon)
+    term.open(xtermContainerRef.current)
+    fitAddon.fit()
+    termRef.current = term
+    fitAddonRef.current = fitAddon
+    // The DOM renderer only paints the (inactive) cursor after the terminal has been focused
+    // once, but this read-only mirror never holds focus. Focus+blur once, restoring the prior
+    // focus, so the block cursor mirrors the pane's cursor position from the first frame.
+    {
+      const prevActive = document.activeElement as HTMLElement | null
+      term.focus()
+      term.blur()
+      if (prevActive && prevActive !== document.body) prevActive.focus()
+    }
+    term.onScroll(() => {
+      if (writingRef.current) return // ignore scroll events caused by our own repaint
+      const atBottom = term.buffer.active.viewportY >= term.buffer.active.baseY
+      followRef.current = atBottom
+      // Returned to the bottom: catch up on whatever snapshot arrived while scrolled up.
+      if (atBottom && pendingTextRef.current !== null && pendingTextRef.current !== lastWrittenRef.current) {
+        applySnapshot(pendingTextRef.current)
+      }
+    })
+    if (initialTextRef.current) {
+      applySnapshot(initialTextRef.current)
+      initialTextRef.current = ''
+    }
+    const ro = new ResizeObserver(() => { fitAddonRef.current?.fit() })
+    ro.observe(xtermContainerRef.current)
+    return () => {
+      ro.disconnect()
+      term.dispose()
+      termRef.current = null
+      fitAddonRef.current = null
+    }
+  }, [windowPresent, agentId])
 
   useEffect(() => {
     if (!focused) return
     const pending = pendingDeletes.get(agentId)
     if (pending !== undefined) {
-      // StrictMode remount: cancel the queued DELETE — backend is already focused
       clearTimeout(pending)
       pendingDeletes.delete(agentId)
     } else {
@@ -155,42 +221,25 @@ export default function LogTail({ agentId, agentName, maxHeightClass, focused, f
     focused ? 'terminal-output-focus' : 'terminal-output',
     (payload) => {
       if (payload.agentId !== agentId) return
-      if (lines > payload.lines) {
-        // Re-fetch at the expanded line count so SSE doesn't collapse the history view
-        fetch(`${API_BASE}/agents/${agentId.toString()}/tail?lines=${String(lines)}`)
-          .then((r) => r.json() as Promise<TailResponse>)
-          .then((data) => { setTail(data); setFailed(false) })
-          .catch(() => { /* non-fatal; next poll will retry */ })
-      } else {
-        setTail({ agent: agentName, lines: payload.lines, windowPresent: true, text: payload.text })
-      }
+      pendingTextRef.current = payload.text
+      // Only repaint while following the live tail; if the user scrolled up to read history,
+      // leave the buffer untouched (the snapshot is applied when they scroll back to the bottom).
+      if (followRef.current) applySnapshot(payload.text)
     },
   )
 
   useEffect(() => {
-    if (focused) {
-      autoScrollRef.current = true
-      if (preRef.current) preRef.current.scrollTop = preRef.current.scrollHeight
+    if (focused && termRef.current) {
+      followRef.current = true
+      termRef.current.scrollToBottom()
     }
   }, [focused])
-
-  useEffect(() => {
-    if (tail === null || !preRef.current) return
-    if (isLoadingMoreRef.current) {
-      const delta = preRef.current.scrollHeight - prevScrollHeightRef.current
-      preRef.current.scrollTop = prevScrollTopRef.current + delta
-      isLoadingMoreRef.current = false
-      setIsLoadingMore(false)
-    } else if (autoScrollRef.current) {
-      preRef.current.scrollTop = preRef.current.scrollHeight
-    }
-  }, [tail])
 
   useEffect(() => {
     if (interactSignal !== undefined && interactSignal > 0) {
       setTimeout(() => {
         setInteracting(true)
-        captureRef.current?.focus() // refocus even when already interacting
+        captureRef.current?.focus()
       }, 0)
     }
   }, [interactSignal])
@@ -208,17 +257,22 @@ export default function LogTail({ agentId, agentName, maxHeightClass, focused, f
   }
 
   function handleKeyDown(e: KeyboardEvent<HTMLDivElement>) {
-    if (e.nativeEvent.isComposing || e.key === 'Process') return // IME — use the send field instead
+    if (onToggleExpand && isExpandShortcut(e)) {
+      e.preventDefault()
+      e.stopPropagation()
+      onToggleExpand()
+      return
+    }
+
+    if (e.nativeEvent.isComposing || e.key === 'Process') return
 
     if (e.key === 'Escape') {
       e.preventDefault()
       e.stopPropagation()
-      // Cmd/Ctrl + Esc → forward Esc to the agent
       if (e.metaKey || e.ctrlKey) {
         enqueue({ keys: ['Escape'] })
         return
       }
-      // Double-esc within 800 ms → close the modal
       const now = Date.now()
       if (escHintAtRef.current !== null && now - escHintAtRef.current < 800) {
         escHintAtRef.current = null
@@ -227,7 +281,6 @@ export default function LogTail({ agentId, agentName, maxHeightClass, focused, f
         onCloseModal?.()
         return
       }
-      // First Esc: show hint toast
       escHintAtRef.current = now
       setEscHint(true)
       if (escHintTimerRef.current !== null) clearTimeout(escHintTimerRef.current)
@@ -246,7 +299,6 @@ export default function LogTail({ agentId, agentName, maxHeightClass, focused, f
     enqueue(payload)
   }
 
-  /** Uploads any image files through the keystroke queue (path lands in the pane in order). Returns false when none were images. */
   function enqueueImageUploads(files: FileList): boolean {
     const images = Array.from(files).filter((f) => f.type.startsWith('image/'))
     if (images.length === 0) return false
@@ -283,8 +335,6 @@ export default function LogTail({ agentId, agentName, maxHeightClass, focused, f
   }
 
   function handleBlur(e: FocusEvent<HTMLDivElement>) {
-    // Click-outside / focus-loss ends interact mode; focus moving within the
-    // container (e.g. onto the stop button) doesn't.
     if (!(e.relatedTarget instanceof Node) || !captureRef.current?.contains(e.relatedTarget)) {
       setInteracting(false)
     }
@@ -298,39 +348,42 @@ export default function LogTail({ agentId, agentName, maxHeightClass, focused, f
     try { localStorage.removeItem(`conductor:sendDraft:${agentId.toString()}`) } catch { /**/ }
   }
 
-  const windowPresent = tail?.windowPresent ?? false
-
   return (
     <div className={fillContainer ? 'flex flex-col flex-1 min-h-0' : undefined}>
       <div className={`mb-1.5 flex items-center gap-2${fillContainer ? ' flex-shrink-0' : ''}`}>
         <p className="m-0 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-2">
           Log output
           {uploading && <span className="ml-2 normal-case tracking-normal text-accent-blue">uploading image…</span>}
-          {isLoadingMore && <span className="ml-2 normal-case tracking-normal text-muted-2">loading older output…</span>}
         </p>
         {onToggleExpand && (
-          <button
-            type="button"
-            onClick={onToggleExpand}
-            className="ml-auto flex h-5 w-5 cursor-pointer items-center justify-center rounded-[5px] text-muted-2 transition hover:bg-canvas hover:text-ink"
-            aria-label={expanded ? 'Collapse log' : 'Expand log'}
-            title={expanded ? 'Collapse log' : 'Expand log'}
-          >
-            {expanded ? (
-              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
-                <path d="M4.5 1.5H1.5v3M10.5 1.5h-3v3M4.5 10.5H1.5v-3M10.5 10.5h-3v-3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-            ) : (
-              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
-                <path d="M1.5 4.5V1.5h3M7.5 1.5h3v3M1.5 7.5v3h3M7.5 10.5h3v-3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-            )}
-          </button>
+          <div className="ml-auto flex select-none items-center gap-1.5">
+            <kbd className="inline-flex items-center gap-1 rounded-[5px] border border-line bg-canvas px-1.5 py-0.5 font-mono text-[11px] leading-none text-ink">
+              <span>{isMac ? '⌥' : 'Alt'}</span>
+              <span>F</span>
+            </kbd>
+            <button
+              type="button"
+              onClick={onToggleExpand}
+              className="flex h-5 w-5 cursor-pointer items-center justify-center rounded-[5px] text-muted-2 transition hover:bg-canvas hover:text-ink"
+              aria-label={expanded ? 'Collapse log' : 'Expand log'}
+              title={`${expanded ? 'Collapse log' : 'Expand log'} (${isMac ? 'Option' : 'Alt'}+F)`}
+            >
+              {expanded ? (
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+                  <path d="M4.5 1.5H1.5v3M10.5 1.5h-3v3M4.5 10.5H1.5v-3M10.5 10.5h-3v-3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              ) : (
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+                  <path d="M1.5 4.5V1.5h3M7.5 1.5h3v3M1.5 7.5v3h3M7.5 10.5h3v-3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              )}
+            </button>
+          </div>
         )}
       </div>
-      {tail === null ? (
+      {!loaded ? (
         <p className="text-[12px] italic text-muted-2">{failed ? 'Could not load log output.' : 'Loading…'}</p>
-      ) : !tail.windowPresent ? (
+      ) : !windowPresent ? (
         <p className="text-[12px] italic text-muted-2">Window not present.</p>
       ) : (
         <div
@@ -343,13 +396,13 @@ export default function LogTail({ agentId, agentName, maxHeightClass, focused, f
           onDragLeave={() => { setDragOver(false) }}
           onDrop={handleDrop}
           className={`relative ${fillContainer ? 'flex flex-col flex-1 min-h-0 ' : ''}${dragOver
-            ? 'rounded-[10px] outline-none ring-[3px] ring-accent-blue'
+            ? 'overflow-hidden rounded-[10px] outline-none ring-[3px] ring-accent-blue'
             : interacting
-              ? 'rounded-[10px] outline-none ring-[3px] ring-[#e0901a]'
+              ? 'overflow-hidden rounded-[10px] outline-none ring-[3px] ring-[#e0901a]'
               : 'outline-none'}`}
         >
           {interacting && (
-            <div className="flex items-center gap-2 rounded-t-[10px] bg-[#e0901a] px-3 py-1 text-[10px] font-bold uppercase tracking-[0.06em] text-white">
+            <div className="flex items-center gap-2 bg-[#e0901a] px-3 py-1 text-[10px] font-bold uppercase tracking-[0.06em] text-white">
               <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" />
               Direct Input — keys go to {agentName}
               <button
@@ -359,12 +412,11 @@ export default function LogTail({ agentId, agentName, maxHeightClass, focused, f
               >stop</button>
             </div>
           )}
-          <pre
-            ref={preRef}
-            onScroll={handleScroll}
-            className={`${fillContainer ? 'scrollbar-dark' : 'scrollbar-none'} m-0 overflow-auto whitespace-pre-wrap [overflow-wrap:anywhere] selection:bg-accent-blue selection:text-white ${interacting ? 'rounded-b-[10px]' : 'rounded-[10px]'} bg-[#0b0b0d] p-3 font-mono text-[11px] leading-[1.3] text-[#e7e8ea] ${fillContainer ? 'flex-1 min-h-0' : (maxHeightClass ?? '')} ${!interacting && onInteractChange !== undefined ? 'cursor-text' : ''}`}
+          <div
+            ref={xtermContainerRef}
+            className={`overflow-hidden ${interacting ? '' : 'rounded-[10px]'} ${fillContainer ? 'flex-1 min-h-0' : (maxHeightClass ?? 'h-48')} ${!interacting && onInteractChange !== undefined ? 'cursor-text' : ''}`}
             onClick={!interacting && onInteractChange !== undefined ? () => { setInteracting(true); captureRef.current?.focus() } : undefined}
-          >{tail.text || ' '}</pre>
+          />
           {interacting && escHint && (
             <div
               role="status"
@@ -408,7 +460,7 @@ export default function LogTail({ agentId, agentName, maxHeightClass, focused, f
           >Send</button>
           <button
             type="button"
-            onMouseDown={(e) => { e.preventDefault() }} // keep focus on the capture div so blur doesn't pre-toggle
+            onMouseDown={(e) => { e.preventDefault() }}
             onClick={() => { setInteracting((prev) => !prev) }}
             className={interacting
               ? 'inline-flex h-7 cursor-pointer items-center gap-1.5 rounded-[7px] bg-[#e0901a] px-3 text-[12px] font-semibold text-white transition hover:opacity-85 active:scale-[0.985]'

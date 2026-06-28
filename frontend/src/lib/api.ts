@@ -12,7 +12,7 @@ type ViteEnv = ImportMeta & {
   }
 }
 
-const viteEnv = ((import.meta as ViteEnv).env ?? {}) as ViteEnv['env']
+const viteEnv = (import.meta as ViteEnv).env
 
 /** Conductor API base — Vite proxy at `/api` (overridable via VITE_API_URL). */
 export const API_BASE = viteEnv.VITE_API_URL ?? '/api'

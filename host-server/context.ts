@@ -298,7 +298,7 @@ function readCodexInfo(sessionPath: string): CodexInfo | null {
       }
       if (rec.type === 'event_msg' && rec.payload?.info?.model_context_window) {
         contextLimit = rec.payload.info.model_context_window;
-        const usage = rec.payload.info?.last_token_usage;
+        const usage = rec.payload.info.last_token_usage;
         if (usage) {
           contextTokens = usage.total_tokens ??
             ((usage.input_tokens ?? 0) + (usage.output_tokens ?? 0) + (usage.reasoning_output_tokens ?? 0));

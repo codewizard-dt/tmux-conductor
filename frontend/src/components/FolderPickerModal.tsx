@@ -9,7 +9,7 @@ interface FolderPickerModalProps {
 
 export default function FolderPickerModal({ initialPath, onSelect, onClose }: FolderPickerModalProps) {
   const [result, setResult] = useState<BrowseResult | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [inputPath, setInputPath] = useState(initialPath ?? '');
   const inputRef = useRef<HTMLInputElement>(null);
@@ -29,9 +29,22 @@ export default function FolderPickerModal({ initialPath, onSelect, onClose }: Fo
   }
 
   useEffect(() => {
-    navigate(initialPath ?? '');
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    let cancelled = false;
+    browseDirectory(initialPath ?? '')
+      .then((res) => {
+        if (cancelled) return;
+        setResult(res);
+        setInputPath(res.path);
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        setError(err instanceof Error ? err.message : 'Cannot read directory');
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [initialPath]);
 
   function handleInputKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key === 'Enter') {
@@ -97,7 +110,9 @@ export default function FolderPickerModal({ initialPath, onSelect, onClose }: Fo
                 <li>
                   <button
                     type="button"
-                    onClick={() => { navigate(result.parent!); }}
+                    onClick={() => {
+                      if (result.parent !== null) navigate(result.parent);
+                    }}
                     className="flex w-full cursor-pointer items-center gap-2 rounded-[6px] px-2.5 py-1.5 text-left text-[12px] text-muted hover:bg-canvas hover:text-ink transition"
                   >
                     <span className="text-[13px] leading-none">↑</span>
