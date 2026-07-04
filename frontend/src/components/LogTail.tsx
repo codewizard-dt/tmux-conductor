@@ -96,6 +96,13 @@ export default function LogTail({ agentId, agentName, maxHeightClass, focused, f
   const escHintAtRef = useRef<number | null>(null)
   const escHintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const terminalWsRef = useRef<TerminalWebSocketClient | null>(null)
+  const [terminalDebug, setTerminalDebug] = useState({
+    wsStatus: 'idle',
+    lastAckMs: null as number | null,
+    lastEchoMs: null as number | null,
+    lastOutputAt: null as string | null,
+    lastOutputChars: 0,
+  })
 
   // Repaint the terminal from a full pane snapshot in a SINGLE write: the leading ESC c (RIS)
   // resets/clears and the content redraws in the same render frame, so there's no blank
@@ -223,18 +230,39 @@ export default function LogTail({ agentId, agentName, maxHeightClass, focused, f
     if (!focused) {
       terminalWsRef.current?.close()
       terminalWsRef.current = null
+      queueMicrotask(() => { setTerminalDebug((prev) => ({ ...prev, wsStatus: 'idle' })) })
       return
     }
+    queueMicrotask(() => { setTerminalDebug((prev) => ({ ...prev, wsStatus: 'connecting' })) })
     const client = connectTerminalWebSocket(
       agentId,
       (message) => {
-        if (message.type !== 'output' || message.agentId !== agentId || typeof message.text !== 'string') return
+        if (message.type === 'ack') {
+          setTerminalDebug((prev) => ({ ...prev, wsStatus: 'open', lastAckMs: message.latencyMs ?? prev.lastAckMs }))
+          return
+        }
+        if (message.type === 'echo') {
+          setTerminalDebug((prev) => ({ ...prev, wsStatus: 'open', lastEchoMs: message.latencyMs ?? prev.lastEchoMs }))
+          return
+        }
+        if (message.type === 'error') {
+          setTerminalDebug((prev) => ({ ...prev, wsStatus: 'error' }))
+          return
+        }
+        if (message.agentId !== agentId || typeof message.text !== 'string') return
+        setTerminalDebug((prev) => ({
+          ...prev,
+          wsStatus: 'open',
+          lastOutputAt: new Date().toLocaleTimeString(),
+          lastOutputChars: message.text?.length ?? 0,
+        }))
         pendingTextRef.current = message.text
         setWindowPresent(message.windowPresent ?? true)
         if (followRef.current) applySnapshot(message.text)
       },
       () => {
         if (terminalWsRef.current === client) terminalWsRef.current = null
+        setTerminalDebug((prev) => ({ ...prev, wsStatus: 'closed' }))
       },
     )
     terminalWsRef.current = client
@@ -412,6 +440,23 @@ export default function LogTail({ agentId, agentName, maxHeightClass, focused, f
           </div>
         )}
       </div>
+      {focused && (
+        <details className={`mb-1.5 rounded-[7px] border border-line bg-canvas px-2 py-1 text-[10px] text-muted-2${fillContainer ? ' flex-shrink-0' : ''}`}>
+          <summary className="cursor-pointer select-none font-semibold uppercase tracking-[0.06em] text-muted">
+            Debug
+          </summary>
+          <dl className="mt-1 grid grid-cols-[max-content_1fr] gap-x-2 gap-y-0.5 font-mono">
+            <dt>ws</dt>
+            <dd className="m-0 text-ink">{terminalDebug.wsStatus}</dd>
+            <dt>ack</dt>
+            <dd className="m-0 text-ink">{terminalDebug.lastAckMs === null ? '-' : `${terminalDebug.lastAckMs.toFixed(1)} ms`}</dd>
+            <dt>echo</dt>
+            <dd className="m-0 text-ink">{terminalDebug.lastEchoMs === null ? '-' : `${terminalDebug.lastEchoMs.toFixed(1)} ms`}</dd>
+            <dt>output</dt>
+            <dd className="m-0 text-ink">{terminalDebug.lastOutputAt ?? '-'} · {terminalDebug.lastOutputChars.toLocaleString()} chars</dd>
+          </dl>
+        </details>
+      )}
       {!loaded ? (
         <p className="text-[12px] italic text-muted-2">{failed ? 'Could not load log output.' : 'Loading…'}</p>
       ) : !windowPresent ? (

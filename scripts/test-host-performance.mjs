@@ -25,6 +25,9 @@ const requiredMetrics = [
   'tmuxCaptureTailRaw',
   'sseBroadcasts',
   'tailRequests',
+  'terminalWsSnapshots',
+  'terminalWsInputAck',
+  'terminalWsInputEcho',
 ];
 
 for (const key of requiredMetrics) {
@@ -47,6 +50,23 @@ if (!serverSource.includes("timeSync('focusedTerminalTicks', tailPollLoopFocus)"
 
 if (!serverSource.includes('prevTailMapFocus.get(a.id) !== text')) {
   throw new Error('focused terminal loop does not suppress unchanged snapshots');
+}
+
+const requiredObservabilityHooks = [
+  'monitorEventLoopDelay',
+  'eventLoopUtilization',
+  'tmuxOperations',
+  'terminalWebSocket',
+  'status_transition',
+  'slow_loop',
+  'tmux_timeout',
+  'observability.jsonl',
+];
+
+for (const key of requiredObservabilityHooks) {
+  if (!serverSource.includes(key)) {
+    throw new Error(`Missing observability hook: ${key}`);
+  }
 }
 
 console.log('host performance checks passed');

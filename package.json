@@ -10,7 +10,8 @@
     "start": "concurrently --names host,frontend --prefix-colors cyan,magenta --kill-others \"npm run start --workspace ui\" \"npm --prefix host-server run start\"",
     "typecheck": "concurrently --names host,frontend --prefix-colors cyan,magenta \"npm run typecheck --workspace host-server\" \"npm run typecheck --workspace ui\"",
     "lint": "concurrently --names host,frontend --prefix-colors cyan,magenta \"npm run lint --workspace host-server\" \"npm run lint --workspace ui\"",
-    "check:frontend-live-updates": "bash scripts/check-frontend-live-updates.sh"
+    "check:frontend-live-updates": "bash scripts/check-frontend-live-updates.sh",
+    "diagnostics:bundle": "bash scripts/collect-diagnostics.sh"
   },
   "devDependencies": {
     "concurrently": "^10.0.3"

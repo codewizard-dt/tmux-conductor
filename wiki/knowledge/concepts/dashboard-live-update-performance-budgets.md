@@ -45,7 +45,18 @@ Record agent count, focused terminal state, terminal dimensions, browser tabs, a
 
 ## 2026-07 Latency Research Update
 
-The application-latency research extends these budgets beyond loop duration. Add budgets for event-loop delay, focused terminal WebSocket connections, duplicate focused capture, tmux timeout/error counts, and input-to-echo latency. A focused terminal modal should have exactly one focused output owner: either WebSocket or SSE fallback, not both.
+The application-latency research extends these budgets beyond loop duration. `scripts/measure-dashboard-performance.sh` now reports event-loop delay/utilization, focused terminal WebSocket counters, tmux operation timings by owner, input-to-ack latency, and input-to-echo latency. A focused terminal modal should have exactly one focused output owner: either WebSocket or SSE fallback, not both.
+
+Use these starting thresholds until repeated local baselines justify tighter budgets:
+
+| Signal | Initial threshold |
+|---|---:|
+| Event-loop p95 delay | <= 150 ms |
+| Event-loop utilization during idle dashboard use | <= 0.90 |
+| Focused terminal WebSocket active connections | <= focused terminal count |
+| `terminalWsInputAck` max | <= 250 ms |
+| `terminalWsInputEcho` max | <= 1500 ms |
+| Tmux operation timeouts | 0 |
 
 relates_to::[[Focused Terminal Transport]]
 relates_to::[[Local Observability]]

@@ -3,7 +3,7 @@ import { existsSync, unlinkSync, renameSync, readFileSync, mkdirSync, writeFileS
 import * as path from 'path';
 import * as os from 'os';
 import { fileURLToPath } from 'url';
-import { performance } from 'perf_hooks';
+import { monitorEventLoopDelay, performance } from 'perf_hooks';
 import Fastify, { type FastifyReply } from 'fastify';
 import fastifyCors from '@fastify/cors';
 import fastifyStatic from '@fastify/static';
@@ -31,7 +31,14 @@ process.on('uncaughtException', (err) => {
   process.exit(1);
 });
 
-const fastify = Fastify({ logger: false });
+const structuredRequestLogging =
+  process.env['FASTIFY_STRUCTURED_LOGS'] === '1' ||
+  process.env['FASTIFY_REQUEST_LOGS'] === '1';
+const fastify = Fastify({
+  logger: structuredRequestLogging
+    ? { level: process.env['FASTIFY_LOG_LEVEL'] ?? 'info' }
+    : false,
+});
 
 
 const corsOrigin = process.env['CORS_ORIGIN'] || '*';
@@ -219,7 +226,7 @@ function refreshAgentContextCache(conf: ReturnType<typeof readConductorConf>): v
     const wn = agentWindowName(agent);
     const paneCurrentCommand = inventory.windows.get(wn) ?? null;
     const windowPresent = paneCurrentCommand !== null;
-    const tail15 = windowPresent ? capturePaneTail(sessionName, wn, 15) : '';
+    const tail15 = windowPresent ? capturePaneTail(sessionName, wn, 15, 'status') : '';
     const state = detectAgentStatus(conf, wn, agent.launchCmd, tail15 || undefined, windowPresent, paneCurrentCommand);
     const isBusy = state === 'busy' || state === 'awaiting' || state === 'stalled';
     const agentType = detectAgentType(agent.launchCmd);
@@ -281,13 +288,21 @@ type TimedMetricName =
   | 'tmuxCaptureTail'
   | 'tmuxCaptureTailRaw'
   | 'sseBroadcasts'
-  | 'tailRequests';
+  | 'tailRequests'
+  | 'terminalWsSnapshots'
+  | 'terminalWsInputAck'
+  | 'terminalWsInputEcho';
 
 interface TimingSummary {
   count: number;
   totalMs: number;
   maxMs: number;
   lastMs: number;
+}
+
+interface TmuxOperationSummary extends TimingSummary {
+  errors: number;
+  timeouts: number;
 }
 
 interface LiveUpdateMetrics {
@@ -299,6 +314,17 @@ interface LiveUpdateMetrics {
   };
   sseBroadcastsByEvent: Record<string, number>;
   timings: Record<TimedMetricName, TimingSummary>;
+  tmuxOperations: Record<string, TmuxOperationSummary>;
+  terminalWebSocket: {
+    activeConnections: number;
+    opened: number;
+    closed: number;
+    messagesIn: number;
+    inputAcks: number;
+    inputEchoes: number;
+    errors: number;
+  };
+  statusTransitions: Record<string, number>;
 }
 
 function createTimingSummary(): TimingSummary {
@@ -318,11 +344,34 @@ const liveUpdateMetrics: LiveUpdateMetrics = {
     tmuxCaptureTailRaw: createTimingSummary(),
     sseBroadcasts: createTimingSummary(),
     tailRequests: createTimingSummary(),
+    terminalWsSnapshots: createTimingSummary(),
+    terminalWsInputAck: createTimingSummary(),
+    terminalWsInputEcho: createTimingSummary(),
   },
+  tmuxOperations: {},
+  terminalWebSocket: {
+    activeConnections: 0,
+    opened: 0,
+    closed: 0,
+    messagesIn: 0,
+    inputAcks: 0,
+    inputEchoes: 0,
+    errors: 0,
+  },
+  statusTransitions: {},
 };
+
+const eventLoopDelay = monitorEventLoopDelay({ resolution: 20 });
+eventLoopDelay.enable();
+let lastEventLoopUtilization = performance.eventLoopUtilization();
 
 function roundMs(value: number): number {
   return Math.round(value * 1000) / 1000;
+}
+
+function eventLoopNsToMs(value: number): number {
+  if (!Number.isFinite(value) || value > 1_000_000_000_000_000) return 0;
+  return roundMs(value / 1_000_000);
 }
 
 function recordTiming(name: TimedMetricName, durationMs: number): void {
@@ -331,6 +380,63 @@ function recordTiming(name: TimedMetricName, durationMs: number): void {
   metric.totalMs = roundMs(metric.totalMs + durationMs);
   metric.lastMs = roundMs(durationMs);
   metric.maxMs = roundMs(Math.max(metric.maxMs, durationMs));
+}
+
+function createTmuxOperationSummary(): TmuxOperationSummary {
+  return { ...createTimingSummary(), errors: 0, timeouts: 0 };
+}
+
+function recordTmuxOperation(
+  operation: string,
+  owner: string,
+  durationMs: number,
+  result: { error?: boolean; timedOut?: boolean } = {},
+): void {
+  const key = `${owner}:${operation}`;
+  const metric = liveUpdateMetrics.tmuxOperations[key] ?? createTmuxOperationSummary();
+  metric.count += 1;
+  metric.totalMs = roundMs(metric.totalMs + durationMs);
+  metric.lastMs = roundMs(durationMs);
+  metric.maxMs = roundMs(Math.max(metric.maxMs, durationMs));
+  if (result.error) metric.errors += 1;
+  if (result.timedOut) metric.timeouts += 1;
+  liveUpdateMetrics.tmuxOperations[key] = metric;
+  if (result.timedOut) {
+    appendObservabilityLog('tmux_timeout', { operation, owner, durationMs: roundMs(durationMs) });
+  }
+}
+
+function readEventLoopMetrics() {
+  const utilization = performance.eventLoopUtilization(lastEventLoopUtilization);
+  lastEventLoopUtilization = performance.eventLoopUtilization();
+  return {
+    delay: {
+      minMs: eventLoopNsToMs(eventLoopDelay.min),
+      meanMs: eventLoopNsToMs(eventLoopDelay.mean),
+      maxMs: eventLoopNsToMs(eventLoopDelay.max),
+      p50Ms: eventLoopNsToMs(eventLoopDelay.percentile(50)),
+      p95Ms: eventLoopNsToMs(eventLoopDelay.percentile(95)),
+      p99Ms: eventLoopNsToMs(eventLoopDelay.percentile(99)),
+    },
+    utilization: {
+      activeMs: roundMs(utilization.active),
+      idleMs: roundMs(utilization.idle),
+      utilization: roundMs(utilization.utilization),
+    },
+  };
+}
+
+function appendObservabilityLog(event: string, payload: Record<string, unknown>): void {
+  try {
+    const { logDir } = readConductorConf();
+    mkdirSync(logDir, { recursive: true });
+    appendFileSync(
+      path.join(logDir, 'observability.jsonl'),
+      `${JSON.stringify({ ts: new Date().toISOString(), event, ...payload })}\n`,
+    );
+  } catch {
+    /* observability logging must never break the control plane */
+  }
 }
 
 function timeSync<T>(name: TimedMetricName, fn: () => T): T {
@@ -342,12 +448,24 @@ function timeSync<T>(name: TimedMetricName, fn: () => T): T {
   }
 }
 
-function capturePaneTail(sessionName: string, windowName: string, n: number): string {
-  return timeSync('tmuxCaptureTail', () => capturePaneTailUninstrumented(sessionName, windowName, n));
+function capturePaneTail(sessionName: string, windowName: string, n: number, owner = 'unknown'): string {
+  const started = performance.now();
+  const text = timeSync('tmuxCaptureTail', () => capturePaneTailUninstrumented(sessionName, windowName, n));
+  const durationMs = performance.now() - started;
+  recordTmuxOperation('capture-pane-tail', owner, durationMs, {
+    timedOut: text === '' && durationMs >= TMUX_SYNC_TIMEOUT_MS - 25,
+  });
+  return text;
 }
 
-function capturePaneTailRaw(sessionName: string, windowName: string, n: number): string {
-  return timeSync('tmuxCaptureTailRaw', () => capturePaneTailRawUninstrumented(sessionName, windowName, n));
+function capturePaneTailRaw(sessionName: string, windowName: string, n: number, owner = 'unknown'): string {
+  const started = performance.now();
+  const text = timeSync('tmuxCaptureTailRaw', () => capturePaneTailRawUninstrumented(sessionName, windowName, n));
+  const durationMs = performance.now() - started;
+  recordTmuxOperation('capture-pane-raw', owner, durationMs, {
+    timedOut: text === '' && durationMs >= TMUX_SYNC_TIMEOUT_MS - 25,
+  });
+  return text;
 }
 
 function broadcastSSE(eventName: string, data: unknown): void {
@@ -427,7 +545,14 @@ async function sendDirectInput(agentId: number, payload: DirectInputPayload): Pr
 
   for (const args of sends) {
     if (multiline && args[args.length - 1] === 'Enter') await sleep(300);
+    const started = performance.now();
     const r = spawnSync('tmux', args, { encoding: 'utf8', timeout: TMUX_SYNC_TIMEOUT_MS });
+    const durationMs = performance.now() - started;
+    const timedOut = (r.error as NodeJS.ErrnoException | undefined)?.code === 'ETIMEDOUT';
+    recordTmuxOperation(args[0] ?? 'tmux', 'direct-input', durationMs, {
+      error: r.status !== 0,
+      timedOut,
+    });
     if (r.status !== 0) throw new Error(`tmux send failed: ${r.stderr}`);
   }
 
@@ -455,6 +580,7 @@ await fastify.register((api) => {
     reply.send({
       timestamp: new Date().toISOString(),
       liveUpdates: liveUpdateMetrics,
+      eventLoop: readEventLoopMetrics(),
     });
   });
 
@@ -611,7 +737,7 @@ await fastify.register((api) => {
         'busy\n',
         'utf8',
       );
-      const paneTail = capturePaneTail(conf.sessionName, win, 5);
+      const paneTail = capturePaneTail(conf.sessionName, win, 5, 'task-dispatch');
       const dispatchRecord = {
         ts: new Date().toISOString(),
         agent: win,
@@ -716,7 +842,7 @@ await fastify.register((api) => {
     // Immediately notify SSE clients — don't wait for the next poll tick.
     {
       const windowPresent = isTmuxWindowPresent(conf.sessionName, winName);
-      const tail15 = windowPresent ? capturePaneTail(conf.sessionName, winName, 15) : '';
+      const tail15 = windowPresent ? capturePaneTail(conf.sessionName, winName, 15, 'agent-window') : '';
       const state = detectAgentStatus(conf, winName, launchCmd, tail15 || undefined);
       const isBusy = state === 'busy' || state === 'awaiting' || state === 'stalled';
       const agentType = detectAgentType(launchCmd);
@@ -779,7 +905,7 @@ await fastify.register((api) => {
     // Immediately notify SSE clients — don't wait for the next poll tick.
     {
       const windowPresent = isTmuxWindowPresent(conf.sessionName, winName);
-      const tail15 = windowPresent ? capturePaneTail(conf.sessionName, winName, 15) : '';
+      const tail15 = windowPresent ? capturePaneTail(conf.sessionName, winName, 15, 'mode-switch') : '';
       const state = detectAgentStatus(conf, winName, entry.launchCmd, tail15 || undefined);
       const isBusy = state === 'busy' || state === 'awaiting' || state === 'stalled';
       const agentType = detectAgentType(entry.launchCmd);
@@ -1100,7 +1226,7 @@ await fastify.register((api) => {
         return reply.send({ agent: name, agentId, lines, windowPresent: false, text: '' });
       }
 
-      const text = capturePaneTailRaw(conf.sessionName, winName, lines);
+      const text = capturePaneTailRaw(conf.sessionName, winName, lines, 'tail-request');
       return reply.send({ agent: name, agentId, lines, windowPresent: true, text });
     });
   });
@@ -1140,8 +1266,13 @@ await fastify.register((api) => {
     focusedAgents.add(agentId);
     prevTailMapFocus.delete(agentId);
     let lastText = '';
+    let pendingEchoStartedAt: number | null = null;
+    liveUpdateMetrics.terminalWebSocket.opened += 1;
+    liveUpdateMetrics.terminalWebSocket.activeConnections += 1;
+    appendObservabilityLog('terminal_ws_open', { agentId, agent: entry.name });
 
     const sendSnapshot = () => {
+      const snapshotStarted = performance.now();
       const conf = readConductorConf();
       const current = getAgentById(db, agentId);
       if (!current) {
@@ -1153,9 +1284,17 @@ await fastify.register((api) => {
         socket.send(JSON.stringify({ type: 'output', agentId, agent: current.name, lines: TAIL_LINES_FOCUS, windowPresent: false, text: '' }));
         return;
       }
-      const text = capturePaneTailRaw(conf.sessionName, winName, TAIL_LINES_FOCUS);
+      const text = capturePaneTailRaw(conf.sessionName, winName, TAIL_LINES_FOCUS, 'terminal-ws');
       if (text === lastText) return;
       lastText = text;
+      recordTiming('terminalWsSnapshots', performance.now() - snapshotStarted);
+      if (pendingEchoStartedAt !== null) {
+        const echoMs = performance.now() - pendingEchoStartedAt;
+        pendingEchoStartedAt = null;
+        recordTiming('terminalWsInputEcho', echoMs);
+        liveUpdateMetrics.terminalWebSocket.inputEchoes += 1;
+        socket.send(JSON.stringify({ type: 'echo', latencyMs: roundMs(echoMs) }));
+      }
       socket.send(JSON.stringify({ type: 'output', agentId, agent: current.name, lines: TAIL_LINES_FOCUS, windowPresent: true, text }));
     };
 
@@ -1164,21 +1303,30 @@ await fastify.register((api) => {
 
     socket.on('message', (message: Buffer) => {
       void (async () => {
+        liveUpdateMetrics.terminalWebSocket.messagesIn += 1;
         let parsed: unknown;
         try {
           parsed = JSON.parse(message.toString());
         } catch {
+          liveUpdateMetrics.terminalWebSocket.errors += 1;
           socket.send(JSON.stringify({ type: 'error', error: 'invalid JSON message' }));
           return;
         }
         if (!parsed || typeof parsed !== 'object' || !('payload' in parsed)) {
+          liveUpdateMetrics.terminalWebSocket.errors += 1;
           socket.send(JSON.stringify({ type: 'error', error: 'payload is required' }));
           return;
         }
         try {
+          const ackStarted = performance.now();
           const sent = await sendDirectInput(agentId, (parsed as { payload: DirectInputPayload }).payload);
-          socket.send(JSON.stringify({ type: 'ack', sent }));
+          const ackMs = performance.now() - ackStarted;
+          pendingEchoStartedAt = ackStarted;
+          recordTiming('terminalWsInputAck', ackMs);
+          liveUpdateMetrics.terminalWebSocket.inputAcks += 1;
+          socket.send(JSON.stringify({ type: 'ack', sent, latencyMs: roundMs(ackMs) }));
         } catch (err) {
+          liveUpdateMetrics.terminalWebSocket.errors += 1;
           socket.send(JSON.stringify({ type: 'error', error: err instanceof Error ? err.message : 'tmux send failed' }));
         }
       })();
@@ -1188,6 +1336,9 @@ await fastify.register((api) => {
       clearInterval(timer);
       focusedAgents.delete(agentId);
       prevTailMapFocus.delete(agentId);
+      liveUpdateMetrics.terminalWebSocket.closed += 1;
+      liveUpdateMetrics.terminalWebSocket.activeConnections = Math.max(0, liveUpdateMetrics.terminalWebSocket.activeConnections - 1);
+      appendObservabilityLog('terminal_ws_close', { agentId, agent: entry.name });
     });
   });
 
@@ -1494,7 +1645,7 @@ await fastify.register((api) => {
     // Immediately notify SSE clients — don't wait for the next poll tick.
     {
       const windowPresent = isTmuxWindowPresent(conf.sessionName, winName);
-      const tail15 = windowPresent ? capturePaneTail(conf.sessionName, winName, 15) : '';
+      const tail15 = windowPresent ? capturePaneTail(conf.sessionName, winName, 15, 'snapshot') : '';
       const state = detectAgentStatus(conf, winName, launchCmd, tail15 || undefined);
       const isBusy = state === 'busy' || state === 'awaiting' || state === 'stalled';
       const agentType = detectAgentType(launchCmd);
@@ -1677,7 +1828,7 @@ function buildSnapshot(): Snapshot {
     const paneCurrentCommand = inventory.windows.get(wn) ?? null;
     const windowPresent = paneCurrentCommand !== null;
     // One capture-pane per agent per tick, shared by status and mode detection.
-    const tail15 = windowPresent ? capturePaneTail(sessionName, wn, 15) : '';
+    const tail15 = windowPresent ? capturePaneTail(sessionName, wn, 15, 'snapshot') : '';
     const state = detectAgentStatus(conf, wn, agent.launchCmd, tail15 || undefined, windowPresent, paneCurrentCommand);
     // Clear label when window is gone; re-seed whenever cache is null (covers server restart + no-window reopen).
     if (state === 'no-window') {
@@ -1750,6 +1901,16 @@ function pollAndDiff() {
       prev.contextPct !== agent.contextPct ||
       prev.label !== agent.label
     ) {
+      if (prev && prev.state !== agent.state) {
+        const key = `${prev.state}->${agent.state}`;
+        liveUpdateMetrics.statusTransitions[key] = (liveUpdateMetrics.statusTransitions[key] ?? 0) + 1;
+        appendObservabilityLog('status_transition', {
+          agentId: agent.id,
+          agent: agent.name,
+          previousState: prev.state,
+          nextState: agent.state,
+        });
+      }
       broadcastSSE('agent-update', {
         id: agent.id,
         name: agent.name,
@@ -1807,7 +1968,7 @@ function tailPollLoop() {
     );
     for (const a of agents) {
       const wn = agentWindowName(a);
-      const text = capturePaneTail(conf.sessionName, wn, TAIL_LINES);
+      const text = capturePaneTail(conf.sessionName, wn, TAIL_LINES, 'terminal-loop');
       if (prevTailMap.get(a.id) !== text) {
         broadcastSSE('terminal-output', { agentId: a.id, agent: a.name, text, lines: TAIL_LINES });
         prevTailMap.set(a.id, text);
@@ -1830,7 +1991,7 @@ function tailPollLoopFocus() {
     );
     for (const a of agents) {
       const wn = agentWindowName(a);
-      const text = capturePaneTailRaw(conf.sessionName, wn, TAIL_LINES_FOCUS);
+      const text = capturePaneTailRaw(conf.sessionName, wn, TAIL_LINES_FOCUS, 'focused-terminal-loop');
       if (prevTailMapFocus.get(a.id) !== text) {
         broadcastSSE('terminal-output-focus', { agentId: a.id, agent: a.name, text, lines: TAIL_LINES_FOCUS });
         prevTailMapFocus.set(a.id, text);
@@ -1921,6 +2082,12 @@ function startManagedLoop(
           const lastWarn = loopWarnedAt.get(name) ?? 0;
           if (Date.now() - lastWarn > 15_000) {
             console.warn(`${name} loop took ${String(elapsed)}ms; backing off polling to keep HTTP responsive`);
+            appendObservabilityLog('slow_loop', {
+              loop: name,
+              elapsedMs: elapsed,
+              warnAfterMs,
+              nextDelayMs: Math.max(delayMs, opts.backoffMs ?? delayMs),
+            });
             loopWarnedAt.set(name, Date.now());
           }
         }

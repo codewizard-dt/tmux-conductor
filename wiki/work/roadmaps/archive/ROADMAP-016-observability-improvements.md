@@ -1,7 +1,7 @@
 ---
 id: ROADMAP-016
 title: Observability improvements — event-loop, tmux, WebSocket, and debug traces
-status: active
+status: done
 created: 2026-07-04
 updated: 2026-07-04
 owner: David Taylor
@@ -18,29 +18,28 @@ Make latency and terminal stalls diagnosable by adding event-loop, tmux, WebSock
 
 ## Phase 1: Runtime Signals
 
-- [ ] Add event-loop delay and utilization metrics
-- [ ] Add tmux operation metrics with owner labels
+- [x] [[TASK-084: add event-loop delay and utilization metrics]]
+- [x] [[TASK-085: add tmux operation metrics with owner labels]]
 
 ## Phase 2: Terminal Signals
 
-- [ ] Add terminal WebSocket lifecycle counters
-- [ ] Add input-to-ack and input-to-echo latency metrics
+- [x] [[TASK-086: add terminal WebSocket lifecycle counters]]
+- [x] [[TASK-087: add input-to-ack and input-to-echo latency metrics]]
 
 ## Phase 3: Logs
 
-- [ ] Enable env-gated Fastify structured request logging
-- [ ] Add status-transition JSONL records
-- [ ] Add slow-loop and tmux-timeout JSONL records
+- [x] [[TASK-088: enable env-gated Fastify structured request logging]]
+- [x] [[TASK-089: add status-transition JSONL records]]
+- [x] [[TASK-090: add slow-loop and tmux-timeout JSONL records]]
 
 ## Phase 4: Diagnostics
 
-- [ ] Add focused terminal debug overlay
-- [ ] Add local diagnostic bundle command
+- [x] [[TASK-091: add focused terminal debug overlay]]
+- [x] [[TASK-092: add local diagnostic bundle command]]
 
 ## Phase 5: Guardrails
 
-- [ ] Extend performance scripts to report observability metrics
-- [ ] Document metric interpretation thresholds
+- [x] [[TASK-093: extend performance scripts and metric threshold docs]]
 
 ## Notes
 
