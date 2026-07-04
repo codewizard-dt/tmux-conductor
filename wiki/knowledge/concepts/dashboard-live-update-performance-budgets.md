@@ -1,3 +1,15 @@
+---
+id: dashboard-live-update-performance-budgets
+title: Dashboard Live-Update Performance Budgets
+aliases: [Live-Update Performance Budgets]
+updated: 2026-07-04
+sources:
+  - ../../raw/research/dashboard-performance-websockets/index.md
+  - ../../raw/research/application-latency-structure/index.md
+  - ../../raw/research/application-latency-structure/index-2.md
+tags: [dashboard, performance, budgets]
+---
+
 # Dashboard Live-Update Performance Budgets
 
 Source tasks: [[TASK-073]], [[TASK-074]]
@@ -30,3 +42,10 @@ Record agent count, focused terminal state, terminal dimensions, browser tabs, a
 2. Repeat after the optimization under review.
 3. Tighten a budget only when the lower value is stable across repeated local runs.
 4. Keep the exported constants and this document in sync.
+
+## 2026-07 Latency Research Update
+
+The application-latency research extends these budgets beyond loop duration. Add budgets for event-loop delay, focused terminal WebSocket connections, duplicate focused capture, tmux timeout/error counts, and input-to-echo latency. A focused terminal modal should have exactly one focused output owner: either WebSocket or SSE fallback, not both.
+
+relates_to::[[Focused Terminal Transport]]
+relates_to::[[Local Observability]]

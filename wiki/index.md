@@ -1,6 +1,6 @@
 ---
 title: Wiki Index
-updated: 2026-06-11
+updated: 2026-07-04
 ---
 
 # Wiki Index — Home Map
@@ -21,10 +21,17 @@ The wiki is split into two domains with opposite organizing laws:
 
 ### Sources
 - [Web Terminal Emulators — Full ANSI Color + Cursor Support](knowledge/sources/web-terminal-emulators.md) — xterm.js is the answer; two-change integration (backend `-e` flag + frontend xterm.js); critical split between display and detection capture paths
+- [Application Latency Structure](knowledge/sources/application-latency-structure.md) — whole-stack latency assessment: synchronous tmux work, focused terminal WebSocket exclusivity, SSE vs WebSocket split, runtime knobs, and state simplification
+- [Application Latency Observability Addendum](knowledge/sources/application-latency-observability-addendum.md) — observability plan for event-loop delay, tmux operation metrics, WebSocket latency, structured logs, and terminal debug traces
 
 ### Concepts
 - [ANSI Terminal Emulation in the Browser](knowledge/concepts/ansi-terminal-emulation-browser.md) — why `<pre>` falls short; stateful terminal emulator model; xterm-256color + truecolor support
 - [tmux capture-pane and Escape Sequences](knowledge/concepts/tmux-capture-pane-escape-sequences.md) — `-e` flag for display path only; detection path must stay plain-text
+- [Dashboard Live-Update Performance Budgets](knowledge/concepts/dashboard-live-update-performance-budgets.md) — budget targets for dashboard loops, capture calls, SSE connections, and future event-loop/WebSocket metrics
+- [Dashboard Performance Benchmarking](knowledge/concepts/dashboard-performance-benchmarking.md) — repeatable commands and comparison criteria for dashboard live-update, SSE, WebSocket, and terminal latency
+- [Focused Terminal Transport](knowledge/concepts/focused-terminal-transport.md) — WebSocket should exclusively own focused terminal input/output while SSE remains global state and fallback
+- [Agent State Determination](knowledge/concepts/agent-state-determination.md) — backend status contract proposal with status reason, age, evidence, and transition observability
+- [Local Observability](knowledge/concepts/local-observability.md) — local-first metrics/logging plan for event-loop delay, tmux operations, WebSocket latency, and diagnostic bundles
 
 ### Entities
 - People — [knowledge/entities/people/](knowledge/entities/people/)
@@ -32,8 +39,13 @@ The wiki is split into two domains with opposite organizing laws:
 - Tools:
   - [xterm.js](knowledge/entities/tools/xterm-js.md) — `@xterm/xterm` v6; VS Code's terminal engine; full VT100/xterm-256color; `convertEol`/`disableStdin` for tmux read-only display
   - [hterm](knowledge/entities/tools/hterm.md) — Google's HTML Terminal; stale (2020); not on npm; not recommended
+  - [Fastify](knowledge/entities/tools/fastify.md) — host-server HTTP framework; structured request logging and WebSocket route context
+  - [React](knowledge/entities/tools/react.md) — dashboard UI framework; Strict Mode effect cleanup matters for terminal focus and transport stability
+  - [Vite](knowledge/entities/tools/vite.md) — frontend dev server/proxy; focused terminal WebSocket needs explicit proxy support
+  - [Node.js](knowledge/entities/tools/node-js.md) — host-server runtime; event-loop delay/utilization should expose synchronous tmux blocking
 - Components:
-  - [LogTail](knowledge/entities/components/log-tail.md) — `frontend/src/components/LogTail.tsx`; currently plain-text `<pre>`; planned upgrade to xterm.js
+  - [LogTail](knowledge/entities/components/log-tail.md) — `frontend/src/components/LogTail.tsx`; xterm.js terminal renderer with focused WebSocket input/output and SSE fallback considerations
+  - [Host Server](knowledge/entities/components/host-server.md) — Fastify backend owning API, SSE, focused terminal WebSocket, SQLite, tmux operations, and live-update loops
 
 ---
 

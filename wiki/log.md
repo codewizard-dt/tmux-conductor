@@ -426,3 +426,15 @@ Verified focused terminal WebSocket transport, WebSocket input/output wiring, an
 
 ## [2026-06-28] archive | ROADMAP-014 — completed, moved to archive
 All ROADMAP-014 checklist items completed. Moved to wiki/work/roadmaps/archive/ROADMAP-014-dashboard-performance-websockets.md.
+
+## [2026-07-04] ingest | Application Latency Structure
+Ingested from raw/research/application-latency-structure/index.md. Key claims: synchronous tmux capture/input is the primary structural latency risk; focused terminal WebSocket should exclusively own focused input/output rather than running beside focused SSE capture; live-update runtime knobs and a backend-owned agent status contract would reduce UI instability. 4 tool entity pages, 2 component pages, and 5 concept pages touched.
+
+## [2026-07-04] ingest | Application Latency Observability Addendum
+Ingested from raw/research/application-latency-structure/index-2.md. Key claims: add event-loop delay/utilization, tmux operation metrics, WebSocket/input latency metrics, structured Fastify logs, rolling local metrics, and a focused-terminal debug trace before adopting heavier OpenTelemetry. 2 tool entity pages, 2 component pages, and 4 concept pages touched.
+
+## [2026-07-04] roadmap | ROADMAP-015 Latency improvements
+Created ROADMAP-015 for latency improvements across focused terminal transport, runtime live-update tuning, backend-owned agent status, and regression validation. Owner: David Taylor. 5 phases, 11 inline placeholder items.
+
+## [2026-07-04] roadmap | ROADMAP-016 Observability improvements
+Created ROADMAP-016 for local-first observability across event-loop metrics, tmux operation metrics, terminal WebSocket/input latency, structured logs, diagnostics, and guardrails. Owner: David Taylor. 5 phases, 11 inline placeholder items.
