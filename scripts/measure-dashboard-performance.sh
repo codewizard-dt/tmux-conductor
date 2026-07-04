@@ -34,6 +34,10 @@ function timing(data, name) {
   return data?.liveUpdates?.timings?.[name] ?? { count: 0, totalMs: 0, maxMs: 0, lastMs: 0 };
 }
 
+function tmuxTiming(data, name) {
+  return data?.liveUpdates?.tmuxOperations?.[name] ?? { count: 0, totalMs: 0, maxMs: 0, lastMs: 0, errors: 0, timeouts: 0 };
+}
+
 function countDelta(start, end, name) {
   return timing(end, name).count - timing(start, name).count;
 }
@@ -54,6 +58,9 @@ const names = [
   'tmuxCaptureTailRaw',
   'sseBroadcasts',
   'tailRequests',
+  'terminalWsSnapshots',
+  'terminalWsInputAck',
+  'terminalWsInputEcho',
 ];
 
 console.log(`Endpoint: ${endpoint}`);
@@ -68,5 +75,35 @@ for (const name of names) {
   const rate = (count / durationSeconds).toFixed(3);
   const maxMs = timing(end, name).maxMs ?? 0;
   console.log(`| ${name} | ${count} | ${rate} | ${totalMs} | ${maxMs} |`);
+}
+
+console.log('');
+console.log('## Event loop');
+console.log(`Utilization: ${end.eventLoop?.utilization?.utilization ?? 0}`);
+console.log(`Delay p95 ms: ${end.eventLoop?.delay?.p95Ms ?? 0}`);
+console.log(`Delay p99 ms: ${end.eventLoop?.delay?.p99Ms ?? 0}`);
+
+console.log('');
+console.log('## Terminal WebSocket');
+console.log(`Active connections: ${end.liveUpdates?.terminalWebSocket?.activeConnections ?? 0}`);
+console.log(`Opened / closed: ${end.liveUpdates?.terminalWebSocket?.opened ?? 0} / ${end.liveUpdates?.terminalWebSocket?.closed ?? 0}`);
+console.log(`Input acks / echoes: ${end.liveUpdates?.terminalWebSocket?.inputAcks ?? 0} / ${end.liveUpdates?.terminalWebSocket?.inputEchoes ?? 0}`);
+
+const tmuxNames = Object.keys(end.liveUpdates?.tmuxOperations ?? {}).sort();
+if (tmuxNames.length > 0) {
+  console.log('');
+  console.log('## Tmux operations');
+  console.log('| Owner:operation | Count delta | Rate/sec | Total ms delta | End max ms | Errors | Timeouts |');
+  console.log('|---|---:|---:|---:|---:|---:|---:|');
+  for (const name of tmuxNames) {
+    const startMetric = tmuxTiming(start, name);
+    const endMetric = tmuxTiming(end, name);
+    const count = endMetric.count - startMetric.count;
+    const totalMs = Number((endMetric.totalMs - startMetric.totalMs).toFixed(3));
+    const rate = (count / durationSeconds).toFixed(3);
+    const errors = endMetric.errors - startMetric.errors;
+    const timeouts = endMetric.timeouts - startMetric.timeouts;
+    console.log(`| ${name} | ${count} | ${rate} | ${totalMs} | ${endMetric.maxMs ?? 0} | ${errors} | ${timeouts} |`);
+  }
 }
 NODE

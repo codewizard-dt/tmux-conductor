@@ -1,13 +1,19 @@
 import { API_BASE, type KeysPayload } from './api'
 
 export interface TerminalWebSocketMessage {
-  type: 'output' | 'ack' | 'error'
+  type: 'output' | 'ack' | 'echo' | 'error'
   agentId?: number
   agent?: string
   lines?: number
   windowPresent?: boolean
   text?: string
   error?: string
+  latencyMs?: number
+  sent?: {
+    keys: number
+    textChars: number
+    enter: boolean
+  }
 }
 
 export interface TerminalWebSocketClient {

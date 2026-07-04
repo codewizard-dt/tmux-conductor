@@ -72,3 +72,13 @@ Terminal task files (`done` or `trashed`) moved here by `/wiki-archive` to reduc
 | [[TASK-081]] | focused terminal WebSocket transport | done | 2026-06-28 |
 | [[TASK-082]] | move direct input and focused output onto WebSocket path | done | 2026-06-28 |
 | [[TASK-083]] | compare optimized SSE and WebSocket performance | done | 2026-06-28 |
+| [[TASK-084]] | add event-loop delay and utilization metrics | done | 2026-07-04 |
+| [[TASK-085]] | add tmux operation metrics with owner labels | done | 2026-07-04 |
+| [[TASK-086]] | add terminal WebSocket lifecycle counters | done | 2026-07-04 |
+| [[TASK-087]] | add input-to-ack and input-to-echo latency metrics | done | 2026-07-04 |
+| [[TASK-088]] | enable env-gated Fastify structured request logging | done | 2026-07-04 |
+| [[TASK-089]] | add status-transition JSONL records | done | 2026-07-04 |
+| [[TASK-090]] | add slow-loop and tmux-timeout JSONL records | done | 2026-07-04 |
+| [[TASK-091]] | add focused terminal debug overlay | done | 2026-07-04 |
+| [[TASK-092]] | add local diagnostic bundle command | done | 2026-07-04 |
+| [[TASK-093]] | extend performance scripts and metric threshold docs | done | 2026-07-04 |
