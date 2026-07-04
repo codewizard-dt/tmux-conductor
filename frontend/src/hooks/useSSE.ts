@@ -10,9 +10,9 @@ import { API_BASE } from '../lib/api'
  * second connection. The EventSource is reference-counted: it closes once the
  * last subscriber unmounts and reopens on the next subscription.
  *
- * Note: `useAgents.ts` and `AgentList.tsx` still open their own EventSource for
- * the agent/session event streams; this hook is an additive, independent shared
- * channel introduced for `terminal-output`. Migrating those is out of scope here.
+ * Agent/session events and terminal events all use this hook, so a dashboard
+ * render keeps one shared `/events` connection regardless of how many widgets
+ * subscribe.
  */
 
 type Subscriber = (payload: unknown) => void

@@ -40,3 +40,15 @@ Terminal UAT files (`passed`, `skipped`, or `trashed`) moved here by `/wiki-arch
 | [[UAT-052]] | UAT: Daemon connector — outbound WSS client to app/api relay with reconnect/backoff and path-allowlisted proxying | passed | 2026-06-14 |
 | [[UAT-058]] | UAT: Security checklist pass + structured logs + device last-seen heartbeat | passed | 2026-06-15 |
 | [[UAT-059]] | UAT: README install one-liner + docs updates (CLAUDE.md, scripts/README, .env.example) | passed | 2026-06-14 |
+| [[UAT-072]] | UAT: live-update timing instrumentation and counters | passed | 2026-06-28 |
+| [[UAT-073]] | UAT: capture current dashboard performance baseline | passed | 2026-06-28 |
+| [[UAT-075]] | UAT: consolidate dashboard EventSource usage | passed | 2026-06-28 |
+| [[UAT-074]] | UAT: identify performance budgets for live updates | passed | 2026-06-28 |
+| [[UAT-076]] | UAT: reduce focused terminal capture overhead | passed | 2026-06-28 |
+| [[UAT-077]] | UAT: remove avoidable duplicate tmux capture work | passed | 2026-06-28 |
+| [[UAT-078]] | UAT: host-server performance regression tests | passed | 2026-06-28 |
+| [[UAT-079]] | UAT: frontend live-update performance checks | passed | 2026-06-28 |
+| [[UAT-080]] | UAT: benchmark documentation and repeatable commands | passed | 2026-06-28 |
+| [[UAT-081]] | UAT: focused terminal WebSocket transport | passed | 2026-06-28 |
+| [[UAT-082]] | UAT: move direct input and focused output onto WebSocket path | passed | 2026-06-28 |
+| [[UAT-083]] | UAT: compare optimized SSE and WebSocket performance | passed | 2026-06-28 |

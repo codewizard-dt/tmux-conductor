@@ -157,7 +157,7 @@ export default function AddAgentForm() {
     <>
     {showProjPicker && (
       <FolderPickerModal
-        initialPath={newProjWorkdir || undefined}
+        {...(newProjWorkdir ? { initialPath: newProjWorkdir } : {})}
         onSelect={(p) => { setNewProjWorkdir(p); setShowProjPicker(false); }}
         onClose={() => { setShowProjPicker(false); }}
       />

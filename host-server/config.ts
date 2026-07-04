@@ -41,6 +41,7 @@ export const DEFAULT_CONF_PATH = confPath.process || confPath.meta;
 let cache: ConductorConf | null = null;
 let cacheTime = 0;
 const CACHE_TTL_MS = 5000;
+const CONFIG_SYNC_TIMEOUT_MS = Number(process.env['CONFIG_SYNC_TIMEOUT_MS'] ?? '1000');
 
 /**
  * Drop the cached conf so the next readConductorConf() re-reads the file.
@@ -139,7 +140,7 @@ export function readConductorConf(confPath: string = DEFAULT_CONF_PATH): Conduct
   // prints the variables that exist, and missing ones simply parse as empty
   // (pollInterval then falls back to 15, idlePattern to '' → regex skipped).
   const cmd = `bash -c "source ${confPath} && declare -p BG_PROCESSES AGENT_BG_LINKS SESSION_NAME STATE_DIR LOG_DIR DB_PATH IDLE_PATTERN BUSY_PATTERN AWAITING_PATTERN POLL_INTERVAL CONTEXT_WINDOW 2>/dev/null || true"`;
-  const output = execSync(cmd, { encoding: 'utf8' });
+  const output = execSync(cmd, { encoding: 'utf8', timeout: CONFIG_SYNC_TIMEOUT_MS });
 
   // Relative paths in the conf (./logs/state, ./data/conductor.db) are relative to the
   // conf file's directory, NOT the backend process cwd — resolve them here so

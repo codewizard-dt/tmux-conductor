@@ -4,7 +4,7 @@ export
 BACKEND_PORT ?= 8788
 FRONTEND_PORT ?= 4321
 
-.PHONY: usage dev ports \
+.PHONY: usage dev start ports \
 	typecheck typecheck-host typecheck-frontend \
 	lint lint-host lint-frontend
 
@@ -14,7 +14,11 @@ usage:
 
 ## dev — run the host-server and frontend natively & concurrently
 dev:
-	(cd host-server && npm run dev) & (cd frontend && npm run dev)
+	npm run dev
+
+## start — build the frontend and run host-server without hot reload
+start:
+	npm start
 
 ## ports — print service URLs
 ports:
@@ -23,22 +27,24 @@ ports:
 
 ## typecheck-host — run tsc --noEmit in host-server/
 typecheck-host:
-	cd host-server && npx tsc --noEmit
+	npm run typecheck --workspace host-server
 
 ## typecheck-frontend — run tsc --noEmit in frontend/
 typecheck-frontend:
-	cd frontend && npx tsc --noEmit
+	npm run typecheck --workspace ui
 
 ## typecheck — run tsc --noEmit in host-server and frontend
-typecheck: typecheck-host typecheck-frontend
+typecheck:
+	npm run typecheck
 
 ## lint-host — run ESLint in host-server/
 lint-host:
-	cd host-server && npm run lint
+	npm run lint --workspace host-server
 
 ## lint-frontend — run ESLint in frontend/
 lint-frontend:
-	cd frontend && npm run lint
+	npm run lint --workspace ui
 
 ## lint — run ESLint across host-server and frontend
-lint: lint-host lint-frontend
+lint:
+	npm run lint

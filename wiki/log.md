@@ -400,3 +400,29 @@ Ran /uat-auto on UAT-056 headless. All 13 tests PASS: 10 pure-logic tsx harnesse
 
 ## [2026-06-22] ingest | Web Terminal Emulators — Full ANSI Color + Cursor Support
 Ingested from raw/research/web-terminal-emulators/index.md. Key claims: xterm.js (`@xterm/xterm` v6) is the canonical browser terminal emulator (VS Code, Hyper, JupyterLab); full ANSI + cursor support requires adding `-e` to `capturePaneTailRaw` only (not `capturePaneTail` — detection regexes would break); LogTail.tsx needs its plain-text div replaced with a stateful `term.write()` xterm.js instance. 2 tool entity pages (xterm-js, hterm), 1 component entity page (log-tail), 2 concept pages (ansi-terminal-emulation-browser, tmux-capture-pane-escape-sequences).
+## [2026-06-28] task | TASK-072..TASK-083 ROADMAP-014 materialization
+Created execution tasks for all ROADMAP-014 dashboard performance, SSE optimization, guardrail, and WebSocket rollout items.
+
+## [2026-06-28] uat | UAT-072 passed (auto) · TASK-072 done
+Verified live-update instrumentation with host-server typecheck and static endpoint/counter checks. Archived UAT-072 and marked TASK-072 done for ROADMAP-014.
+
+## [2026-06-28] uat | UAT-073 passed (auto) · TASK-073 done
+Verified the dashboard baseline script with shell syntax checking and host-server typecheck. Archived UAT-073 and marked TASK-073 done for ROADMAP-014.
+
+## [2026-06-28] uat | UAT-075 passed (auto) · TASK-075 done
+Verified shared EventSource consolidation with frontend typecheck, frontend lint, and static checks for removed direct dashboard EventSource construction. Archived UAT-075 and marked TASK-075 done for ROADMAP-014.
+
+## [2026-06-28] uat | UAT-074 passed (auto) · TASK-074 done
+Verified live-update budget constants and documentation with host-server typecheck. Archived UAT-074 and marked TASK-074 done for ROADMAP-014.
+
+## [2026-06-28] uat | UAT-076 passed (auto) · TASK-076 done
+Verified focused terminal capture cleanup and unchanged frontend contracts with host-server and frontend typechecks. Archived UAT-076 and marked TASK-076 done for ROADMAP-014.
+
+## [2026-06-28] uat | UAT-077..UAT-080 passed (auto) · TASK-077..TASK-080 done
+Verified duplicate-capture guardrails, host performance regression checks, frontend EventSource checks, and benchmark documentation with the new scripts plus host/frontend typecheck and lint. Archived UAT-077 through UAT-080 and marked the matching ROADMAP-014 items done.
+
+## [2026-06-28] uat | UAT-081..UAT-083 passed (auto) · TASK-081..TASK-083 done
+Verified focused terminal WebSocket transport, WebSocket input/output wiring, and SSE-vs-WebSocket comparison artifacts with host/frontend typecheck, lint, and performance guardrail commands.
+
+## [2026-06-28] archive | ROADMAP-014 — completed, moved to archive
+All ROADMAP-014 checklist items completed. Moved to wiki/work/roadmaps/archive/ROADMAP-014-dashboard-performance-websockets.md.

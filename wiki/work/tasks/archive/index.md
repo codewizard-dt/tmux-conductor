@@ -60,3 +60,15 @@ Terminal task files (`done` or `trashed`) moved here by `/wiki-archive` to reduc
 | [[TASK-057]] | DevicePicker (pairing code + device list/rename/revoke) and Onboarding UI | done | 2026-06-14 |
 | [[TASK-058]] | Security hardening + structured logs + device last-seen heartbeat | done | 2026-06-15 |
 | [[TASK-059]] | README install one-liner + docs updates (CLAUDE.md, scripts/README, .env.example) | done | 2026-06-14 |
+| [[TASK-072]] | live-update timing instrumentation and counters | done | 2026-06-28 |
+| [[TASK-073]] | capture current dashboard performance baseline | done | 2026-06-28 |
+| [[TASK-075]] | consolidate dashboard EventSource usage | done | 2026-06-28 |
+| [[TASK-074]] | identify performance budgets for live updates | done | 2026-06-28 |
+| [[TASK-076]] | reduce focused terminal capture overhead | done | 2026-06-28 |
+| [[TASK-077]] | remove avoidable duplicate tmux capture work | done | 2026-06-28 |
+| [[TASK-078]] | host-server performance regression tests | done | 2026-06-28 |
+| [[TASK-079]] | frontend live-update performance checks | done | 2026-06-28 |
+| [[TASK-080]] | benchmark documentation and repeatable commands | done | 2026-06-28 |
+| [[TASK-081]] | focused terminal WebSocket transport | done | 2026-06-28 |
+| [[TASK-082]] | move direct input and focused output onto WebSocket path | done | 2026-06-28 |
+| [[TASK-083]] | compare optimized SSE and WebSocket performance | done | 2026-06-28 |

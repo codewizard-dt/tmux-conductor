@@ -96,14 +96,17 @@ agent_idle_pattern() {
 
 agent_busy_pattern() {
   case "$(agent_type "$1")" in
-    codex) printf '%s' 'esc to interrupt|ctrl.c to interrupt|working|thinking|running|executing|applying' ;;
+    codex) printf '%s' 'esc to interrupt|ctrl.c to interrupt|[Ww]orking|[Tt]hinking|[Rr]unning|[Ee]xecuting|[Aa]pplying' ;;
     *) printf '%s' "${BUSY_PATTERN:-}" ;;
   esac
 }
 
 agent_awaiting_pattern() {
   case "$(agent_type "$1")" in
-    codex) printf '%s' '(\?|\[Y/n\]|\[y/N\]|>[[:space:]]*$|Enter to (select|confirm|submit)|Esc to (cancel|go back))' ;;
+    # A bare Codex ">" line is normal idle prompt chrome, not a blocked
+    # interactive prompt. Awaiting should only mean an explicit dialog or
+    # confirmation is open; a free-floating "?" is usually just user text.
+    codex) printf '%s' '(\[Y/n\]|\[y/N\]|Enter to (select|confirm|submit)|Esc to (cancel|go back))' ;;
     *) printf '%s' "${AWAITING_PATTERN:-}" ;;
   esac
 }
@@ -193,6 +196,7 @@ is_idle() {
           local tail_busy
           tail_busy=$(pane_tail5 "$target")
           if [ "$(agent_type "$launch")" = "codex" ] \
+             && { [ -z "$busy_pattern" ] || ! printf '%s\n' "$tail_busy" | grep -qE "$busy_pattern"; } \
              && [ -n "$idle_pattern" ] \
              && printf '%s\n' "$tail_busy" | grep -qE "$idle_pattern"; then
             log "$name — Codex busy state (age=${age}s) but pane reads idle; recovering to idle"
@@ -230,9 +234,6 @@ is_idle() {
             LAST_STATE_VALUE="awaiting"
             return 1
           fi
-        fi
-        if [ "$(agent_type "$launch")" = "codex" ]; then
-          return 0
         fi
         if [ -n "$busy_pattern" ]; then
           local tail_lines

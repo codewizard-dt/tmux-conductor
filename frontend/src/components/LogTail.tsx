@@ -3,6 +3,7 @@ import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
 import { API_BASE, sendAgentKeys, uploadAgentImage, type KeysPayload } from '../lib/api'
+import { connectTerminalWebSocket, type TerminalWebSocketClient } from '../lib/terminalWebSocket'
 import { useSSEEvent } from '../hooks/useSSE'
 
 const TAIL_LINES = 500
@@ -94,6 +95,7 @@ export default function LogTail({ agentId, agentName, maxHeightClass, focused, f
   const sendTextareaRef = useRef<HTMLTextAreaElement>(null)
   const escHintAtRef = useRef<number | null>(null)
   const escHintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const terminalWsRef = useRef<TerminalWebSocketClient | null>(null)
 
   // Repaint the terminal from a full pane snapshot in a SINGLE write: the leading ESC c (RIS)
   // resets/clears and the content redraws in the same render frame, so there's no blank
@@ -217,6 +219,31 @@ export default function LogTail({ agentId, agentName, maxHeightClass, focused, f
     }
   }, [agentId, focused])
 
+  useEffect(() => {
+    if (!focused) {
+      terminalWsRef.current?.close()
+      terminalWsRef.current = null
+      return
+    }
+    const client = connectTerminalWebSocket(
+      agentId,
+      (message) => {
+        if (message.type !== 'output' || message.agentId !== agentId || typeof message.text !== 'string') return
+        pendingTextRef.current = message.text
+        setWindowPresent(message.windowPresent ?? true)
+        if (followRef.current) applySnapshot(message.text)
+      },
+      () => {
+        if (terminalWsRef.current === client) terminalWsRef.current = null
+      },
+    )
+    terminalWsRef.current = client
+    return () => {
+      if (terminalWsRef.current === client) terminalWsRef.current = null
+      client.close()
+    }
+  }, [agentId, focused])
+
   useSSEEvent<{ agentId: number; agent: string; text: string; lines: number }>(
     focused ? 'terminal-output-focus' : 'terminal-output',
     (payload) => {
@@ -250,6 +277,10 @@ export default function LogTail({ agentId, agentName, maxHeightClass, focused, f
   }, [interacting, onInteractChange])
 
   function enqueue(payload: KeysPayload) {
+    if (focused && terminalWsRef.current?.sendInput(payload)) {
+      setSendError(null)
+      return
+    }
     queueRef.current = queueRef.current
       .then(() => sendAgentKeys(agentId, payload))
       .then(() => { setSendError(null) })

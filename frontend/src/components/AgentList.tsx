@@ -6,12 +6,14 @@ import ErrorBoundary from './ErrorBoundary'
 import LogTail from './LogTail'
 import ModeSwitcher from './ModeSwitcher'
 import TaskList from './TaskList'
+import { useSSEEvent } from '../hooks/useSSE'
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
 export type AgentStatus =
   | 'busy'
   | 'idle'
+  | 'idle-waiting'
   | 'empty'
   | 'error'
   | 'awaiting'
@@ -75,6 +77,7 @@ function isLogExpandShortcut(e: KeyboardEvent): boolean {
 const STATUS_CONFIG: Record<AgentStatus, { bg: string; color: string; dot: string; label: string }> = {
   busy: { bg: 'rgba(59,110,246,0.10)', color: '#3b6ef6', dot: '#3b6ef6', label: 'busy' },
   idle: { bg: 'rgba(48,164,108,0.10)', color: '#30a46c', dot: '#30a46c', label: 'idle' },
+  'idle-waiting': { bg: 'rgba(48,164,108,0.10)', color: '#30a46c', dot: '#30a46c', label: 'idle/waiting' },
   empty: { bg: 'rgba(224,144,26,0.10)', color: '#c07a10', dot: '#e0901a', label: 'no tasks' },
   error: { bg: 'rgba(229,72,77,0.10)', color: '#e5484d', dot: '#e5484d', label: 'error' },
   awaiting: { bg: 'rgba(224,144,26,0.10)', color: '#c07a10', dot: '#e0901a', label: 'waiting' },
@@ -101,6 +104,7 @@ export function deriveStatus(agent: Agent): AgentStatus {
   if (agent.state === 'busy') return 'busy'
   if (agent.state === 'starting') return 'starting'
   if (agent.state === 'idle' && agent.queuedTasks > 0) return 'idle'
+  if (agent.state === 'idle' && inferAgentType(agent) === 'codex') return 'idle-waiting'
   if (agent.state === 'idle' && agent.queuedTasks === 0) return 'empty'
   if (agent.state === 'error') return 'error'
   if (agent.state === 'exited') return 'exited'
@@ -727,6 +731,7 @@ const STATUS_SORT: Record<AgentStatus, number> = {
   busy: 1,
   starting: 1,
   idle: 2,
+  'idle-waiting': 2,
   empty: 3,
   error: 4,
   exited: 4,
@@ -745,7 +750,7 @@ interface Column {
 const COLUMNS: Column[] = [
   { key: 'attention', label: 'Waiting / Stalled', statuses: ['awaiting', 'stalled', 'error'] },
   { key: 'busy', label: 'Busy', statuses: ['busy', 'starting'] },
-  { key: 'ready', label: 'Ready / No tasks', statuses: ['idle', 'empty'] },
+  { key: 'ready', label: 'Ready / No tasks', statuses: ['idle', 'idle-waiting', 'empty'] },
 ]
 
 /**
@@ -995,19 +1000,17 @@ export default function AgentList() {
     })
   }, [orderedAgentIds])
   const prevStatusRef = useRef<Map<number, AgentStatus>>(new Map())
+  const hasReceivedSSEStateRef = useRef(false)
   const audioCtxRef = useRef<AudioContext | null>(null)
 
   useEffect(() => {
-    // Guard: if SSE delivers state before /status resolves, skip the overwrite.
-    let hasReceivedSSEState = false
-
     fetch(`${apiUrl}/status`)
       .then((r) => {
         if (!r.ok) throw new Error(`HTTP ${r.status.toString()}`)
         return r.json() as Promise<SessionState>
       })
       .then((data) => {
-        if (!hasReceivedSSEState) {
+        if (!hasReceivedSSEStateRef.current) {
           // A stale/older host-server may omit array fields in /status.
           // Coerce to arrays so a missing agents/bgProcesses can't crash the render
           // (e.g. BgProcessSection's `bgs.length` on an undefined value).
@@ -1028,141 +1031,90 @@ export default function AgentList() {
         setLoading(false)
       })
 
-    const es = new EventSource(`${apiUrl}/events`)
-
-    es.onerror = () => {
-      console.warn('[AgentList] SSE connection error — browser will reconnect')
-    }
-
-    es.addEventListener('agent-update', (e: MessageEvent) => {
-      try {
-        hasReceivedSSEState = true
-        const updated: Agent = JSON.parse(e.data as string) as Agent
-        const newStatus = deriveStatus(updated)
-        const prevStatus = prevStatusRef.current.get(updated.id)
-        const wasWorking = prevStatus === 'busy' || prevStatus === 'starting'
-        const isDone = newStatus === 'idle' || newStatus === 'empty'
-        if (needsAttention(newStatus) && prevStatus !== undefined && !needsAttention(prevStatus)) {
-          if (!audioCtxRef.current) audioCtxRef.current = new AudioContext()
-          const ctx = audioCtxRef.current
-          if (ctx.state === 'suspended') {
-            ctx.resume().then(() => { playDoorbell(ctx) }).catch(() => { /* autoplay blocked */ })
-          } else {
-            playDoorbell(ctx)
-          }
-        } else if (wasWorking && isDone) {
-          if (!audioCtxRef.current) audioCtxRef.current = new AudioContext()
-          const ctx = audioCtxRef.current
-          if (ctx.state === 'suspended') {
-            ctx.resume().then(() => { playChime(ctx) }).catch(() => { /* autoplay blocked */ })
-          } else {
-            playChime(ctx)
-          }
-        }
-        prevStatusRef.current.set(updated.id, newStatus)
-        setAgents((prev) => {
-          const idx = prev.findIndex((a) => a.id === updated.id)
-          if (idx === -1) {
-            // Brand-new agent appended — its payload already carries project info.
-            return [...prev, updated]
-          }
-          const next = [...prev]
-          next[idx] = { ...next[idx], ...updated }
-          return next
-        })
-      } catch { /* ignore malformed events */ }
-    })
-
-    es.addEventListener('agent-removed', (e: MessageEvent) => {
-      try {
-        const data = JSON.parse(e.data as string) as { id?: number }
-        if (typeof data.id === 'number') {
-          const id = data.id
-          prevStatusRef.current.delete(id)
-          setAgents((prev) => prev.filter((a) => a.id !== id))
-        }
-      } catch { /* ignore malformed events */ }
-    })
-
-    es.addEventListener('agent-renamed', (e: MessageEvent) => {
-      try {
-        const data = JSON.parse(e.data as string) as { id?: number; newName?: string }
-        if (typeof data.id === 'number' && typeof data.newName === 'string') {
-          const { id, newName } = data
-          // Identity is the id, which is stable across rename — only the display
-          // name changes, so no prevStatus/dedup juggling is needed.
-          setAgents((prev) => prev.map((a) => a.id === id ? { ...a, name: newName } : a))
-        }
-      } catch { /* ignore malformed events */ }
-    })
-
-    es.addEventListener('bg-update', (e: MessageEvent) => {
-      try {
-        const updated = JSON.parse(e.data as string) as BgProcess
-        setBgs((prev) => {
-          const idx = prev.findIndex((b) => b.name === updated.name)
-          if (idx === -1) return [...prev, updated]
-          const next = [...prev]
-          next[idx] = { ...next[idx], ...updated }
-          return next
-        })
-      } catch { /* ignore malformed events */ }
-    })
-
-    es.addEventListener('bg-removed', (e: MessageEvent) => {
-      try {
-        const data = JSON.parse(e.data as string) as { name?: string }
-        if (typeof data.name === 'string') {
-          setBgs((prev) => prev.filter((b) => b.name !== data.name))
-        }
-      } catch { /* ignore malformed events */ }
-    })
-
-    es.addEventListener('session-update', (e: MessageEvent) => {
-      try {
-        const data = JSON.parse(e.data as string) as { sessionAlive?: boolean; sessionExists?: boolean }
-        if (typeof data.sessionAlive === 'boolean') {
-          setSessionAlive(data.sessionAlive)
-        }
-        if (typeof data.sessionExists === 'boolean') {
-          setSessionExists(data.sessionExists)
-        }
-      } catch { /* ignore malformed events */ }
-    })
-
-    // ID-based task SSE events are LIGHTWEIGHT TRIGGERS: we do NOT keep a parallel
-    // task store. Per-agent queuedTasks/activeTask are recomputed server-side and
-    // pushed via the subsequent agent-update (which also carries project info), so
-    // these handlers need no action — the {id}-only events are just validated.
-    es.addEventListener('task-added', (e: MessageEvent) => {
-      try {
-        JSON.parse(e.data as string)
-      } catch { /* ignore malformed events */ }
-    })
-
-    es.addEventListener('task-removed', (e: MessageEvent) => {
-      try {
-        JSON.parse(e.data as string)
-      } catch { /* ignore malformed events */ }
-    })
-
-    es.addEventListener('queue-reordered', (e: MessageEvent) => {
-      try {
-        JSON.parse(e.data as string)
-      } catch { /* ignore malformed events */ }
-    })
-
-    es.addEventListener('task-moved', (e: MessageEvent) => {
-      try {
-        JSON.parse(e.data as string)
-      } catch { /* ignore malformed events */ }
-    })
-
     return () => {
-      es.close()
       audioCtxRef.current?.close().catch(() => { /* ignore */ })
     }
   }, [apiUrl])
+
+  useSSEEvent<Agent>('agent-update', (updated) => {
+    hasReceivedSSEStateRef.current = true
+    const newStatus = deriveStatus(updated)
+    const prevStatus = prevStatusRef.current.get(updated.id)
+    const wasWorking = prevStatus === 'busy' || prevStatus === 'starting'
+    const isDone = newStatus === 'idle' || newStatus === 'empty'
+    if (needsAttention(newStatus) && prevStatus !== undefined && !needsAttention(prevStatus)) {
+      if (!audioCtxRef.current) audioCtxRef.current = new AudioContext()
+      const ctx = audioCtxRef.current
+      if (ctx.state === 'suspended') {
+        ctx.resume().then(() => { playDoorbell(ctx) }).catch(() => { /* autoplay blocked */ })
+      } else {
+        playDoorbell(ctx)
+      }
+    } else if (wasWorking && isDone) {
+      if (!audioCtxRef.current) audioCtxRef.current = new AudioContext()
+      const ctx = audioCtxRef.current
+      if (ctx.state === 'suspended') {
+        ctx.resume().then(() => { playChime(ctx) }).catch(() => { /* autoplay blocked */ })
+      } else {
+        playChime(ctx)
+      }
+    }
+    prevStatusRef.current.set(updated.id, newStatus)
+    setAgents((prev) => {
+      const idx = prev.findIndex((a) => a.id === updated.id)
+      if (idx === -1) {
+        return [...prev, updated]
+      }
+      const next = [...prev]
+      next[idx] = { ...next[idx], ...updated }
+      return next
+    })
+  })
+
+  useSSEEvent<{ id?: number }>('agent-removed', (data) => {
+    if (typeof data.id === 'number') {
+      const id = data.id
+      prevStatusRef.current.delete(id)
+      setAgents((prev) => prev.filter((a) => a.id !== id))
+    }
+  })
+
+  useSSEEvent<{ id?: number; newName?: string }>('agent-renamed', (data) => {
+    if (typeof data.id === 'number' && typeof data.newName === 'string') {
+      const { id, newName } = data
+      setAgents((prev) => prev.map((a) => a.id === id ? { ...a, name: newName } : a))
+    }
+  })
+
+  useSSEEvent<BgProcess>('bg-update', (updated) => {
+    setBgs((prev) => {
+      const idx = prev.findIndex((b) => b.name === updated.name)
+      if (idx === -1) return [...prev, updated]
+      const next = [...prev]
+      next[idx] = { ...next[idx], ...updated }
+      return next
+    })
+  })
+
+  useSSEEvent<{ name?: string }>('bg-removed', (data) => {
+    if (typeof data.name === 'string') {
+      setBgs((prev) => prev.filter((b) => b.name !== data.name))
+    }
+  })
+
+  useSSEEvent<{ sessionAlive?: boolean; sessionExists?: boolean }>('session-update', (data) => {
+    if (typeof data.sessionAlive === 'boolean') {
+      setSessionAlive(data.sessionAlive)
+    }
+    if (typeof data.sessionExists === 'boolean') {
+      setSessionExists(data.sessionExists)
+    }
+  })
+
+  useSSEEvent('task-added', () => {})
+  useSSEEvent('task-removed', () => {})
+  useSSEEvent('queue-reordered', () => {})
+  useSSEEvent('task-moved', () => {})
 
   const expandedModalAgent = expandedAgent ? agents.find((a) => a.id === expandedAgent.id) : undefined
 

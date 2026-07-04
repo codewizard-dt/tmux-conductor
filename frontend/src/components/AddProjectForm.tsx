@@ -65,7 +65,7 @@ export default function AddProjectForm() {
     <>
     {showPicker && (
       <FolderPickerModal
-        initialPath={workdir || undefined}
+        {...(workdir ? { initialPath: workdir } : {})}
         onSelect={(p) => { setWorkdir(p); setShowPicker(false); }}
         onClose={() => { setShowPicker(false); }}
       />

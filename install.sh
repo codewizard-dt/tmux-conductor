@@ -292,18 +292,12 @@ main() {
   # Section 4 — npm installs
   # --------------------------------------------------------------------------
   log "--- installing npm dependencies ---"
-  for pkg in host-server frontend; do
-    if [ -d "$INSTALL_DIR/$pkg" ]; then
-      log "npm install in $pkg/"
-      (cd "$INSTALL_DIR/$pkg" && npm install) 2>&1 | tee -a "$LOG_FILE"
-      npm_status="${PIPESTATUS[0]}"
-      if [ "$npm_status" -ne 0 ]; then
-        warn "npm install in $pkg/ exited $npm_status — see $LOG_FILE for details."
-      fi
-    else
-      warn "directory $pkg/ not found under $INSTALL_DIR — skipping its npm install."
-    fi
-  done
+  log "npm install in project root"
+  (cd "$INSTALL_DIR" && npm install) 2>&1 | tee -a "$LOG_FILE"
+  npm_status="${PIPESTATUS[0]}"
+  if [ "$npm_status" -ne 0 ]; then
+    warn "npm install exited $npm_status — see $LOG_FILE for details."
+  fi
 
   # Scan the log for native-build (node-gyp) failures.
   if grep -qiE 'node-gyp|node-pre-gyp|gyp ERR' "$LOG_FILE"; then
@@ -375,7 +369,7 @@ main() {
   echo "Next steps:"
   echo "  cd $INSTALL_DIR"
   echo "  ./scripts/conductor.sh   # create the tmux session and spawn agents"
-  echo "  make dev                 # run the host-server (:8788) + dashboard (:4321)"
+  echo "  make dev                 # run the host-server (:8788) + dashboard (:4321); Ctrl-C stops both"
   echo "  ./scripts/teardown.sh    # graceful shutdown"
   echo ""
   echo "  Install log: $LOG_FILE"

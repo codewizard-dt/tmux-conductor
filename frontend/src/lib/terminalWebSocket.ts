@@ -1,0 +1,50 @@
+import { API_BASE, type KeysPayload } from './api'
+
+export interface TerminalWebSocketMessage {
+  type: 'output' | 'ack' | 'error'
+  agentId?: number
+  agent?: string
+  lines?: number
+  windowPresent?: boolean
+  text?: string
+  error?: string
+}
+
+export interface TerminalWebSocketClient {
+  close: () => void
+  sendInput: (payload: KeysPayload) => boolean
+}
+
+function websocketBase(): string {
+  if (API_BASE.startsWith('https://')) return API_BASE.replace(/^https:/, 'wss:')
+  if (API_BASE.startsWith('http://')) return API_BASE.replace(/^http:/, 'ws:')
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+  return `${protocol}//${window.location.host}${API_BASE}`
+}
+
+export function connectTerminalWebSocket(
+  agentId: number,
+  onMessage: (message: TerminalWebSocketMessage) => void,
+  onClose: () => void,
+): TerminalWebSocketClient {
+  const ws = new WebSocket(`${websocketBase()}/agents/${agentId.toString()}/terminal/ws`)
+
+  ws.onmessage = (event) => {
+    try {
+      onMessage(JSON.parse(String(event.data)) as TerminalWebSocketMessage)
+    } catch {
+      /* ignore malformed websocket frames */
+    }
+  }
+  ws.onclose = onClose
+  ws.onerror = () => { onClose() }
+
+  return {
+    close: () => { ws.close() },
+    sendInput: (payload) => {
+      if (ws.readyState !== WebSocket.OPEN) return false
+      ws.send(JSON.stringify({ type: 'input', payload }))
+      return true
+    },
+  }
+}

@@ -12,7 +12,7 @@ Install on the machine that will run your agents:
 curl -fsSL https://raw.githubusercontent.com/codewizard-dt/tmux-conductor/main/install.sh | bash
 ```
 
-The installer clones the repo, installs dependencies for `host-server/` and `frontend/`, migrates the SQLite database, and registers the Claude Code hooks. Then:
+The installer clones the repo, installs npm workspace dependencies, migrates the SQLite database, and registers the Claude Code hooks. Then:
 
 ```bash
 cd ~/.tmux-conductor      # or wherever you installed it
@@ -210,14 +210,14 @@ cd host-server && npm run db:migrate && cd ..
 ./scripts/conductor.sh
 ```
 
-Run the host-server and dashboard concurrently with:
+Run the host-server and dashboard in one foreground process with:
 
 ```bash
 make dev      # host-server :8788 + frontend :4321
 make ports    # print the URLs
 ```
 
-Dashboard available at `http://localhost:4321`; host-server API on `http://localhost:8788`. Tear down the session with `./scripts/teardown.sh`.
+Dashboard available at `http://localhost:4321`; host-server API on `http://localhost:8788`. Stop the dev servers with `Ctrl-C`; tear down the tmux session with `./scripts/teardown.sh`.
 
 ### Data & Migrations
 

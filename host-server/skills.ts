@@ -15,6 +15,7 @@ export interface Skill {
 // Module-level cache keyed by dir path; TTL 60 000 ms.
 const skillCache = new Map<string, { data: Skill[]; at: number }>();
 const SKILL_CACHE_TTL_MS = 60_000;
+const SHELL_SYNC_TIMEOUT_MS = Number(process.env['SHELL_SYNC_TIMEOUT_MS'] ?? '2000');
 
 export function parseFrontmatter(content: string): Record<string, string> {
   const lines = content.split('\n');
@@ -166,6 +167,7 @@ export function getProjectSkills(workdir: string): Skill[] {
   // Determine git root
   const result = spawnSync('git', ['-C', workdir, 'rev-parse', '--show-toplevel'], {
     encoding: 'utf8',
+    timeout: SHELL_SYNC_TIMEOUT_MS,
   });
   const gitRoot = result.status === 0
     ? result.stdout.trim()

@@ -5,12 +5,27 @@ import type { ConductorConf } from './config.ts';
 
 export type AgentType = 'claude' | 'codex' | 'custom';
 
+const TMUX_SYNC_TIMEOUT_MS = Number(process.env['TMUX_SYNC_TIMEOUT_MS'] ?? '100');
+const GREP_SYNC_TIMEOUT_MS = Number(process.env['GREP_SYNC_TIMEOUT_MS'] ?? '100');
+
 interface AgentStatusProfile {
   type: AgentType;
   idlePattern: string;
   busyPattern: string;
   awaitingPattern: string;
 }
+
+const CODEX_STATUS_PROFILE: AgentStatusProfile = {
+  type: 'codex',
+  // Codex does not write Claude lifecycle hooks, so pane chrome is the
+  // primary recovery signal after conductor marks a dispatch busy.
+  idlePattern: '^codex[>›]|OpenAI Codex|^[[:space:]]*gpt-[^[:space:]]+[[:space:]].*~/|^[[:space:]]*[›❯][[:space:]]*$|^[[:space:]]*>[[:space:]]*$',
+  busyPattern: 'esc to interrupt|ctrl.c to interrupt|[Ww]orking|[Tt]hinking|[Rr]unning|[Ee]xecuting|[Aa]pplying',
+  // A bare Codex ">" line is normal idle prompt chrome, not an
+  // interactive blocked state. Keep awaiting detection to explicit
+  // confirmation/dialog affordances.
+  awaitingPattern: '(\\[Y/n\\]|\\[y/N\\]|Enter to (select|confirm|submit)|Esc to (cancel|go back))',
+};
 
 /**
  * Read the state file for a given agent.
@@ -36,6 +51,7 @@ export function readAgentState(stateDir: string, agentName: string): string {
 export function capturePaneTail(sessionName: string, windowName: string, n: number): string {
   const result = spawnSync('tmux', ['capture-pane', '-t', `${sessionName}:${windowName}`, '-p'], {
     encoding: 'utf8',
+    timeout: TMUX_SYNC_TIMEOUT_MS,
   });
   if (result.status !== 0 || typeof result.stdout !== 'string') return '';
   return result.stdout
@@ -57,7 +73,7 @@ export function capturePaneTailRaw(sessionName: string, windowName: string, n: n
   const result = spawnSync(
     'tmux',
     ['capture-pane', '-t', target, '-p', '-e', '-S', `-${String(n)}`],
-    { encoding: 'utf8' },
+    { encoding: 'utf8', timeout: TMUX_SYNC_TIMEOUT_MS },
   );
   if (result.status !== 0 || typeof result.stdout !== 'string') return '';
   // Strip only the single trailing-newline artifact; KEEP tmux's bottom padding rows so the
@@ -72,7 +88,7 @@ export function capturePaneTailRaw(sessionName: string, windowName: string, n: n
   const meta = spawnSync(
     'tmux',
     ['display-message', '-p', '-t', target, '-F', '#{cursor_y} #{cursor_x} #{pane_height}'],
-    { encoding: 'utf8' },
+    { encoding: 'utf8', timeout: TMUX_SYNC_TIMEOUT_MS },
   );
   if (meta.status === 0 && typeof meta.stdout === 'string') {
     const [cy, cx, ph] = meta.stdout.trim().split(/\s+/).map(Number);
@@ -91,13 +107,54 @@ export function capturePaneTailRaw(sessionName: string, windowName: string, n: n
   return text;
 }
 
+export interface TmuxWindowInventory {
+  sessionExists: boolean;
+  timedOut: boolean;
+  windows: Map<string, string>;
+}
+
+/**
+ * Read the session's window inventory in one tmux call.
+ *
+ * The returned map is keyed by window name and stores the pane's current
+ * command. This is enough for status classification in the hot snapshot path:
+ * if the current command falls back to a shell for a non-shell launchCmd, the
+ * agent has exited.
+ */
+export function readTmuxWindowInventory(sessionName: string): TmuxWindowInventory {
+  const result = spawnSync(
+    'tmux',
+    ['list-windows', '-t', sessionName, '-F', '#{window_name}\t#{pane_current_command}'],
+    { encoding: 'utf8', timeout: TMUX_SYNC_TIMEOUT_MS },
+  );
+  if (result.status !== 0 || typeof result.stdout !== 'string') {
+    const err = result.error as NodeJS.ErrnoException | undefined;
+    return {
+      sessionExists: false,
+      timedOut: err?.code === 'ETIMEDOUT',
+      windows: new Map(),
+    };
+  }
+
+  const windows = new Map<string, string>();
+  for (const line of result.stdout.split('\n')) {
+    if (line.trim() === '') continue;
+    const tab = line.indexOf('\t');
+    const windowName = (tab >= 0 ? line.slice(0, tab) : line).trim();
+    if (windowName === '') continue;
+    const currentCommand = tab >= 0 ? line.slice(tab + 1).trim() : '';
+    windows.set(windowName, currentCommand);
+  }
+  return { sessionExists: true, timedOut: false, windows };
+}
+
 /**
  * True when `pattern` (a POSIX ERE, e.g. using [[:space:]]) matches `text`.
  * Matched via `grep -qE` exactly like monitor.sh — JavaScript's RegExp does
  * not understand POSIX character classes.
  */
 function grepMatches(pattern: string, text: string): boolean {
-  const grep = spawnSync('grep', ['-qE', pattern], { input: text, encoding: 'utf8' });
+  const grep = spawnSync('grep', ['-qE', pattern], { input: text, encoding: 'utf8', timeout: GREP_SYNC_TIMEOUT_MS });
   return grep.status === 0;
 }
 
@@ -124,16 +181,11 @@ export function detectAgentType(launchCmd: string): AgentType {
 
 function profileForAgent(conf: ConductorConf, launchCmd: string): AgentStatusProfile {
   const type = detectAgentType(launchCmd);
-  if (type === 'codex') {
-    return {
-      type,
-      // Codex does not write Claude lifecycle hooks, so pane chrome is the
-      // primary recovery signal after conductor marks a dispatch busy.
-      idlePattern: '^codex[>›]|OpenAI Codex|^[[:space:]]*gpt-[^[:space:]]+[[:space:]].*~/|^[[:space:]]*[›❯][[:space:]]*$|^[[:space:]]*>[[:space:]]*$',
-      busyPattern: 'esc to interrupt|ctrl.c to interrupt|working|thinking|running|executing|applying',
-      awaitingPattern: '(\\?|\\[Y/n\\]|\\[y/N\\]|>[[:space:]]*$|Enter to (select|confirm|submit)|Esc to (cancel|go back))',
-    };
-  }
+  if (type === 'codex') return CODEX_STATUS_PROFILE;
+
+  // Claude and custom agents use the configured profile. Codex must never use
+  // these patterns because Claude's bare-prompt/permission chrome overlaps
+  // with Codex's normal idle prompt.
   return {
     type,
     idlePattern: conf.idlePattern,
@@ -152,7 +204,7 @@ function isPaneDead(sessionName: string, windowName: string, launchCmd: string):
   const result = spawnSync(
     'tmux',
     ['display-message', '-p', '-t', `${sessionName}:${windowName}`, '#{pane_current_command}'],
-    { encoding: 'utf8' },
+    { encoding: 'utf8', timeout: TMUX_SYNC_TIMEOUT_MS },
   );
   if (result.status !== 0 || typeof result.stdout !== 'string') return false;
   return SHELL_COMMANDS.has(result.stdout.trim());
@@ -193,15 +245,28 @@ function isPaneDead(sessionName: string, windowName: string, launchCmd: string):
  *
  * @returns {'no-window'|'exited'|'idle'|'busy'|'awaiting'|'stalled'|'starting'|'unknown'}
  */
-export function detectAgentStatus(conf: ConductorConf, windowName: string, launchCmd: string, precapturedTail?: string): string {
+export function detectAgentStatus(
+  conf: ConductorConf,
+  windowName: string,
+  launchCmd: string,
+  precapturedTail?: string,
+  windowPresent?: boolean,
+  paneCurrentCommand?: string | null,
+): string {
   const { sessionName, stateDir, pollInterval, stallTimeout } = conf;
   const { type, idlePattern, busyPattern, awaitingPattern } = profileForAgent(conf, launchCmd);
 
-  if (!isTmuxWindowPresent(sessionName, windowName)) {
+  const hasWindow = windowPresent ?? isTmuxWindowPresent(sessionName, windowName);
+  if (!hasWindow) {
     return 'no-window';
   }
 
-  if (isPaneDead(sessionName, windowName, launchCmd)) {
+  if (paneCurrentCommand !== undefined && paneCurrentCommand !== null) {
+    const cmdName = launchCommandName(launchCmd);
+    if (!SHELL_COMMANDS.has(cmdName) && SHELL_COMMANDS.has(paneCurrentCommand.trim())) {
+      return 'exited';
+    }
+  } else if (isPaneDead(sessionName, windowName, launchCmd)) {
     return 'exited';
   }
 
@@ -233,7 +298,13 @@ export function detectAgentStatus(conf: ConductorConf, windowName: string, launc
         if (matchesAwaiting(tail)) {
           return 'awaiting';
         }
-        if (type === 'codex' && ageSeconds > pollInterval * 2 && idlePattern !== '' && grepMatches(idlePattern, tail)) {
+        if (
+          type === 'codex' &&
+          ageSeconds > pollInterval * 2 &&
+          (busyPattern === '' || !grepMatches(busyPattern, tail)) &&
+          idlePattern !== '' &&
+          grepMatches(idlePattern, tail)
+        ) {
           return 'idle';
         }
         // Hook-failure safety net (mirrors monitor.sh): a busy file old enough
@@ -267,11 +338,10 @@ export function detectAgentStatus(conf: ConductorConf, windowName: string, launc
     }
     if (state === 'idle') {
       const tail = tail5();
+      if (tail !== '' && busyPattern && grepMatches(busyPattern, tail)) return 'busy';
       if (matchesAwaiting(tail)) {
         return 'awaiting';
       }
-      if (type === 'codex') return 'idle';
-      if (tail !== '' && busyPattern && grepMatches(busyPattern, tail)) return 'busy';
       return 'idle';
     }
   } catch {
@@ -328,6 +398,7 @@ export function detectAgentMode(conf: ConductorConf, agentName: string, launchCm
 export function isTmuxWindowPresent(sessionName: string, windowName: string): boolean {
   const result = spawnSync('tmux', ['has-session', '-t', `${sessionName}:${windowName}`], {
     encoding: 'utf8',
+    timeout: TMUX_SYNC_TIMEOUT_MS,
   });
   return result.status === 0;
 }
@@ -352,6 +423,7 @@ export function windowState(
 ): { count: number; live: boolean } {
   const result = spawnSync('tmux', ['list-windows', '-t', sessionName, '-F', '#{window_name}'], {
     encoding: 'utf8',
+    timeout: TMUX_SYNC_TIMEOUT_MS,
   });
   if (result.status !== 0 || typeof result.stdout !== 'string') {
     return { count: 0, live: false };
@@ -363,8 +435,8 @@ export function windowState(
 
 export function sendTextToPane(sessionName: string, windowName: string, text: string): void {
   const target = `${sessionName}:${windowName}`;
-  spawnSync('tmux', ['send-keys', '-t', target, '-l', '--', text], { encoding: 'utf8' });
-  spawnSync('tmux', ['send-keys', '-t', target, 'Enter'], { encoding: 'utf8' });
+  spawnSync('tmux', ['send-keys', '-t', target, '-l', '--', text], { encoding: 'utf8', timeout: TMUX_SYNC_TIMEOUT_MS });
+  spawnSync('tmux', ['send-keys', '-t', target, 'Enter'], { encoding: 'utf8', timeout: TMUX_SYNC_TIMEOUT_MS });
 }
 
 // ── Active task derivation ──────────────────────────────────────────────────

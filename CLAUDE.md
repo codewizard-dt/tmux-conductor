@@ -18,7 +18,7 @@ The system is fully local and single-user — two runnable pieces, no daemon, no
 
 - **`host-server/`** — the native tmux conductor: Fastify on port **8788** (env `BACKEND_PORT`), `better-sqlite3`, the monitor/dispatch logic. Runs **directly on the host**. Serves the conductor API consumed by the dashboard.
 - **`frontend/`** — Vite React SPA on port **4321** (env `FRONTEND_PORT`). Talks directly to the host-server through the Vite dev proxy: all `/api/*` requests are proxied to `:8788` (env `PROXY_TARGET`, or `VITE_API_URL` to point the frontend at a different base).
-- **Run both natively:** `make dev` starts the host-server and the frontend concurrently. `make ports` prints the URLs.
+- **Run both natively:** `make dev` starts the host-server and the frontend through the root `concurrently` script. `Ctrl-C` stops both dev servers; `make ports` prints the URLs.
 - **Config:** root `.env` / `.env.example` carries the ports and proxy target; `conductor.conf` remains host-server tuning only.
 
 ## Architecture
