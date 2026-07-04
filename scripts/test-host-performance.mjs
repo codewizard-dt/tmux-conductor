@@ -25,6 +25,9 @@ const requiredMetrics = [
   'tmuxCaptureTailRaw',
   'sseBroadcasts',
   'tailRequests',
+  'terminalWsSnapshots',
+  'terminalWsInputAck',
+  'terminalWsInputEcho',
 ];
 
 for (const key of requiredMetrics) {
@@ -63,6 +66,23 @@ if (!serverSource.includes('socket.bufferedAmount > FOCUSED_WS_BUFFERED_BYTES_LI
 
 if (!serverSource.includes("inputId") || !serverSource.includes("acknowledgedAt")) {
   throw new Error('focused WebSocket input acknowledgements are not measurable');
+}
+
+const requiredObservabilityHooks = [
+  'monitorEventLoopDelay',
+  'eventLoopUtilization',
+  'tmuxOperations',
+  'terminalWebSocket',
+  'status_transition',
+  'slow_loop',
+  'tmux_timeout',
+  'observability.jsonl',
+];
+
+for (const key of requiredObservabilityHooks) {
+  if (!serverSource.includes(key)) {
+    throw new Error(`Missing observability hook: ${key}`);
+  }
 }
 
 console.log('host performance checks passed');

@@ -16,4 +16,3 @@ Entry format: `- [ROADMAP-NNN — Title](ROADMAP-NNN-slug.md) — one-line summa
 - [ROADMAP-010 — Agent observability & UX — token tracking, session recording, role templates](ROADMAP-010-agent-observability-ux.md) — per-agent cost visibility, full log history, specialist role presets · 0/15 items checked
 - [ROADMAP-011 — Multi-user team accounts — organisations, memberships, and RBAC](ROADMAP-011-multi-user-team-accounts.md) — org-scoped access with viewer/operator/admin roles · 0/8 items checked
 - [ROADMAP-012 — Cloud session persistence — keep agents running when the local host goes offline](ROADMAP-012-cloud-session-persistence.md) — cloud runner handoff so agents outlive laptop sleep · 0/8 items checked
-- [ROADMAP-016 — Observability improvements — event-loop, tmux, WebSocket, and debug traces](ROADMAP-016-observability-improvements.md) — add local-first metrics, structured logs, terminal latency traces, and diagnostics for stalls · 0/11 items checked

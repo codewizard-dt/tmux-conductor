@@ -504,3 +504,12 @@ Verified baseline artifacts, focused transport ownership, Vite WebSocket proxyin
 
 ## [2026-07-04] roadmap | ROADMAP-015 completed
 All ROADMAP-015 checklist items completed. Marked ROADMAP-015 done and removed it from the active roadmap index.
+
+## [2026-07-04] task | TASK-084..TASK-093 ROADMAP-016 observability implementation
+Implemented ROADMAP-016 across event-loop delay/utilization metrics, tmux owner timings, terminal WebSocket lifecycle/input latency, env-gated Fastify structured request logging, observability JSONL records, focused terminal debug overlay, diagnostic bundle command, benchmark script output, guardrails, and threshold documentation.
+
+## [2026-07-04] uat | UAT-084..UAT-093 passed (auto) · TASK-084..TASK-093 done
+Verified with host-server typecheck/lint/perf guardrails, frontend typecheck/lint/build, shell syntax checks, frontend live-update guardrail, and `npm run diagnostics:bundle`. Archived UAT-084 through UAT-093 and marked the matching ROADMAP-016 items done.
+
+## [2026-07-04] archive | ROADMAP-016 — completed, moved to archive
+All 10 checklist items completed. Moved to wiki/work/roadmaps/archive/ROADMAP-016-observability-improvements.md.

@@ -52,3 +52,13 @@ Terminal UAT files (`passed`, `skipped`, or `trashed`) moved here by `/wiki-arch
 | [[UAT-081]] | UAT: focused terminal WebSocket transport | passed | 2026-06-28 |
 | [[UAT-082]] | UAT: move direct input and focused output onto WebSocket path | passed | 2026-06-28 |
 | [[UAT-083]] | UAT: compare optimized SSE and WebSocket performance | passed | 2026-06-28 |
+| [[UAT-084]] | UAT: add event-loop delay and utilization metrics | passed | 2026-07-04 |
+| [[UAT-085]] | UAT: add tmux operation metrics with owner labels | passed | 2026-07-04 |
+| [[UAT-086]] | UAT: add terminal WebSocket lifecycle counters | passed | 2026-07-04 |
+| [[UAT-087]] | UAT: add input-to-ack and input-to-echo latency metrics | passed | 2026-07-04 |
+| [[UAT-088]] | UAT: enable env-gated Fastify structured request logging | passed | 2026-07-04 |
+| [[UAT-089]] | UAT: add status-transition JSONL records | passed | 2026-07-04 |
+| [[UAT-090]] | UAT: add slow-loop and tmux-timeout JSONL records | passed | 2026-07-04 |
+| [[UAT-091]] | UAT: add focused terminal debug overlay | passed | 2026-07-04 |
+| [[UAT-092]] | UAT: add local diagnostic bundle command | passed | 2026-07-04 |
+| [[UAT-093]] | UAT: extend performance scripts and metric threshold docs | passed | 2026-07-04 |

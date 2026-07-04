@@ -11,3 +11,4 @@ Terminal roadmap files (`done`) moved here by `/wiki-archive` to reduce director
 | [[ROADMAP-006]] | Deploy Dashboard to DO App Platform with oauth2-proxy | done | 2026-06-14 |
 | [[ROADMAP-013]] | Projects page, project details page, and nav bar | done | 2026-06-14 |
 | [[ROADMAP-014]] | Dashboard performance — instrumentation, capture optimization, WebSocket terminal | done | 2026-06-28 |
+| [[ROADMAP-016]] | Observability improvements — event-loop, tmux, WebSocket, and debug traces | done | 2026-07-04 |
