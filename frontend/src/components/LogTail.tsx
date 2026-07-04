@@ -222,14 +222,15 @@ export default function LogTail({ agentId, agentName, maxHeightClass, focused, f
     return () => { cancelled = true }
   }, [agentId])
 
-  // Create the xterm.js terminal once windowPresent is true and the container div is in the DOM.
+  // Create the xterm.js terminal once the tail has loaded, the tmux window is
+  // present, and the container div is in the DOM.
   useEffect(() => {
-    if (!windowPresent || !xtermContainerRef.current) return
+    if (!loaded || !windowPresent || !xtermContainerRef.current) return
     const term = new Terminal({
       theme: { background: '#0b0b0d', foreground: '#e7e8ea', cursor: '#e7e8ea', cursorAccent: '#0b0b0d' },
       fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
       fontSize: 11,
-      lineHeight: 1.3,
+      lineHeight: 1.1,
       scrollback: 1000,
       convertEol: true,
       disableStdin: true,
@@ -264,9 +265,11 @@ export default function LogTail({ agentId, agentName, maxHeightClass, focused, f
         applySnapshot(pendingTextRef.current)
       }
     })
-    if (initialTextRef.current) {
-      applySnapshot(initialTextRef.current)
+    const firstSnapshot = pendingTextRef.current ?? initialTextRef.current
+    if (firstSnapshot) {
+      applySnapshot(firstSnapshot)
       initialTextRef.current = ''
+      pendingTextRef.current = firstSnapshot
     }
     const ro = new ResizeObserver(() => { fitAddonRef.current?.fit() })
     ro.observe(xtermContainerRef.current)
@@ -276,7 +279,7 @@ export default function LogTail({ agentId, agentName, maxHeightClass, focused, f
       termRef.current = null
       fitAddonRef.current = null
     }
-  }, [windowPresent, agentId])
+  }, [loaded, windowPresent, agentId])
 
   useEffect(() => {
     if (!focused) return
@@ -305,61 +308,68 @@ export default function LogTail({ agentId, agentName, maxHeightClass, focused, f
       })
       return
     }
+    let cancelled = false
+    let client: TerminalWebSocketClient | null = null
     queueMicrotask(() => {
       setTerminalWsConnected(false)
       setTerminalDebug((prev) => ({ ...prev, wsStatus: 'connecting' }))
     })
-    const client = connectTerminalWebSocket(
-      agentId,
-      (message) => {
-        const receivedAt = performance.now()
-        if (message.type === 'ack') {
-          recordFocusedInputAck(agentId, message.inputId, message.sentAt)
-          setTerminalDebug((prev) => ({ ...prev, wsStatus: 'open', lastAckMs: message.latencyMs ?? prev.lastAckMs }))
-          return
-        }
-        if (message.type === 'echo') {
-          setTerminalDebug((prev) => ({ ...prev, wsStatus: 'open', lastEchoMs: message.latencyMs ?? prev.lastEchoMs }))
-          return
-        }
-        if (message.type === 'error') {
-          setTerminalDebug((prev) => ({ ...prev, wsStatus: 'error' }))
-          return
-        }
-        if (message.agentId !== agentId || typeof message.text !== 'string') return
-        const outputText = message.text
-        setTerminalDebug((prev) => ({
-          ...prev,
-          wsStatus: 'open',
-          lastOutputAt: new Date().toLocaleTimeString(),
-          lastOutputChars: outputText.length,
-        }))
-        pendingTextRef.current = outputText
-        setWindowPresent(message.windowPresent ?? true)
-        if (followRef.current) {
-          applySnapshot(outputText)
-          recordFocusedLatencySample('websocket', agentId, outputText, message.lines ?? null, message.windowPresent ?? null, receivedAt)
-        }
-      },
-      () => {
-        if (terminalWsRef.current === client) {
-          terminalWsRef.current = null
-          setTerminalWsConnected(false)
-        }
-        setTerminalDebug((prev) => ({ ...prev, wsStatus: 'closed' }))
-      },
-      () => {
-        setTerminalWsConnected(true)
-        setTerminalDebug((prev) => ({ ...prev, wsStatus: 'open' }))
-      },
-    )
-    terminalWsRef.current = client
+    const openTimer = setTimeout(() => {
+      if (cancelled) return
+      client = connectTerminalWebSocket(
+        agentId,
+        (message) => {
+          const receivedAt = performance.now()
+          if (message.type === 'ack') {
+            recordFocusedInputAck(agentId, message.inputId, message.sentAt)
+            setTerminalDebug((prev) => ({ ...prev, wsStatus: 'open', lastAckMs: message.latencyMs ?? prev.lastAckMs }))
+            return
+          }
+          if (message.type === 'echo') {
+            setTerminalDebug((prev) => ({ ...prev, wsStatus: 'open', lastEchoMs: message.latencyMs ?? prev.lastEchoMs }))
+            return
+          }
+          if (message.type === 'error') {
+            setTerminalDebug((prev) => ({ ...prev, wsStatus: 'error' }))
+            return
+          }
+          if (message.agentId !== agentId || typeof message.text !== 'string') return
+          const outputText = message.text
+          setTerminalDebug((prev) => ({
+            ...prev,
+            wsStatus: 'open',
+            lastOutputAt: new Date().toLocaleTimeString(),
+            lastOutputChars: outputText.length,
+          }))
+          pendingTextRef.current = outputText
+          setWindowPresent(message.windowPresent ?? true)
+          if (followRef.current) {
+            applySnapshot(outputText)
+            recordFocusedLatencySample('websocket', agentId, outputText, message.lines ?? null, message.windowPresent ?? null, receivedAt)
+          }
+        },
+        () => {
+          if (terminalWsRef.current === client) {
+            terminalWsRef.current = null
+            setTerminalWsConnected(false)
+          }
+          setTerminalDebug((prev) => ({ ...prev, wsStatus: 'closed' }))
+        },
+        () => {
+          setTerminalWsConnected(true)
+          setTerminalDebug((prev) => ({ ...prev, wsStatus: 'open' }))
+        },
+      )
+      terminalWsRef.current = client
+    }, 0)
     return () => {
-      if (terminalWsRef.current === client) {
+      cancelled = true
+      clearTimeout(openTimer)
+      if (client !== null && terminalWsRef.current === client) {
         terminalWsRef.current = null
         setTerminalWsConnected(false)
       }
-      client.close()
+      client?.close()
     }
   }, [agentId, focused])
 
@@ -567,11 +577,11 @@ export default function LogTail({ agentId, agentName, maxHeightClass, focused, f
           onDragOver={handleDragOver}
           onDragLeave={() => { setDragOver(false) }}
           onDrop={handleDrop}
-          className={`relative ${fillContainer ? 'flex flex-col flex-1 min-h-0 ' : ''}${dragOver
-            ? 'overflow-hidden rounded-[10px] outline-none ring-[3px] ring-accent-blue'
+          className={`relative border bg-[#0b0b0d] ${fillContainer ? 'flex flex-col flex-1 min-h-0 ' : ''}${dragOver
+            ? 'overflow-hidden rounded-[10px] border-accent-blue outline-none ring-[3px] ring-accent-blue'
             : interacting
-              ? 'overflow-hidden rounded-[10px] outline-none ring-[3px] ring-[#e0901a]'
-              : 'outline-none'}`}
+              ? 'overflow-hidden rounded-[10px] border-[#e0901a] outline-none ring-[3px] ring-[#e0901a]'
+              : 'rounded-[10px] border-line outline-none'}`}
         >
           {interacting && (
             <div className="flex items-center gap-2 bg-[#e0901a] px-3 py-1 text-[10px] font-bold uppercase tracking-[0.06em] text-white">
@@ -586,7 +596,7 @@ export default function LogTail({ agentId, agentName, maxHeightClass, focused, f
           )}
           <div
             ref={xtermContainerRef}
-            className={`overflow-hidden ${interacting ? '' : 'rounded-[10px]'} ${fillContainer ? 'flex-1 min-h-0' : (maxHeightClass ?? 'h-48')} ${!interacting && onInteractChange !== undefined ? 'cursor-text' : ''}`}
+            className={`overflow-hidden bg-[#0b0b0d] ${interacting ? '' : 'rounded-[10px]'} ${fillContainer ? 'flex-1 min-h-0' : (maxHeightClass ?? 'h-48')} ${!interacting && onInteractChange !== undefined ? 'cursor-text' : ''}`}
             onClick={!interacting && onInteractChange !== undefined ? () => { setInteracting(true); captureRef.current?.focus() } : undefined}
           />
           {interacting && escHint && (
