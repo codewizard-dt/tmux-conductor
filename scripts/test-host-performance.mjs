@@ -49,4 +49,20 @@ if (!serverSource.includes('prevTailMapFocus.get(a.id) !== text')) {
   throw new Error('focused terminal loop does not suppress unchanged snapshots');
 }
 
+if (!serverSource.includes('const focusedWebSocketAgents = new Map<number, number>()')) {
+  throw new Error('focused WebSocket ownership registry is missing');
+}
+
+if (!serverSource.includes('focusedAgents.has(a.id) && !focusedWebSocketAgents.has(a.id)')) {
+  throw new Error('focused SSE loop does not exclude WebSocket-owned focused agents');
+}
+
+if (!serverSource.includes('socket.bufferedAmount > FOCUSED_WS_BUFFERED_BYTES_LIMIT')) {
+  throw new Error('focused WebSocket output is not backpressure-aware');
+}
+
+if (!serverSource.includes("inputId") || !serverSource.includes("acknowledgedAt")) {
+  throw new Error('focused WebSocket input acknowledgements are not measurable');
+}
+
 console.log('host performance checks passed');

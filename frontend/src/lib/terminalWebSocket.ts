@@ -4,6 +4,9 @@ export interface TerminalWebSocketMessage {
   type: 'output' | 'ack' | 'error'
   agentId?: number
   agent?: string
+  inputId?: number
+  sentAt?: number
+  acknowledgedAt?: number
   lines?: number
   windowPresent?: boolean
   text?: string
@@ -26,9 +29,12 @@ export function connectTerminalWebSocket(
   agentId: number,
   onMessage: (message: TerminalWebSocketMessage) => void,
   onClose: () => void,
+  onOpen?: () => void,
 ): TerminalWebSocketClient {
   const ws = new WebSocket(`${websocketBase()}/agents/${agentId.toString()}/terminal/ws`)
+  let nextInputId = 1
 
+  ws.onopen = () => { onOpen?.() }
   ws.onmessage = (event) => {
     try {
       onMessage(JSON.parse(String(event.data)) as TerminalWebSocketMessage)
@@ -43,7 +49,9 @@ export function connectTerminalWebSocket(
     close: () => { ws.close() },
     sendInput: (payload) => {
       if (ws.readyState !== WebSocket.OPEN) return false
-      ws.send(JSON.stringify({ type: 'input', payload }))
+      const inputId = nextInputId
+      nextInputId += 1
+      ws.send(JSON.stringify({ type: 'input', inputId, sentAt: performance.now(), payload }))
       return true
     },
   }

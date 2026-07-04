@@ -1,0 +1,4201 @@
+{
+  "scenario": {
+    "url": "http://localhost:4321/api/perf/live-updates",
+    "intervalMs": 500,
+    "requestedSamples": {
+      "before": 1,
+      "during": 30,
+      "after": 1
+    },
+    "capturedAt": "2026-07-04T11:01:05.894Z",
+    "instructions": [
+      "Start the dashboard and host-server.",
+      "Run this helper, then open a representative focused agent detail terminal before the during phase.",
+      "Keep the focused terminal visible until the during phase completes."
+    ]
+  },
+  "summary": {
+    "sampleCount": 32,
+    "phases": {
+      "before": 1,
+      "during": 30,
+      "after": 1
+    },
+    "metrics": {
+      "statusTicks": {
+        "samples": 7,
+        "medianAvgDeltaMs": 37.986,
+        "p95AvgDeltaMs": 590.235,
+        "maxAvgDeltaMs": 590.235
+      },
+      "terminalTicks": {
+        "samples": 7,
+        "medianAvgDeltaMs": 11.013,
+        "p95AvgDeltaMs": 14.448,
+        "maxAvgDeltaMs": 14.448
+      },
+      "focusedTerminalTicks": {
+        "samples": 29,
+        "medianAvgDeltaMs": 23.992,
+        "p95AvgDeltaMs": 29.478,
+        "maxAvgDeltaMs": 32.712
+      },
+      "tmuxCaptureTail": {
+        "samples": 7,
+        "medianAvgDeltaMs": 4.252,
+        "p95AvgDeltaMs": 4.706,
+        "maxAvgDeltaMs": 4.706
+      },
+      "tmuxCaptureTailRaw": {
+        "samples": 29,
+        "medianAvgDeltaMs": 11.592,
+        "p95AvgDeltaMs": 14.299,
+        "maxAvgDeltaMs": 14.49
+      },
+      "sseBroadcasts": {
+        "samples": 12,
+        "medianAvgDeltaMs": 0.084,
+        "p95AvgDeltaMs": 0.125,
+        "maxAvgDeltaMs": 0.125
+      },
+      "tailRequests": {
+        "samples": 0,
+        "medianAvgDeltaMs": null,
+        "p95AvgDeltaMs": null,
+        "maxAvgDeltaMs": null
+      }
+    }
+  },
+  "samples": [
+    {
+      "phase": "before",
+      "index": 0,
+      "sampledAt": "2026-07-04T11:00:50.016Z",
+      "fetchMs": 46.082,
+      "body": {
+        "timestamp": "2026-07-04T11:00:50.011Z",
+        "liveUpdates": {
+          "startedAt": "2026-07-04T10:20:16.705Z",
+          "activeSseConnections": 2,
+          "sseConnections": {
+            "opened": 6,
+            "closed": 4
+          },
+          "sseBroadcastsByEvent": {
+            "session-update": 1,
+            "agent-update": 47,
+            "terminal-output": 154,
+            "terminal-output-focus": 233,
+            "agent-removed": 2
+          },
+          "timings": {
+            "statusTicks": {
+              "count": 1147,
+              "totalMs": 121922.848,
+              "maxMs": 704.107,
+              "lastMs": 27.605
+            },
+            "terminalTicks": {
+              "count": 1147,
+              "totalMs": 17218.809,
+              "maxMs": 94.631,
+              "lastMs": 8.995
+            },
+            "focusedTerminalTicks": {
+              "count": 11259,
+              "totalMs": 32684.256,
+              "maxMs": 39.259,
+              "lastMs": 15.165
+            },
+            "tmuxCaptureTail": {
+              "count": 7369,
+              "totalMs": 32821.454,
+              "maxMs": 28.135,
+              "lastMs": 3.086
+            },
+            "tmuxCaptureTailRaw": {
+              "count": 1822,
+              "totalMs": 18984.831,
+              "maxMs": 18.404,
+              "lastMs": 8.257
+            },
+            "sseBroadcasts": {
+              "count": 437,
+              "totalMs": 16.977,
+              "maxMs": 0.133,
+              "lastMs": 0.042
+            },
+            "tailRequests": {
+              "count": 18,
+              "totalMs": 267.798,
+              "maxMs": 25.822,
+              "lastMs": 12.084
+            }
+          }
+        }
+      },
+      "deltaFromPrevious": null
+    },
+    {
+      "phase": "during",
+      "index": 0,
+      "sampledAt": "2026-07-04T11:00:50.019Z",
+      "fetchMs": 2.437,
+      "body": {
+        "timestamp": "2026-07-04T11:00:50.018Z",
+        "liveUpdates": {
+          "startedAt": "2026-07-04T10:20:16.705Z",
+          "activeSseConnections": 2,
+          "sseConnections": {
+            "opened": 6,
+            "closed": 4
+          },
+          "sseBroadcastsByEvent": {
+            "session-update": 1,
+            "agent-update": 47,
+            "terminal-output": 154,
+            "terminal-output-focus": 233,
+            "agent-removed": 2
+          },
+          "timings": {
+            "statusTicks": {
+              "count": 1147,
+              "totalMs": 121922.848,
+              "maxMs": 704.107,
+              "lastMs": 27.605
+            },
+            "terminalTicks": {
+              "count": 1147,
+              "totalMs": 17218.809,
+              "maxMs": 94.631,
+              "lastMs": 8.995
+            },
+            "focusedTerminalTicks": {
+              "count": 11259,
+              "totalMs": 32684.256,
+              "maxMs": 39.259,
+              "lastMs": 15.165
+            },
+            "tmuxCaptureTail": {
+              "count": 7369,
+              "totalMs": 32821.454,
+              "maxMs": 28.135,
+              "lastMs": 3.086
+            },
+            "tmuxCaptureTailRaw": {
+              "count": 1822,
+              "totalMs": 18984.831,
+              "maxMs": 18.404,
+              "lastMs": 8.257
+            },
+            "sseBroadcasts": {
+              "count": 437,
+              "totalMs": 16.977,
+              "maxMs": 0.133,
+              "lastMs": 0.042
+            },
+            "tailRequests": {
+              "count": 18,
+              "totalMs": 267.798,
+              "maxMs": 25.822,
+              "lastMs": 12.084
+            }
+          }
+        }
+      },
+      "deltaFromPrevious": {
+        "sseOpenedDelta": 0,
+        "sseClosedDelta": 0,
+        "activeSseConnections": 2,
+        "sseBroadcastsByEventDelta": {
+          "session-update": 0,
+          "agent-update": 0,
+          "terminal-output": 0,
+          "terminal-output-focus": 0,
+          "agent-removed": 0
+        },
+        "timings": {
+          "statusTicks": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 27.605,
+            "maxMs": 704.107
+          },
+          "terminalTicks": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 8.995,
+            "maxMs": 94.631
+          },
+          "focusedTerminalTicks": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 15.165,
+            "maxMs": 39.259
+          },
+          "tmuxCaptureTail": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 3.086,
+            "maxMs": 28.135
+          },
+          "tmuxCaptureTailRaw": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 8.257,
+            "maxMs": 18.404
+          },
+          "sseBroadcasts": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 0.042,
+            "maxMs": 0.133
+          },
+          "tailRequests": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 12.084,
+            "maxMs": 25.822
+          }
+        }
+      }
+    },
+    {
+      "phase": "during",
+      "index": 1,
+      "sampledAt": "2026-07-04T11:00:50.521Z",
+      "fetchMs": 2.507,
+      "body": {
+        "timestamp": "2026-07-04T11:00:50.520Z",
+        "liveUpdates": {
+          "startedAt": "2026-07-04T10:20:16.705Z",
+          "activeSseConnections": 2,
+          "sseConnections": {
+            "opened": 6,
+            "closed": 4
+          },
+          "sseBroadcastsByEvent": {
+            "session-update": 1,
+            "agent-update": 47,
+            "terminal-output": 154,
+            "terminal-output-focus": 233,
+            "agent-removed": 2
+          },
+          "timings": {
+            "statusTicks": {
+              "count": 1147,
+              "totalMs": 121922.848,
+              "maxMs": 704.107,
+              "lastMs": 27.605
+            },
+            "terminalTicks": {
+              "count": 1147,
+              "totalMs": 17218.809,
+              "maxMs": 94.631,
+              "lastMs": 8.995
+            },
+            "focusedTerminalTicks": {
+              "count": 11261,
+              "totalMs": 32708.384,
+              "maxMs": 39.259,
+              "lastMs": 11.901
+            },
+            "tmuxCaptureTail": {
+              "count": 7369,
+              "totalMs": 32821.454,
+              "maxMs": 28.135,
+              "lastMs": 3.086
+            },
+            "tmuxCaptureTailRaw": {
+              "count": 1826,
+              "totalMs": 19015.525,
+              "maxMs": 18.404,
+              "lastMs": 7.616
+            },
+            "sseBroadcasts": {
+              "count": 437,
+              "totalMs": 16.977,
+              "maxMs": 0.133,
+              "lastMs": 0.042
+            },
+            "tailRequests": {
+              "count": 18,
+              "totalMs": 267.798,
+              "maxMs": 25.822,
+              "lastMs": 12.084
+            }
+          }
+        }
+      },
+      "deltaFromPrevious": {
+        "sseOpenedDelta": 0,
+        "sseClosedDelta": 0,
+        "activeSseConnections": 2,
+        "sseBroadcastsByEventDelta": {
+          "session-update": 0,
+          "agent-update": 0,
+          "terminal-output": 0,
+          "terminal-output-focus": 0,
+          "agent-removed": 0
+        },
+        "timings": {
+          "statusTicks": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 27.605,
+            "maxMs": 704.107
+          },
+          "terminalTicks": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 8.995,
+            "maxMs": 94.631
+          },
+          "focusedTerminalTicks": {
+            "countDelta": 2,
+            "totalDeltaMs": 24.128,
+            "avgDeltaMs": 12.064,
+            "lastMs": 11.901,
+            "maxMs": 39.259
+          },
+          "tmuxCaptureTail": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 3.086,
+            "maxMs": 28.135
+          },
+          "tmuxCaptureTailRaw": {
+            "countDelta": 4,
+            "totalDeltaMs": 30.694,
+            "avgDeltaMs": 7.674,
+            "lastMs": 7.616,
+            "maxMs": 18.404
+          },
+          "sseBroadcasts": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 0.042,
+            "maxMs": 0.133
+          },
+          "tailRequests": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 12.084,
+            "maxMs": 25.822
+          }
+        }
+      }
+    },
+    {
+      "phase": "during",
+      "index": 2,
+      "sampledAt": "2026-07-04T11:00:51.331Z",
+      "fetchMs": 308.954,
+      "body": {
+        "timestamp": "2026-07-04T11:00:51.330Z",
+        "liveUpdates": {
+          "startedAt": "2026-07-04T10:20:16.705Z",
+          "activeSseConnections": 2,
+          "sseConnections": {
+            "opened": 6,
+            "closed": 4
+          },
+          "sseBroadcastsByEvent": {
+            "session-update": 1,
+            "agent-update": 47,
+            "terminal-output": 154,
+            "terminal-output-focus": 233,
+            "agent-removed": 2
+          },
+          "timings": {
+            "statusTicks": {
+              "count": 1148,
+              "totalMs": 122513.083,
+              "maxMs": 704.107,
+              "lastMs": 590.235
+            },
+            "terminalTicks": {
+              "count": 1148,
+              "totalMs": 17233.257,
+              "maxMs": 94.631,
+              "lastMs": 14.448
+            },
+            "focusedTerminalTicks": {
+              "count": 11263,
+              "totalMs": 32735.902,
+              "maxMs": 39.259,
+              "lastMs": 14.975
+            },
+            "tmuxCaptureTail": {
+              "count": 7374,
+              "totalMs": 32844.707,
+              "maxMs": 28.135,
+              "lastMs": 4.191
+            },
+            "tmuxCaptureTailRaw": {
+              "count": 1830,
+              "totalMs": 19050.938,
+              "maxMs": 18.404,
+              "lastMs": 9.166
+            },
+            "sseBroadcasts": {
+              "count": 437,
+              "totalMs": 16.977,
+              "maxMs": 0.133,
+              "lastMs": 0.042
+            },
+            "tailRequests": {
+              "count": 18,
+              "totalMs": 267.798,
+              "maxMs": 25.822,
+              "lastMs": 12.084
+            }
+          }
+        }
+      },
+      "deltaFromPrevious": {
+        "sseOpenedDelta": 0,
+        "sseClosedDelta": 0,
+        "activeSseConnections": 2,
+        "sseBroadcastsByEventDelta": {
+          "session-update": 0,
+          "agent-update": 0,
+          "terminal-output": 0,
+          "terminal-output-focus": 0,
+          "agent-removed": 0
+        },
+        "timings": {
+          "statusTicks": {
+            "countDelta": 1,
+            "totalDeltaMs": 590.235,
+            "avgDeltaMs": 590.235,
+            "lastMs": 590.235,
+            "maxMs": 704.107
+          },
+          "terminalTicks": {
+            "countDelta": 1,
+            "totalDeltaMs": 14.448,
+            "avgDeltaMs": 14.448,
+            "lastMs": 14.448,
+            "maxMs": 94.631
+          },
+          "focusedTerminalTicks": {
+            "countDelta": 2,
+            "totalDeltaMs": 27.518,
+            "avgDeltaMs": 13.759,
+            "lastMs": 14.975,
+            "maxMs": 39.259
+          },
+          "tmuxCaptureTail": {
+            "countDelta": 5,
+            "totalDeltaMs": 23.253,
+            "avgDeltaMs": 4.651,
+            "lastMs": 4.191,
+            "maxMs": 28.135
+          },
+          "tmuxCaptureTailRaw": {
+            "countDelta": 4,
+            "totalDeltaMs": 35.413,
+            "avgDeltaMs": 8.853,
+            "lastMs": 9.166,
+            "maxMs": 18.404
+          },
+          "sseBroadcasts": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 0.042,
+            "maxMs": 0.133
+          },
+          "tailRequests": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 12.084,
+            "maxMs": 25.822
+          }
+        }
+      }
+    },
+    {
+      "phase": "during",
+      "index": 3,
+      "sampledAt": "2026-07-04T11:00:51.834Z",
+      "fetchMs": 2.657,
+      "body": {
+        "timestamp": "2026-07-04T11:00:51.833Z",
+        "liveUpdates": {
+          "startedAt": "2026-07-04T10:20:16.705Z",
+          "activeSseConnections": 2,
+          "sseConnections": {
+            "opened": 6,
+            "closed": 4
+          },
+          "sseBroadcastsByEvent": {
+            "session-update": 1,
+            "agent-update": 47,
+            "terminal-output": 154,
+            "terminal-output-focus": 233,
+            "agent-removed": 2
+          },
+          "timings": {
+            "statusTicks": {
+              "count": 1148,
+              "totalMs": 122513.083,
+              "maxMs": 704.107,
+              "lastMs": 590.235
+            },
+            "terminalTicks": {
+              "count": 1148,
+              "totalMs": 17233.257,
+              "maxMs": 94.631,
+              "lastMs": 14.448
+            },
+            "focusedTerminalTicks": {
+              "count": 11265,
+              "totalMs": 32758.709,
+              "maxMs": 39.259,
+              "lastMs": 11.394
+            },
+            "tmuxCaptureTail": {
+              "count": 7374,
+              "totalMs": 32844.707,
+              "maxMs": 28.135,
+              "lastMs": 4.191
+            },
+            "tmuxCaptureTailRaw": {
+              "count": 1834,
+              "totalMs": 19079.805,
+              "maxMs": 18.404,
+              "lastMs": 7.599
+            },
+            "sseBroadcasts": {
+              "count": 437,
+              "totalMs": 16.977,
+              "maxMs": 0.133,
+              "lastMs": 0.042
+            },
+            "tailRequests": {
+              "count": 18,
+              "totalMs": 267.798,
+              "maxMs": 25.822,
+              "lastMs": 12.084
+            }
+          }
+        }
+      },
+      "deltaFromPrevious": {
+        "sseOpenedDelta": 0,
+        "sseClosedDelta": 0,
+        "activeSseConnections": 2,
+        "sseBroadcastsByEventDelta": {
+          "session-update": 0,
+          "agent-update": 0,
+          "terminal-output": 0,
+          "terminal-output-focus": 0,
+          "agent-removed": 0
+        },
+        "timings": {
+          "statusTicks": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 590.235,
+            "maxMs": 704.107
+          },
+          "terminalTicks": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 14.448,
+            "maxMs": 94.631
+          },
+          "focusedTerminalTicks": {
+            "countDelta": 2,
+            "totalDeltaMs": 22.807,
+            "avgDeltaMs": 11.404,
+            "lastMs": 11.394,
+            "maxMs": 39.259
+          },
+          "tmuxCaptureTail": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 4.191,
+            "maxMs": 28.135
+          },
+          "tmuxCaptureTailRaw": {
+            "countDelta": 4,
+            "totalDeltaMs": 28.867,
+            "avgDeltaMs": 7.217,
+            "lastMs": 7.599,
+            "maxMs": 18.404
+          },
+          "sseBroadcasts": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 0.042,
+            "maxMs": 0.133
+          },
+          "tailRequests": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 12.084,
+            "maxMs": 25.822
+          }
+        }
+      }
+    },
+    {
+      "phase": "during",
+      "index": 4,
+      "sampledAt": "2026-07-04T11:00:52.339Z",
+      "fetchMs": 3.671,
+      "body": {
+        "timestamp": "2026-07-04T11:00:52.338Z",
+        "liveUpdates": {
+          "startedAt": "2026-07-04T10:20:16.705Z",
+          "activeSseConnections": 2,
+          "sseConnections": {
+            "opened": 6,
+            "closed": 4
+          },
+          "sseBroadcastsByEvent": {
+            "session-update": 1,
+            "agent-update": 47,
+            "terminal-output": 154,
+            "terminal-output-focus": 233,
+            "agent-removed": 2
+          },
+          "timings": {
+            "statusTicks": {
+              "count": 1148,
+              "totalMs": 122513.083,
+              "maxMs": 704.107,
+              "lastMs": 590.235
+            },
+            "terminalTicks": {
+              "count": 1148,
+              "totalMs": 17233.257,
+              "maxMs": 94.631,
+              "lastMs": 14.448
+            },
+            "focusedTerminalTicks": {
+              "count": 11267,
+              "totalMs": 32789.215,
+              "maxMs": 39.259,
+              "lastMs": 19.353
+            },
+            "tmuxCaptureTail": {
+              "count": 7374,
+              "totalMs": 32844.707,
+              "maxMs": 28.135,
+              "lastMs": 4.191
+            },
+            "tmuxCaptureTailRaw": {
+              "count": 1838,
+              "totalMs": 19108.169,
+              "maxMs": 18.404,
+              "lastMs": 7.429
+            },
+            "sseBroadcasts": {
+              "count": 437,
+              "totalMs": 16.977,
+              "maxMs": 0.133,
+              "lastMs": 0.042
+            },
+            "tailRequests": {
+              "count": 18,
+              "totalMs": 267.798,
+              "maxMs": 25.822,
+              "lastMs": 12.084
+            }
+          }
+        }
+      },
+      "deltaFromPrevious": {
+        "sseOpenedDelta": 0,
+        "sseClosedDelta": 0,
+        "activeSseConnections": 2,
+        "sseBroadcastsByEventDelta": {
+          "session-update": 0,
+          "agent-update": 0,
+          "terminal-output": 0,
+          "terminal-output-focus": 0,
+          "agent-removed": 0
+        },
+        "timings": {
+          "statusTicks": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 590.235,
+            "maxMs": 704.107
+          },
+          "terminalTicks": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 14.448,
+            "maxMs": 94.631
+          },
+          "focusedTerminalTicks": {
+            "countDelta": 2,
+            "totalDeltaMs": 30.506,
+            "avgDeltaMs": 15.253,
+            "lastMs": 19.353,
+            "maxMs": 39.259
+          },
+          "tmuxCaptureTail": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 4.191,
+            "maxMs": 28.135
+          },
+          "tmuxCaptureTailRaw": {
+            "countDelta": 4,
+            "totalDeltaMs": 28.364,
+            "avgDeltaMs": 7.091,
+            "lastMs": 7.429,
+            "maxMs": 18.404
+          },
+          "sseBroadcasts": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 0.042,
+            "maxMs": 0.133
+          },
+          "tailRequests": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 12.084,
+            "maxMs": 25.822
+          }
+        }
+      }
+    },
+    {
+      "phase": "during",
+      "index": 5,
+      "sampledAt": "2026-07-04T11:00:52.845Z",
+      "fetchMs": 5.467,
+      "body": {
+        "timestamp": "2026-07-04T11:00:52.844Z",
+        "liveUpdates": {
+          "startedAt": "2026-07-04T10:20:16.705Z",
+          "activeSseConnections": 2,
+          "sseConnections": {
+            "opened": 6,
+            "closed": 4
+          },
+          "sseBroadcastsByEvent": {
+            "session-update": 1,
+            "agent-update": 47,
+            "terminal-output": 154,
+            "terminal-output-focus": 233,
+            "agent-removed": 2
+          },
+          "timings": {
+            "statusTicks": {
+              "count": 1148,
+              "totalMs": 122513.083,
+              "maxMs": 704.107,
+              "lastMs": 590.235
+            },
+            "terminalTicks": {
+              "count": 1148,
+              "totalMs": 17233.257,
+              "maxMs": 94.631,
+              "lastMs": 14.448
+            },
+            "focusedTerminalTicks": {
+              "count": 11270,
+              "totalMs": 32843.877,
+              "maxMs": 39.259,
+              "lastMs": 17.699
+            },
+            "tmuxCaptureTail": {
+              "count": 7374,
+              "totalMs": 32844.707,
+              "maxMs": 28.135,
+              "lastMs": 4.191
+            },
+            "tmuxCaptureTailRaw": {
+              "count": 1844,
+              "totalMs": 19165.524,
+              "maxMs": 18.404,
+              "lastMs": 9.179
+            },
+            "sseBroadcasts": {
+              "count": 437,
+              "totalMs": 16.977,
+              "maxMs": 0.133,
+              "lastMs": 0.042
+            },
+            "tailRequests": {
+              "count": 18,
+              "totalMs": 267.798,
+              "maxMs": 25.822,
+              "lastMs": 12.084
+            }
+          }
+        }
+      },
+      "deltaFromPrevious": {
+        "sseOpenedDelta": 0,
+        "sseClosedDelta": 0,
+        "activeSseConnections": 2,
+        "sseBroadcastsByEventDelta": {
+          "session-update": 0,
+          "agent-update": 0,
+          "terminal-output": 0,
+          "terminal-output-focus": 0,
+          "agent-removed": 0
+        },
+        "timings": {
+          "statusTicks": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 590.235,
+            "maxMs": 704.107
+          },
+          "terminalTicks": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 14.448,
+            "maxMs": 94.631
+          },
+          "focusedTerminalTicks": {
+            "countDelta": 3,
+            "totalDeltaMs": 54.662,
+            "avgDeltaMs": 18.221,
+            "lastMs": 17.699,
+            "maxMs": 39.259
+          },
+          "tmuxCaptureTail": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 4.191,
+            "maxMs": 28.135
+          },
+          "tmuxCaptureTailRaw": {
+            "countDelta": 6,
+            "totalDeltaMs": 57.355,
+            "avgDeltaMs": 9.559,
+            "lastMs": 9.179,
+            "maxMs": 18.404
+          },
+          "sseBroadcasts": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 0.042,
+            "maxMs": 0.133
+          },
+          "tailRequests": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 12.084,
+            "maxMs": 25.822
+          }
+        }
+      }
+    },
+    {
+      "phase": "during",
+      "index": 6,
+      "sampledAt": "2026-07-04T11:00:53.349Z",
+      "fetchMs": 2.939,
+      "body": {
+        "timestamp": "2026-07-04T11:00:53.348Z",
+        "liveUpdates": {
+          "startedAt": "2026-07-04T10:20:16.705Z",
+          "activeSseConnections": 2,
+          "sseConnections": {
+            "opened": 6,
+            "closed": 4
+          },
+          "sseBroadcastsByEvent": {
+            "session-update": 1,
+            "agent-update": 47,
+            "terminal-output": 154,
+            "terminal-output-focus": 233,
+            "agent-removed": 2
+          },
+          "timings": {
+            "statusTicks": {
+              "count": 1149,
+              "totalMs": 122540.113,
+              "maxMs": 704.107,
+              "lastMs": 27.03
+            },
+            "terminalTicks": {
+              "count": 1149,
+              "totalMs": 17243.252,
+              "maxMs": 94.631,
+              "lastMs": 9.995
+            },
+            "focusedTerminalTicks": {
+              "count": 11272,
+              "totalMs": 32893.082,
+              "maxMs": 39.259,
+              "lastMs": 24.961
+            },
+            "tmuxCaptureTail": {
+              "count": 7379,
+              "totalMs": 32862.55,
+              "maxMs": 28.135,
+              "lastMs": 3.326
+            },
+            "tmuxCaptureTailRaw": {
+              "count": 1848,
+              "totalMs": 19213.91,
+              "maxMs": 18.404,
+              "lastMs": 9.569
+            },
+            "sseBroadcasts": {
+              "count": 437,
+              "totalMs": 16.977,
+              "maxMs": 0.133,
+              "lastMs": 0.042
+            },
+            "tailRequests": {
+              "count": 18,
+              "totalMs": 267.798,
+              "maxMs": 25.822,
+              "lastMs": 12.084
+            }
+          }
+        }
+      },
+      "deltaFromPrevious": {
+        "sseOpenedDelta": 0,
+        "sseClosedDelta": 0,
+        "activeSseConnections": 2,
+        "sseBroadcastsByEventDelta": {
+          "session-update": 0,
+          "agent-update": 0,
+          "terminal-output": 0,
+          "terminal-output-focus": 0,
+          "agent-removed": 0
+        },
+        "timings": {
+          "statusTicks": {
+            "countDelta": 1,
+            "totalDeltaMs": 27.03,
+            "avgDeltaMs": 27.03,
+            "lastMs": 27.03,
+            "maxMs": 704.107
+          },
+          "terminalTicks": {
+            "countDelta": 1,
+            "totalDeltaMs": 9.995,
+            "avgDeltaMs": 9.995,
+            "lastMs": 9.995,
+            "maxMs": 94.631
+          },
+          "focusedTerminalTicks": {
+            "countDelta": 2,
+            "totalDeltaMs": 49.205,
+            "avgDeltaMs": 24.603,
+            "lastMs": 24.961,
+            "maxMs": 39.259
+          },
+          "tmuxCaptureTail": {
+            "countDelta": 5,
+            "totalDeltaMs": 17.843,
+            "avgDeltaMs": 3.569,
+            "lastMs": 3.326,
+            "maxMs": 28.135
+          },
+          "tmuxCaptureTailRaw": {
+            "countDelta": 4,
+            "totalDeltaMs": 48.386,
+            "avgDeltaMs": 12.096,
+            "lastMs": 9.569,
+            "maxMs": 18.404
+          },
+          "sseBroadcasts": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 0.042,
+            "maxMs": 0.133
+          },
+          "tailRequests": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 12.084,
+            "maxMs": 25.822
+          }
+        }
+      }
+    },
+    {
+      "phase": "during",
+      "index": 7,
+      "sampledAt": "2026-07-04T11:00:53.852Z",
+      "fetchMs": 2.523,
+      "body": {
+        "timestamp": "2026-07-04T11:00:53.852Z",
+        "liveUpdates": {
+          "startedAt": "2026-07-04T10:20:16.705Z",
+          "activeSseConnections": 2,
+          "sseConnections": {
+            "opened": 6,
+            "closed": 4
+          },
+          "sseBroadcastsByEvent": {
+            "session-update": 1,
+            "agent-update": 47,
+            "terminal-output": 154,
+            "terminal-output-focus": 233,
+            "agent-removed": 2
+          },
+          "timings": {
+            "statusTicks": {
+              "count": 1149,
+              "totalMs": 122540.113,
+              "maxMs": 704.107,
+              "lastMs": 27.03
+            },
+            "terminalTicks": {
+              "count": 1149,
+              "totalMs": 17243.252,
+              "maxMs": 94.631,
+              "lastMs": 9.995
+            },
+            "focusedTerminalTicks": {
+              "count": 11274,
+              "totalMs": 32933.324,
+              "maxMs": 39.259,
+              "lastMs": 19.054
+            },
+            "tmuxCaptureTail": {
+              "count": 7379,
+              "totalMs": 32862.55,
+              "maxMs": 28.135,
+              "lastMs": 3.326
+            },
+            "tmuxCaptureTailRaw": {
+              "count": 1852,
+              "totalMs": 19255.143,
+              "maxMs": 18.404,
+              "lastMs": 8.84
+            },
+            "sseBroadcasts": {
+              "count": 437,
+              "totalMs": 16.977,
+              "maxMs": 0.133,
+              "lastMs": 0.042
+            },
+            "tailRequests": {
+              "count": 18,
+              "totalMs": 267.798,
+              "maxMs": 25.822,
+              "lastMs": 12.084
+            }
+          }
+        }
+      },
+      "deltaFromPrevious": {
+        "sseOpenedDelta": 0,
+        "sseClosedDelta": 0,
+        "activeSseConnections": 2,
+        "sseBroadcastsByEventDelta": {
+          "session-update": 0,
+          "agent-update": 0,
+          "terminal-output": 0,
+          "terminal-output-focus": 0,
+          "agent-removed": 0
+        },
+        "timings": {
+          "statusTicks": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 27.03,
+            "maxMs": 704.107
+          },
+          "terminalTicks": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 9.995,
+            "maxMs": 94.631
+          },
+          "focusedTerminalTicks": {
+            "countDelta": 2,
+            "totalDeltaMs": 40.242,
+            "avgDeltaMs": 20.121,
+            "lastMs": 19.054,
+            "maxMs": 39.259
+          },
+          "tmuxCaptureTail": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 3.326,
+            "maxMs": 28.135
+          },
+          "tmuxCaptureTailRaw": {
+            "countDelta": 4,
+            "totalDeltaMs": 41.233,
+            "avgDeltaMs": 10.308,
+            "lastMs": 8.84,
+            "maxMs": 18.404
+          },
+          "sseBroadcasts": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 0.042,
+            "maxMs": 0.133
+          },
+          "tailRequests": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 12.084,
+            "maxMs": 25.822
+          }
+        }
+      }
+    },
+    {
+      "phase": "during",
+      "index": 8,
+      "sampledAt": "2026-07-04T11:00:54.356Z",
+      "fetchMs": 2.533,
+      "body": {
+        "timestamp": "2026-07-04T11:00:54.355Z",
+        "liveUpdates": {
+          "startedAt": "2026-07-04T10:20:16.705Z",
+          "activeSseConnections": 2,
+          "sseConnections": {
+            "opened": 6,
+            "closed": 4
+          },
+          "sseBroadcastsByEvent": {
+            "session-update": 1,
+            "agent-update": 47,
+            "terminal-output": 154,
+            "terminal-output-focus": 233,
+            "agent-removed": 2
+          },
+          "timings": {
+            "statusTicks": {
+              "count": 1149,
+              "totalMs": 122540.113,
+              "maxMs": 704.107,
+              "lastMs": 27.03
+            },
+            "terminalTicks": {
+              "count": 1149,
+              "totalMs": 17243.252,
+              "maxMs": 94.631,
+              "lastMs": 9.995
+            },
+            "focusedTerminalTicks": {
+              "count": 11276,
+              "totalMs": 32973.976,
+              "maxMs": 39.259,
+              "lastMs": 21.642
+            },
+            "tmuxCaptureTail": {
+              "count": 7379,
+              "totalMs": 32862.55,
+              "maxMs": 28.135,
+              "lastMs": 3.326
+            },
+            "tmuxCaptureTailRaw": {
+              "count": 1856,
+              "totalMs": 19302.068,
+              "maxMs": 18.404,
+              "lastMs": 12.232
+            },
+            "sseBroadcasts": {
+              "count": 437,
+              "totalMs": 16.977,
+              "maxMs": 0.133,
+              "lastMs": 0.042
+            },
+            "tailRequests": {
+              "count": 18,
+              "totalMs": 267.798,
+              "maxMs": 25.822,
+              "lastMs": 12.084
+            }
+          }
+        }
+      },
+      "deltaFromPrevious": {
+        "sseOpenedDelta": 0,
+        "sseClosedDelta": 0,
+        "activeSseConnections": 2,
+        "sseBroadcastsByEventDelta": {
+          "session-update": 0,
+          "agent-update": 0,
+          "terminal-output": 0,
+          "terminal-output-focus": 0,
+          "agent-removed": 0
+        },
+        "timings": {
+          "statusTicks": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 27.03,
+            "maxMs": 704.107
+          },
+          "terminalTicks": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 9.995,
+            "maxMs": 94.631
+          },
+          "focusedTerminalTicks": {
+            "countDelta": 2,
+            "totalDeltaMs": 40.652,
+            "avgDeltaMs": 20.326,
+            "lastMs": 21.642,
+            "maxMs": 39.259
+          },
+          "tmuxCaptureTail": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 3.326,
+            "maxMs": 28.135
+          },
+          "tmuxCaptureTailRaw": {
+            "countDelta": 4,
+            "totalDeltaMs": 46.925,
+            "avgDeltaMs": 11.731,
+            "lastMs": 12.232,
+            "maxMs": 18.404
+          },
+          "sseBroadcasts": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 0.042,
+            "maxMs": 0.133
+          },
+          "tailRequests": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 12.084,
+            "maxMs": 25.822
+          }
+        }
+      }
+    },
+    {
+      "phase": "during",
+      "index": 9,
+      "sampledAt": "2026-07-04T11:00:54.860Z",
+      "fetchMs": 4.136,
+      "body": {
+        "timestamp": "2026-07-04T11:00:54.858Z",
+        "liveUpdates": {
+          "startedAt": "2026-07-04T10:20:16.705Z",
+          "activeSseConnections": 2,
+          "sseConnections": {
+            "opened": 6,
+            "closed": 4
+          },
+          "sseBroadcastsByEvent": {
+            "session-update": 1,
+            "agent-update": 47,
+            "terminal-output": 154,
+            "terminal-output-focus": 233,
+            "agent-removed": 2
+          },
+          "timings": {
+            "statusTicks": {
+              "count": 1149,
+              "totalMs": 122540.113,
+              "maxMs": 704.107,
+              "lastMs": 27.03
+            },
+            "terminalTicks": {
+              "count": 1149,
+              "totalMs": 17243.252,
+              "maxMs": 94.631,
+              "lastMs": 9.995
+            },
+            "focusedTerminalTicks": {
+              "count": 11279,
+              "totalMs": 33030.073,
+              "maxMs": 39.259,
+              "lastMs": 23.289
+            },
+            "tmuxCaptureTail": {
+              "count": 7379,
+              "totalMs": 32862.55,
+              "maxMs": 28.135,
+              "lastMs": 3.326
+            },
+            "tmuxCaptureTailRaw": {
+              "count": 1862,
+              "totalMs": 19359.028,
+              "maxMs": 18.404,
+              "lastMs": 8.995
+            },
+            "sseBroadcasts": {
+              "count": 437,
+              "totalMs": 16.977,
+              "maxMs": 0.133,
+              "lastMs": 0.042
+            },
+            "tailRequests": {
+              "count": 18,
+              "totalMs": 267.798,
+              "maxMs": 25.822,
+              "lastMs": 12.084
+            }
+          }
+        }
+      },
+      "deltaFromPrevious": {
+        "sseOpenedDelta": 0,
+        "sseClosedDelta": 0,
+        "activeSseConnections": 2,
+        "sseBroadcastsByEventDelta": {
+          "session-update": 0,
+          "agent-update": 0,
+          "terminal-output": 0,
+          "terminal-output-focus": 0,
+          "agent-removed": 0
+        },
+        "timings": {
+          "statusTicks": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 27.03,
+            "maxMs": 704.107
+          },
+          "terminalTicks": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 9.995,
+            "maxMs": 94.631
+          },
+          "focusedTerminalTicks": {
+            "countDelta": 3,
+            "totalDeltaMs": 56.097,
+            "avgDeltaMs": 18.699,
+            "lastMs": 23.289,
+            "maxMs": 39.259
+          },
+          "tmuxCaptureTail": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 3.326,
+            "maxMs": 28.135
+          },
+          "tmuxCaptureTailRaw": {
+            "countDelta": 6,
+            "totalDeltaMs": 56.96,
+            "avgDeltaMs": 9.493,
+            "lastMs": 8.995,
+            "maxMs": 18.404
+          },
+          "sseBroadcasts": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 0.042,
+            "maxMs": 0.133
+          },
+          "tailRequests": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 12.084,
+            "maxMs": 25.822
+          }
+        }
+      }
+    },
+    {
+      "phase": "during",
+      "index": 10,
+      "sampledAt": "2026-07-04T11:00:56.213Z",
+      "fetchMs": 852.696,
+      "body": {
+        "timestamp": "2026-07-04T11:00:56.212Z",
+        "liveUpdates": {
+          "startedAt": "2026-07-04T10:20:16.705Z",
+          "activeSseConnections": 2,
+          "sseConnections": {
+            "opened": 6,
+            "closed": 4
+          },
+          "sseBroadcastsByEvent": {
+            "session-update": 1,
+            "agent-update": 47,
+            "terminal-output": 154,
+            "terminal-output-focus": 233,
+            "agent-removed": 2
+          },
+          "timings": {
+            "statusTicks": {
+              "count": 1150,
+              "totalMs": 123129.105,
+              "maxMs": 704.107,
+              "lastMs": 588.992
+            },
+            "terminalTicks": {
+              "count": 1150,
+              "totalMs": 17252.781,
+              "maxMs": 94.631,
+              "lastMs": 9.529
+            },
+            "focusedTerminalTicks": {
+              "count": 11282,
+              "totalMs": 33092.584,
+              "maxMs": 39.259,
+              "lastMs": 9.368
+            },
+            "tmuxCaptureTail": {
+              "count": 7387,
+              "totalMs": 32893.053,
+              "maxMs": 28.135,
+              "lastMs": 4.49
+            },
+            "tmuxCaptureTailRaw": {
+              "count": 1868,
+              "totalMs": 19421.36,
+              "maxMs": 18.404,
+              "lastMs": 5.931
+            },
+            "sseBroadcasts": {
+              "count": 437,
+              "totalMs": 16.977,
+              "maxMs": 0.133,
+              "lastMs": 0.042
+            },
+            "tailRequests": {
+              "count": 18,
+              "totalMs": 267.798,
+              "maxMs": 25.822,
+              "lastMs": 12.084
+            }
+          }
+        }
+      },
+      "deltaFromPrevious": {
+        "sseOpenedDelta": 0,
+        "sseClosedDelta": 0,
+        "activeSseConnections": 2,
+        "sseBroadcastsByEventDelta": {
+          "session-update": 0,
+          "agent-update": 0,
+          "terminal-output": 0,
+          "terminal-output-focus": 0,
+          "agent-removed": 0
+        },
+        "timings": {
+          "statusTicks": {
+            "countDelta": 1,
+            "totalDeltaMs": 588.992,
+            "avgDeltaMs": 588.992,
+            "lastMs": 588.992,
+            "maxMs": 704.107
+          },
+          "terminalTicks": {
+            "countDelta": 1,
+            "totalDeltaMs": 9.529,
+            "avgDeltaMs": 9.529,
+            "lastMs": 9.529,
+            "maxMs": 94.631
+          },
+          "focusedTerminalTicks": {
+            "countDelta": 3,
+            "totalDeltaMs": 62.511,
+            "avgDeltaMs": 20.837,
+            "lastMs": 9.368,
+            "maxMs": 39.259
+          },
+          "tmuxCaptureTail": {
+            "countDelta": 8,
+            "totalDeltaMs": 30.503,
+            "avgDeltaMs": 3.813,
+            "lastMs": 4.49,
+            "maxMs": 28.135
+          },
+          "tmuxCaptureTailRaw": {
+            "countDelta": 6,
+            "totalDeltaMs": 62.332,
+            "avgDeltaMs": 10.389,
+            "lastMs": 5.931,
+            "maxMs": 18.404
+          },
+          "sseBroadcasts": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 0.042,
+            "maxMs": 0.133
+          },
+          "tailRequests": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 12.084,
+            "maxMs": 25.822
+          }
+        }
+      }
+    },
+    {
+      "phase": "during",
+      "index": 11,
+      "sampledAt": "2026-07-04T11:00:56.718Z",
+      "fetchMs": 3.79,
+      "body": {
+        "timestamp": "2026-07-04T11:00:56.717Z",
+        "liveUpdates": {
+          "startedAt": "2026-07-04T10:20:16.705Z",
+          "activeSseConnections": 2,
+          "sseConnections": {
+            "opened": 6,
+            "closed": 4
+          },
+          "sseBroadcastsByEvent": {
+            "session-update": 1,
+            "agent-update": 47,
+            "terminal-output": 154,
+            "terminal-output-focus": 233,
+            "agent-removed": 2
+          },
+          "timings": {
+            "statusTicks": {
+              "count": 1150,
+              "totalMs": 123129.105,
+              "maxMs": 704.107,
+              "lastMs": 588.992
+            },
+            "terminalTicks": {
+              "count": 1150,
+              "totalMs": 17252.781,
+              "maxMs": 94.631,
+              "lastMs": 9.529
+            },
+            "focusedTerminalTicks": {
+              "count": 11285,
+              "totalMs": 33150.237,
+              "maxMs": 39.259,
+              "lastMs": 23.249
+            },
+            "tmuxCaptureTail": {
+              "count": 7387,
+              "totalMs": 32893.053,
+              "maxMs": 28.135,
+              "lastMs": 4.49
+            },
+            "tmuxCaptureTailRaw": {
+              "count": 1874,
+              "totalMs": 19483.107,
+              "maxMs": 18.404,
+              "lastMs": 11.403
+            },
+            "sseBroadcasts": {
+              "count": 437,
+              "totalMs": 16.977,
+              "maxMs": 0.133,
+              "lastMs": 0.042
+            },
+            "tailRequests": {
+              "count": 18,
+              "totalMs": 267.798,
+              "maxMs": 25.822,
+              "lastMs": 12.084
+            }
+          }
+        }
+      },
+      "deltaFromPrevious": {
+        "sseOpenedDelta": 0,
+        "sseClosedDelta": 0,
+        "activeSseConnections": 2,
+        "sseBroadcastsByEventDelta": {
+          "session-update": 0,
+          "agent-update": 0,
+          "terminal-output": 0,
+          "terminal-output-focus": 0,
+          "agent-removed": 0
+        },
+        "timings": {
+          "statusTicks": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 588.992,
+            "maxMs": 704.107
+          },
+          "terminalTicks": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 9.529,
+            "maxMs": 94.631
+          },
+          "focusedTerminalTicks": {
+            "countDelta": 3,
+            "totalDeltaMs": 57.653,
+            "avgDeltaMs": 19.218,
+            "lastMs": 23.249,
+            "maxMs": 39.259
+          },
+          "tmuxCaptureTail": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 4.49,
+            "maxMs": 28.135
+          },
+          "tmuxCaptureTailRaw": {
+            "countDelta": 6,
+            "totalDeltaMs": 61.747,
+            "avgDeltaMs": 10.291,
+            "lastMs": 11.403,
+            "maxMs": 18.404
+          },
+          "sseBroadcasts": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 0.042,
+            "maxMs": 0.133
+          },
+          "tailRequests": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 12.084,
+            "maxMs": 25.822
+          }
+        }
+      }
+    },
+    {
+      "phase": "during",
+      "index": 12,
+      "sampledAt": "2026-07-04T11:00:57.223Z",
+      "fetchMs": 3.693,
+      "body": {
+        "timestamp": "2026-07-04T11:00:57.222Z",
+        "liveUpdates": {
+          "startedAt": "2026-07-04T10:20:16.705Z",
+          "activeSseConnections": 2,
+          "sseConnections": {
+            "opened": 6,
+            "closed": 4
+          },
+          "sseBroadcastsByEvent": {
+            "session-update": 1,
+            "agent-update": 47,
+            "terminal-output": 154,
+            "terminal-output-focus": 233,
+            "agent-removed": 2
+          },
+          "timings": {
+            "statusTicks": {
+              "count": 1150,
+              "totalMs": 123129.105,
+              "maxMs": 704.107,
+              "lastMs": 588.992
+            },
+            "terminalTicks": {
+              "count": 1150,
+              "totalMs": 17252.781,
+              "maxMs": 94.631,
+              "lastMs": 9.529
+            },
+            "focusedTerminalTicks": {
+              "count": 11287,
+              "totalMs": 33199.794,
+              "maxMs": 39.259,
+              "lastMs": 24.701
+            },
+            "tmuxCaptureTail": {
+              "count": 7387,
+              "totalMs": 32893.053,
+              "maxMs": 28.135,
+              "lastMs": 4.49
+            },
+            "tmuxCaptureTailRaw": {
+              "count": 1878,
+              "totalMs": 19529.476,
+              "maxMs": 18.404,
+              "lastMs": 9.163
+            },
+            "sseBroadcasts": {
+              "count": 437,
+              "totalMs": 16.977,
+              "maxMs": 0.133,
+              "lastMs": 0.042
+            },
+            "tailRequests": {
+              "count": 18,
+              "totalMs": 267.798,
+              "maxMs": 25.822,
+              "lastMs": 12.084
+            }
+          }
+        }
+      },
+      "deltaFromPrevious": {
+        "sseOpenedDelta": 0,
+        "sseClosedDelta": 0,
+        "activeSseConnections": 2,
+        "sseBroadcastsByEventDelta": {
+          "session-update": 0,
+          "agent-update": 0,
+          "terminal-output": 0,
+          "terminal-output-focus": 0,
+          "agent-removed": 0
+        },
+        "timings": {
+          "statusTicks": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 588.992,
+            "maxMs": 704.107
+          },
+          "terminalTicks": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 9.529,
+            "maxMs": 94.631
+          },
+          "focusedTerminalTicks": {
+            "countDelta": 2,
+            "totalDeltaMs": 49.557,
+            "avgDeltaMs": 24.779,
+            "lastMs": 24.701,
+            "maxMs": 39.259
+          },
+          "tmuxCaptureTail": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 4.49,
+            "maxMs": 28.135
+          },
+          "tmuxCaptureTailRaw": {
+            "countDelta": 4,
+            "totalDeltaMs": 46.369,
+            "avgDeltaMs": 11.592,
+            "lastMs": 9.163,
+            "maxMs": 18.404
+          },
+          "sseBroadcasts": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 0.042,
+            "maxMs": 0.133
+          },
+          "tailRequests": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 12.084,
+            "maxMs": 25.822
+          }
+        }
+      }
+    },
+    {
+      "phase": "during",
+      "index": 13,
+      "sampledAt": "2026-07-04T11:00:57.730Z",
+      "fetchMs": 5.398,
+      "body": {
+        "timestamp": "2026-07-04T11:00:57.728Z",
+        "liveUpdates": {
+          "startedAt": "2026-07-04T10:20:16.705Z",
+          "activeSseConnections": 2,
+          "sseConnections": {
+            "opened": 6,
+            "closed": 4
+          },
+          "sseBroadcastsByEvent": {
+            "session-update": 1,
+            "agent-update": 47,
+            "terminal-output": 154,
+            "terminal-output-focus": 233,
+            "agent-removed": 2
+          },
+          "timings": {
+            "statusTicks": {
+              "count": 1150,
+              "totalMs": 123129.105,
+              "maxMs": 704.107,
+              "lastMs": 588.992
+            },
+            "terminalTicks": {
+              "count": 1150,
+              "totalMs": 17252.781,
+              "maxMs": 94.631,
+              "lastMs": 9.529
+            },
+            "focusedTerminalTicks": {
+              "count": 11289,
+              "totalMs": 33258.749,
+              "maxMs": 39.259,
+              "lastMs": 21.943
+            },
+            "tmuxCaptureTail": {
+              "count": 7387,
+              "totalMs": 32893.053,
+              "maxMs": 28.135,
+              "lastMs": 4.49
+            },
+            "tmuxCaptureTailRaw": {
+              "count": 1882,
+              "totalMs": 19572.701,
+              "maxMs": 18.404,
+              "lastMs": 10.169
+            },
+            "sseBroadcasts": {
+              "count": 437,
+              "totalMs": 16.977,
+              "maxMs": 0.133,
+              "lastMs": 0.042
+            },
+            "tailRequests": {
+              "count": 18,
+              "totalMs": 267.798,
+              "maxMs": 25.822,
+              "lastMs": 12.084
+            }
+          }
+        }
+      },
+      "deltaFromPrevious": {
+        "sseOpenedDelta": 0,
+        "sseClosedDelta": 0,
+        "activeSseConnections": 2,
+        "sseBroadcastsByEventDelta": {
+          "session-update": 0,
+          "agent-update": 0,
+          "terminal-output": 0,
+          "terminal-output-focus": 0,
+          "agent-removed": 0
+        },
+        "timings": {
+          "statusTicks": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 588.992,
+            "maxMs": 704.107
+          },
+          "terminalTicks": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 9.529,
+            "maxMs": 94.631
+          },
+          "focusedTerminalTicks": {
+            "countDelta": 2,
+            "totalDeltaMs": 58.955,
+            "avgDeltaMs": 29.478,
+            "lastMs": 21.943,
+            "maxMs": 39.259
+          },
+          "tmuxCaptureTail": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 4.49,
+            "maxMs": 28.135
+          },
+          "tmuxCaptureTailRaw": {
+            "countDelta": 4,
+            "totalDeltaMs": 43.225,
+            "avgDeltaMs": 10.806,
+            "lastMs": 10.169,
+            "maxMs": 18.404
+          },
+          "sseBroadcasts": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 0.042,
+            "maxMs": 0.133
+          },
+          "tailRequests": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 12.084,
+            "maxMs": 25.822
+          }
+        }
+      }
+    },
+    {
+      "phase": "during",
+      "index": 14,
+      "sampledAt": "2026-07-04T11:00:58.266Z",
+      "fetchMs": 34.7,
+      "body": {
+        "timestamp": "2026-07-04T11:00:58.265Z",
+        "liveUpdates": {
+          "startedAt": "2026-07-04T10:20:16.705Z",
+          "activeSseConnections": 2,
+          "sseConnections": {
+            "opened": 6,
+            "closed": 4
+          },
+          "sseBroadcastsByEvent": {
+            "session-update": 1,
+            "agent-update": 47,
+            "terminal-output": 154,
+            "terminal-output-focus": 233,
+            "agent-removed": 2
+          },
+          "timings": {
+            "statusTicks": {
+              "count": 1151,
+              "totalMs": 123167.091,
+              "maxMs": 704.107,
+              "lastMs": 37.986
+            },
+            "terminalTicks": {
+              "count": 1151,
+              "totalMs": 17264.011,
+              "maxMs": 94.631,
+              "lastMs": 11.23
+            },
+            "focusedTerminalTicks": {
+              "count": 11292,
+              "totalMs": 33321.996,
+              "maxMs": 39.259,
+              "lastMs": 25.139
+            },
+            "tmuxCaptureTail": {
+              "count": 7392,
+              "totalMs": 32916.008,
+              "maxMs": 28.135,
+              "lastMs": 3.488
+            },
+            "tmuxCaptureTailRaw": {
+              "count": 1888,
+              "totalMs": 19635.912,
+              "maxMs": 18.404,
+              "lastMs": 9.17
+            },
+            "sseBroadcasts": {
+              "count": 437,
+              "totalMs": 16.977,
+              "maxMs": 0.133,
+              "lastMs": 0.042
+            },
+            "tailRequests": {
+              "count": 18,
+              "totalMs": 267.798,
+              "maxMs": 25.822,
+              "lastMs": 12.084
+            }
+          }
+        }
+      },
+      "deltaFromPrevious": {
+        "sseOpenedDelta": 0,
+        "sseClosedDelta": 0,
+        "activeSseConnections": 2,
+        "sseBroadcastsByEventDelta": {
+          "session-update": 0,
+          "agent-update": 0,
+          "terminal-output": 0,
+          "terminal-output-focus": 0,
+          "agent-removed": 0
+        },
+        "timings": {
+          "statusTicks": {
+            "countDelta": 1,
+            "totalDeltaMs": 37.986,
+            "avgDeltaMs": 37.986,
+            "lastMs": 37.986,
+            "maxMs": 704.107
+          },
+          "terminalTicks": {
+            "countDelta": 1,
+            "totalDeltaMs": 11.23,
+            "avgDeltaMs": 11.23,
+            "lastMs": 11.23,
+            "maxMs": 94.631
+          },
+          "focusedTerminalTicks": {
+            "countDelta": 3,
+            "totalDeltaMs": 63.247,
+            "avgDeltaMs": 21.082,
+            "lastMs": 25.139,
+            "maxMs": 39.259
+          },
+          "tmuxCaptureTail": {
+            "countDelta": 5,
+            "totalDeltaMs": 22.955,
+            "avgDeltaMs": 4.591,
+            "lastMs": 3.488,
+            "maxMs": 28.135
+          },
+          "tmuxCaptureTailRaw": {
+            "countDelta": 6,
+            "totalDeltaMs": 63.211,
+            "avgDeltaMs": 10.535,
+            "lastMs": 9.17,
+            "maxMs": 18.404
+          },
+          "sseBroadcasts": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 0.042,
+            "maxMs": 0.133
+          },
+          "tailRequests": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 12.084,
+            "maxMs": 25.822
+          }
+        }
+      }
+    },
+    {
+      "phase": "during",
+      "index": 15,
+      "sampledAt": "2026-07-04T11:00:58.771Z",
+      "fetchMs": 2.794,
+      "body": {
+        "timestamp": "2026-07-04T11:00:58.770Z",
+        "liveUpdates": {
+          "startedAt": "2026-07-04T10:20:16.705Z",
+          "activeSseConnections": 2,
+          "sseConnections": {
+            "opened": 6,
+            "closed": 4
+          },
+          "sseBroadcastsByEvent": {
+            "session-update": 1,
+            "agent-update": 47,
+            "terminal-output": 154,
+            "terminal-output-focus": 233,
+            "agent-removed": 2
+          },
+          "timings": {
+            "statusTicks": {
+              "count": 1151,
+              "totalMs": 123167.091,
+              "maxMs": 704.107,
+              "lastMs": 37.986
+            },
+            "terminalTicks": {
+              "count": 1151,
+              "totalMs": 17264.011,
+              "maxMs": 94.631,
+              "lastMs": 11.23
+            },
+            "focusedTerminalTicks": {
+              "count": 11294,
+              "totalMs": 33376.001,
+              "maxMs": 39.259,
+              "lastMs": 29.149
+            },
+            "tmuxCaptureTail": {
+              "count": 7392,
+              "totalMs": 32916.008,
+              "maxMs": 28.135,
+              "lastMs": 3.488
+            },
+            "tmuxCaptureTailRaw": {
+              "count": 1892,
+              "totalMs": 19693.872,
+              "maxMs": 18.404,
+              "lastMs": 17
+            },
+            "sseBroadcasts": {
+              "count": 437,
+              "totalMs": 16.977,
+              "maxMs": 0.133,
+              "lastMs": 0.042
+            },
+            "tailRequests": {
+              "count": 18,
+              "totalMs": 267.798,
+              "maxMs": 25.822,
+              "lastMs": 12.084
+            }
+          }
+        }
+      },
+      "deltaFromPrevious": {
+        "sseOpenedDelta": 0,
+        "sseClosedDelta": 0,
+        "activeSseConnections": 2,
+        "sseBroadcastsByEventDelta": {
+          "session-update": 0,
+          "agent-update": 0,
+          "terminal-output": 0,
+          "terminal-output-focus": 0,
+          "agent-removed": 0
+        },
+        "timings": {
+          "statusTicks": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 37.986,
+            "maxMs": 704.107
+          },
+          "terminalTicks": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 11.23,
+            "maxMs": 94.631
+          },
+          "focusedTerminalTicks": {
+            "countDelta": 2,
+            "totalDeltaMs": 54.005,
+            "avgDeltaMs": 27.002,
+            "lastMs": 29.149,
+            "maxMs": 39.259
+          },
+          "tmuxCaptureTail": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 3.488,
+            "maxMs": 28.135
+          },
+          "tmuxCaptureTailRaw": {
+            "countDelta": 4,
+            "totalDeltaMs": 57.96,
+            "avgDeltaMs": 14.49,
+            "lastMs": 17,
+            "maxMs": 18.404
+          },
+          "sseBroadcasts": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 0.042,
+            "maxMs": 0.133
+          },
+          "tailRequests": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 12.084,
+            "maxMs": 25.822
+          }
+        }
+      }
+    },
+    {
+      "phase": "during",
+      "index": 16,
+      "sampledAt": "2026-07-04T11:00:59.274Z",
+      "fetchMs": 3.07,
+      "body": {
+        "timestamp": "2026-07-04T11:00:59.272Z",
+        "liveUpdates": {
+          "startedAt": "2026-07-04T10:20:16.705Z",
+          "activeSseConnections": 2,
+          "sseConnections": {
+            "opened": 6,
+            "closed": 4
+          },
+          "sseBroadcastsByEvent": {
+            "session-update": 1,
+            "agent-update": 47,
+            "terminal-output": 154,
+            "terminal-output-focus": 233,
+            "agent-removed": 2
+          },
+          "timings": {
+            "statusTicks": {
+              "count": 1151,
+              "totalMs": 123167.091,
+              "maxMs": 704.107,
+              "lastMs": 37.986
+            },
+            "terminalTicks": {
+              "count": 1151,
+              "totalMs": 17264.011,
+              "maxMs": 94.631,
+              "lastMs": 11.23
+            },
+            "focusedTerminalTicks": {
+              "count": 11296,
+              "totalMs": 33423.984,
+              "maxMs": 39.259,
+              "lastMs": 21.761
+            },
+            "tmuxCaptureTail": {
+              "count": 7392,
+              "totalMs": 32916.008,
+              "maxMs": 28.135,
+              "lastMs": 3.488
+            },
+            "tmuxCaptureTailRaw": {
+              "count": 1896,
+              "totalMs": 19741.519,
+              "maxMs": 18.404,
+              "lastMs": 10.292
+            },
+            "sseBroadcasts": {
+              "count": 437,
+              "totalMs": 16.977,
+              "maxMs": 0.133,
+              "lastMs": 0.042
+            },
+            "tailRequests": {
+              "count": 18,
+              "totalMs": 267.798,
+              "maxMs": 25.822,
+              "lastMs": 12.084
+            }
+          }
+        }
+      },
+      "deltaFromPrevious": {
+        "sseOpenedDelta": 0,
+        "sseClosedDelta": 0,
+        "activeSseConnections": 2,
+        "sseBroadcastsByEventDelta": {
+          "session-update": 0,
+          "agent-update": 0,
+          "terminal-output": 0,
+          "terminal-output-focus": 0,
+          "agent-removed": 0
+        },
+        "timings": {
+          "statusTicks": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 37.986,
+            "maxMs": 704.107
+          },
+          "terminalTicks": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 11.23,
+            "maxMs": 94.631
+          },
+          "focusedTerminalTicks": {
+            "countDelta": 2,
+            "totalDeltaMs": 47.983,
+            "avgDeltaMs": 23.992,
+            "lastMs": 21.761,
+            "maxMs": 39.259
+          },
+          "tmuxCaptureTail": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 3.488,
+            "maxMs": 28.135
+          },
+          "tmuxCaptureTailRaw": {
+            "countDelta": 4,
+            "totalDeltaMs": 47.647,
+            "avgDeltaMs": 11.912,
+            "lastMs": 10.292,
+            "maxMs": 18.404
+          },
+          "sseBroadcasts": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 0.042,
+            "maxMs": 0.133
+          },
+          "tailRequests": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 12.084,
+            "maxMs": 25.822
+          }
+        }
+      }
+    },
+    {
+      "phase": "during",
+      "index": 17,
+      "sampledAt": "2026-07-04T11:00:59.778Z",
+      "fetchMs": 4.008,
+      "body": {
+        "timestamp": "2026-07-04T11:00:59.777Z",
+        "liveUpdates": {
+          "startedAt": "2026-07-04T10:20:16.705Z",
+          "activeSseConnections": 2,
+          "sseConnections": {
+            "opened": 6,
+            "closed": 4
+          },
+          "sseBroadcastsByEvent": {
+            "session-update": 1,
+            "agent-update": 47,
+            "terminal-output": 154,
+            "terminal-output-focus": 233,
+            "agent-removed": 2
+          },
+          "timings": {
+            "statusTicks": {
+              "count": 1151,
+              "totalMs": 123167.091,
+              "maxMs": 704.107,
+              "lastMs": 37.986
+            },
+            "terminalTicks": {
+              "count": 1151,
+              "totalMs": 17264.011,
+              "maxMs": 94.631,
+              "lastMs": 11.23
+            },
+            "focusedTerminalTicks": {
+              "count": 11298,
+              "totalMs": 33481.615,
+              "maxMs": 39.259,
+              "lastMs": 28.672
+            },
+            "tmuxCaptureTail": {
+              "count": 7392,
+              "totalMs": 32916.008,
+              "maxMs": 28.135,
+              "lastMs": 3.488
+            },
+            "tmuxCaptureTailRaw": {
+              "count": 1900,
+              "totalMs": 19798.715,
+              "maxMs": 18.404,
+              "lastMs": 11.679
+            },
+            "sseBroadcasts": {
+              "count": 437,
+              "totalMs": 16.977,
+              "maxMs": 0.133,
+              "lastMs": 0.042
+            },
+            "tailRequests": {
+              "count": 18,
+              "totalMs": 267.798,
+              "maxMs": 25.822,
+              "lastMs": 12.084
+            }
+          }
+        }
+      },
+      "deltaFromPrevious": {
+        "sseOpenedDelta": 0,
+        "sseClosedDelta": 0,
+        "activeSseConnections": 2,
+        "sseBroadcastsByEventDelta": {
+          "session-update": 0,
+          "agent-update": 0,
+          "terminal-output": 0,
+          "terminal-output-focus": 0,
+          "agent-removed": 0
+        },
+        "timings": {
+          "statusTicks": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 37.986,
+            "maxMs": 704.107
+          },
+          "terminalTicks": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 11.23,
+            "maxMs": 94.631
+          },
+          "focusedTerminalTicks": {
+            "countDelta": 2,
+            "totalDeltaMs": 57.631,
+            "avgDeltaMs": 28.816,
+            "lastMs": 28.672,
+            "maxMs": 39.259
+          },
+          "tmuxCaptureTail": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 3.488,
+            "maxMs": 28.135
+          },
+          "tmuxCaptureTailRaw": {
+            "countDelta": 4,
+            "totalDeltaMs": 57.196,
+            "avgDeltaMs": 14.299,
+            "lastMs": 11.679,
+            "maxMs": 18.404
+          },
+          "sseBroadcasts": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 0.042,
+            "maxMs": 0.133
+          },
+          "tailRequests": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 12.084,
+            "maxMs": 25.822
+          }
+        }
+      }
+    },
+    {
+      "phase": "during",
+      "index": 18,
+      "sampledAt": "2026-07-04T11:01:00.305Z",
+      "fetchMs": 25.803,
+      "body": {
+        "timestamp": "2026-07-04T11:01:00.304Z",
+        "liveUpdates": {
+          "startedAt": "2026-07-04T10:20:16.705Z",
+          "activeSseConnections": 2,
+          "sseConnections": {
+            "opened": 6,
+            "closed": 4
+          },
+          "sseBroadcastsByEvent": {
+            "session-update": 1,
+            "agent-update": 47,
+            "terminal-output": 154,
+            "terminal-output-focus": 236,
+            "agent-removed": 2
+          },
+          "timings": {
+            "statusTicks": {
+              "count": 1152,
+              "totalMs": 123206.448,
+              "maxMs": 704.107,
+              "lastMs": 39.357
+            },
+            "terminalTicks": {
+              "count": 1152,
+              "totalMs": 17276.08,
+              "maxMs": 94.631,
+              "lastMs": 12.069
+            },
+            "focusedTerminalTicks": {
+              "count": 11301,
+              "totalMs": 33543.975,
+              "maxMs": 39.259,
+              "lastMs": 26.137
+            },
+            "tmuxCaptureTail": {
+              "count": 7397,
+              "totalMs": 32939.537,
+              "maxMs": 28.135,
+              "lastMs": 3.727
+            },
+            "tmuxCaptureTailRaw": {
+              "count": 1906,
+              "totalMs": 19868.474,
+              "maxMs": 18.404,
+              "lastMs": 12.453
+            },
+            "sseBroadcasts": {
+              "count": 440,
+              "totalMs": 17.144,
+              "maxMs": 0.133,
+              "lastMs": 0.062
+            },
+            "tailRequests": {
+              "count": 18,
+              "totalMs": 267.798,
+              "maxMs": 25.822,
+              "lastMs": 12.084
+            }
+          }
+        }
+      },
+      "deltaFromPrevious": {
+        "sseOpenedDelta": 0,
+        "sseClosedDelta": 0,
+        "activeSseConnections": 2,
+        "sseBroadcastsByEventDelta": {
+          "session-update": 0,
+          "agent-update": 0,
+          "terminal-output": 0,
+          "terminal-output-focus": 3,
+          "agent-removed": 0
+        },
+        "timings": {
+          "statusTicks": {
+            "countDelta": 1,
+            "totalDeltaMs": 39.357,
+            "avgDeltaMs": 39.357,
+            "lastMs": 39.357,
+            "maxMs": 704.107
+          },
+          "terminalTicks": {
+            "countDelta": 1,
+            "totalDeltaMs": 12.069,
+            "avgDeltaMs": 12.069,
+            "lastMs": 12.069,
+            "maxMs": 94.631
+          },
+          "focusedTerminalTicks": {
+            "countDelta": 3,
+            "totalDeltaMs": 62.36,
+            "avgDeltaMs": 20.787,
+            "lastMs": 26.137,
+            "maxMs": 39.259
+          },
+          "tmuxCaptureTail": {
+            "countDelta": 5,
+            "totalDeltaMs": 23.529,
+            "avgDeltaMs": 4.706,
+            "lastMs": 3.727,
+            "maxMs": 28.135
+          },
+          "tmuxCaptureTailRaw": {
+            "countDelta": 6,
+            "totalDeltaMs": 69.759,
+            "avgDeltaMs": 11.626,
+            "lastMs": 12.453,
+            "maxMs": 18.404
+          },
+          "sseBroadcasts": {
+            "countDelta": 3,
+            "totalDeltaMs": 0.167,
+            "avgDeltaMs": 0.056,
+            "lastMs": 0.062,
+            "maxMs": 0.133
+          },
+          "tailRequests": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 12.084,
+            "maxMs": 25.822
+          }
+        }
+      }
+    },
+    {
+      "phase": "during",
+      "index": 19,
+      "sampledAt": "2026-07-04T11:01:00.810Z",
+      "fetchMs": 4.071,
+      "body": {
+        "timestamp": "2026-07-04T11:01:00.809Z",
+        "liveUpdates": {
+          "startedAt": "2026-07-04T10:20:16.705Z",
+          "activeSseConnections": 2,
+          "sseConnections": {
+            "opened": 6,
+            "closed": 4
+          },
+          "sseBroadcastsByEvent": {
+            "session-update": 1,
+            "agent-update": 47,
+            "terminal-output": 154,
+            "terminal-output-focus": 238,
+            "agent-removed": 2
+          },
+          "timings": {
+            "statusTicks": {
+              "count": 1152,
+              "totalMs": 123206.448,
+              "maxMs": 704.107,
+              "lastMs": 39.357
+            },
+            "terminalTicks": {
+              "count": 1152,
+              "totalMs": 17276.08,
+              "maxMs": 94.631,
+              "lastMs": 12.069
+            },
+            "focusedTerminalTicks": {
+              "count": 11303,
+              "totalMs": 33593.046,
+              "maxMs": 39.259,
+              "lastMs": 25.794
+            },
+            "tmuxCaptureTail": {
+              "count": 7397,
+              "totalMs": 32939.537,
+              "maxMs": 28.135,
+              "lastMs": 3.727
+            },
+            "tmuxCaptureTailRaw": {
+              "count": 1910,
+              "totalMs": 19919.812,
+              "maxMs": 18.404,
+              "lastMs": 9.512
+            },
+            "sseBroadcasts": {
+              "count": 442,
+              "totalMs": 17.341,
+              "maxMs": 0.133,
+              "lastMs": 0.083
+            },
+            "tailRequests": {
+              "count": 18,
+              "totalMs": 267.798,
+              "maxMs": 25.822,
+              "lastMs": 12.084
+            }
+          }
+        }
+      },
+      "deltaFromPrevious": {
+        "sseOpenedDelta": 0,
+        "sseClosedDelta": 0,
+        "activeSseConnections": 2,
+        "sseBroadcastsByEventDelta": {
+          "session-update": 0,
+          "agent-update": 0,
+          "terminal-output": 0,
+          "terminal-output-focus": 2,
+          "agent-removed": 0
+        },
+        "timings": {
+          "statusTicks": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 39.357,
+            "maxMs": 704.107
+          },
+          "terminalTicks": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 12.069,
+            "maxMs": 94.631
+          },
+          "focusedTerminalTicks": {
+            "countDelta": 2,
+            "totalDeltaMs": 49.071,
+            "avgDeltaMs": 24.536,
+            "lastMs": 25.794,
+            "maxMs": 39.259
+          },
+          "tmuxCaptureTail": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 3.727,
+            "maxMs": 28.135
+          },
+          "tmuxCaptureTailRaw": {
+            "countDelta": 4,
+            "totalDeltaMs": 51.338,
+            "avgDeltaMs": 12.835,
+            "lastMs": 9.512,
+            "maxMs": 18.404
+          },
+          "sseBroadcasts": {
+            "countDelta": 2,
+            "totalDeltaMs": 0.197,
+            "avgDeltaMs": 0.099,
+            "lastMs": 0.083,
+            "maxMs": 0.133
+          },
+          "tailRequests": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 12.084,
+            "maxMs": 25.822
+          }
+        }
+      }
+    },
+    {
+      "phase": "during",
+      "index": 20,
+      "sampledAt": "2026-07-04T11:01:01.315Z",
+      "fetchMs": 3.891,
+      "body": {
+        "timestamp": "2026-07-04T11:01:01.314Z",
+        "liveUpdates": {
+          "startedAt": "2026-07-04T10:20:16.705Z",
+          "activeSseConnections": 2,
+          "sseConnections": {
+            "opened": 6,
+            "closed": 4
+          },
+          "sseBroadcastsByEvent": {
+            "session-update": 1,
+            "agent-update": 47,
+            "terminal-output": 154,
+            "terminal-output-focus": 240,
+            "agent-removed": 2
+          },
+          "timings": {
+            "statusTicks": {
+              "count": 1152,
+              "totalMs": 123206.448,
+              "maxMs": 704.107,
+              "lastMs": 39.357
+            },
+            "terminalTicks": {
+              "count": 1152,
+              "totalMs": 17276.08,
+              "maxMs": 94.631,
+              "lastMs": 12.069
+            },
+            "focusedTerminalTicks": {
+              "count": 11305,
+              "totalMs": 33645.456,
+              "maxMs": 39.259,
+              "lastMs": 22.969
+            },
+            "tmuxCaptureTail": {
+              "count": 7397,
+              "totalMs": 32939.537,
+              "maxMs": 28.135,
+              "lastMs": 3.727
+            },
+            "tmuxCaptureTailRaw": {
+              "count": 1914,
+              "totalMs": 19972.754,
+              "maxMs": 18.404,
+              "lastMs": 10.225
+            },
+            "sseBroadcasts": {
+              "count": 444,
+              "totalMs": 17.52,
+              "maxMs": 0.133,
+              "lastMs": 0.073
+            },
+            "tailRequests": {
+              "count": 18,
+              "totalMs": 267.798,
+              "maxMs": 25.822,
+              "lastMs": 12.084
+            }
+          }
+        }
+      },
+      "deltaFromPrevious": {
+        "sseOpenedDelta": 0,
+        "sseClosedDelta": 0,
+        "activeSseConnections": 2,
+        "sseBroadcastsByEventDelta": {
+          "session-update": 0,
+          "agent-update": 0,
+          "terminal-output": 0,
+          "terminal-output-focus": 2,
+          "agent-removed": 0
+        },
+        "timings": {
+          "statusTicks": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 39.357,
+            "maxMs": 704.107
+          },
+          "terminalTicks": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 12.069,
+            "maxMs": 94.631
+          },
+          "focusedTerminalTicks": {
+            "countDelta": 2,
+            "totalDeltaMs": 52.41,
+            "avgDeltaMs": 26.205,
+            "lastMs": 22.969,
+            "maxMs": 39.259
+          },
+          "tmuxCaptureTail": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 3.727,
+            "maxMs": 28.135
+          },
+          "tmuxCaptureTailRaw": {
+            "countDelta": 4,
+            "totalDeltaMs": 52.942,
+            "avgDeltaMs": 13.235,
+            "lastMs": 10.225,
+            "maxMs": 18.404
+          },
+          "sseBroadcasts": {
+            "countDelta": 2,
+            "totalDeltaMs": 0.179,
+            "avgDeltaMs": 0.089,
+            "lastMs": 0.073,
+            "maxMs": 0.133
+          },
+          "tailRequests": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 12.084,
+            "maxMs": 25.822
+          }
+        }
+      }
+    },
+    {
+      "phase": "during",
+      "index": 21,
+      "sampledAt": "2026-07-04T11:01:01.821Z",
+      "fetchMs": 5.032,
+      "body": {
+        "timestamp": "2026-07-04T11:01:01.820Z",
+        "liveUpdates": {
+          "startedAt": "2026-07-04T10:20:16.705Z",
+          "activeSseConnections": 2,
+          "sseConnections": {
+            "opened": 6,
+            "closed": 4
+          },
+          "sseBroadcastsByEvent": {
+            "session-update": 1,
+            "agent-update": 47,
+            "terminal-output": 154,
+            "terminal-output-focus": 242,
+            "agent-removed": 2
+          },
+          "timings": {
+            "statusTicks": {
+              "count": 1152,
+              "totalMs": 123206.448,
+              "maxMs": 704.107,
+              "lastMs": 39.357
+            },
+            "terminalTicks": {
+              "count": 1152,
+              "totalMs": 17276.08,
+              "maxMs": 94.631,
+              "lastMs": 12.069
+            },
+            "focusedTerminalTicks": {
+              "count": 11307,
+              "totalMs": 33695.914,
+              "maxMs": 39.259,
+              "lastMs": 24.822
+            },
+            "tmuxCaptureTail": {
+              "count": 7397,
+              "totalMs": 32939.537,
+              "maxMs": 28.135,
+              "lastMs": 3.727
+            },
+            "tmuxCaptureTailRaw": {
+              "count": 1918,
+              "totalMs": 20024.794,
+              "maxMs": 18.404,
+              "lastMs": 9.836
+            },
+            "sseBroadcasts": {
+              "count": 446,
+              "totalMs": 17.688,
+              "maxMs": 0.133,
+              "lastMs": 0.088
+            },
+            "tailRequests": {
+              "count": 18,
+              "totalMs": 267.798,
+              "maxMs": 25.822,
+              "lastMs": 12.084
+            }
+          }
+        }
+      },
+      "deltaFromPrevious": {
+        "sseOpenedDelta": 0,
+        "sseClosedDelta": 0,
+        "activeSseConnections": 2,
+        "sseBroadcastsByEventDelta": {
+          "session-update": 0,
+          "agent-update": 0,
+          "terminal-output": 0,
+          "terminal-output-focus": 2,
+          "agent-removed": 0
+        },
+        "timings": {
+          "statusTicks": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 39.357,
+            "maxMs": 704.107
+          },
+          "terminalTicks": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 12.069,
+            "maxMs": 94.631
+          },
+          "focusedTerminalTicks": {
+            "countDelta": 2,
+            "totalDeltaMs": 50.458,
+            "avgDeltaMs": 25.229,
+            "lastMs": 24.822,
+            "maxMs": 39.259
+          },
+          "tmuxCaptureTail": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 3.727,
+            "maxMs": 28.135
+          },
+          "tmuxCaptureTailRaw": {
+            "countDelta": 4,
+            "totalDeltaMs": 52.04,
+            "avgDeltaMs": 13.01,
+            "lastMs": 9.836,
+            "maxMs": 18.404
+          },
+          "sseBroadcasts": {
+            "countDelta": 2,
+            "totalDeltaMs": 0.168,
+            "avgDeltaMs": 0.084,
+            "lastMs": 0.088,
+            "maxMs": 0.133
+          },
+          "tailRequests": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 12.084,
+            "maxMs": 25.822
+          }
+        }
+      }
+    },
+    {
+      "phase": "during",
+      "index": 22,
+      "sampledAt": "2026-07-04T11:01:02.340Z",
+      "fetchMs": 18.605,
+      "body": {
+        "timestamp": "2026-07-04T11:01:02.339Z",
+        "liveUpdates": {
+          "startedAt": "2026-07-04T10:20:16.705Z",
+          "activeSseConnections": 2,
+          "sseConnections": {
+            "opened": 6,
+            "closed": 4
+          },
+          "sseBroadcastsByEvent": {
+            "session-update": 1,
+            "agent-update": 47,
+            "terminal-output": 154,
+            "terminal-output-focus": 244,
+            "agent-removed": 2
+          },
+          "timings": {
+            "statusTicks": {
+              "count": 1153,
+              "totalMs": 123242.446,
+              "maxMs": 704.107,
+              "lastMs": 35.998
+            },
+            "terminalTicks": {
+              "count": 1153,
+              "totalMs": 17287.093,
+              "maxMs": 94.631,
+              "lastMs": 11.013
+            },
+            "focusedTerminalTicks": {
+              "count": 11310,
+              "totalMs": 33748.963,
+              "maxMs": 39.259,
+              "lastMs": 24.388
+            },
+            "tmuxCaptureTail": {
+              "count": 7402,
+              "totalMs": 32960.794,
+              "maxMs": 28.135,
+              "lastMs": 3.374
+            },
+            "tmuxCaptureTailRaw": {
+              "count": 1924,
+              "totalMs": 20080.998,
+              "maxMs": 18.404,
+              "lastMs": 9.426
+            },
+            "sseBroadcasts": {
+              "count": 448,
+              "totalMs": 17.804,
+              "maxMs": 0.133,
+              "lastMs": 0.07
+            },
+            "tailRequests": {
+              "count": 18,
+              "totalMs": 267.798,
+              "maxMs": 25.822,
+              "lastMs": 12.084
+            }
+          }
+        }
+      },
+      "deltaFromPrevious": {
+        "sseOpenedDelta": 0,
+        "sseClosedDelta": 0,
+        "activeSseConnections": 2,
+        "sseBroadcastsByEventDelta": {
+          "session-update": 0,
+          "agent-update": 0,
+          "terminal-output": 0,
+          "terminal-output-focus": 2,
+          "agent-removed": 0
+        },
+        "timings": {
+          "statusTicks": {
+            "countDelta": 1,
+            "totalDeltaMs": 35.998,
+            "avgDeltaMs": 35.998,
+            "lastMs": 35.998,
+            "maxMs": 704.107
+          },
+          "terminalTicks": {
+            "countDelta": 1,
+            "totalDeltaMs": 11.013,
+            "avgDeltaMs": 11.013,
+            "lastMs": 11.013,
+            "maxMs": 94.631
+          },
+          "focusedTerminalTicks": {
+            "countDelta": 3,
+            "totalDeltaMs": 53.049,
+            "avgDeltaMs": 17.683,
+            "lastMs": 24.388,
+            "maxMs": 39.259
+          },
+          "tmuxCaptureTail": {
+            "countDelta": 5,
+            "totalDeltaMs": 21.257,
+            "avgDeltaMs": 4.251,
+            "lastMs": 3.374,
+            "maxMs": 28.135
+          },
+          "tmuxCaptureTailRaw": {
+            "countDelta": 6,
+            "totalDeltaMs": 56.204,
+            "avgDeltaMs": 9.367,
+            "lastMs": 9.426,
+            "maxMs": 18.404
+          },
+          "sseBroadcasts": {
+            "countDelta": 2,
+            "totalDeltaMs": 0.116,
+            "avgDeltaMs": 0.058,
+            "lastMs": 0.07,
+            "maxMs": 0.133
+          },
+          "tailRequests": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 12.084,
+            "maxMs": 25.822
+          }
+        }
+      }
+    },
+    {
+      "phase": "during",
+      "index": 23,
+      "sampledAt": "2026-07-04T11:01:02.846Z",
+      "fetchMs": 3.655,
+      "body": {
+        "timestamp": "2026-07-04T11:01:02.845Z",
+        "liveUpdates": {
+          "startedAt": "2026-07-04T10:20:16.705Z",
+          "activeSseConnections": 2,
+          "sseConnections": {
+            "opened": 6,
+            "closed": 4
+          },
+          "sseBroadcastsByEvent": {
+            "session-update": 1,
+            "agent-update": 47,
+            "terminal-output": 154,
+            "terminal-output-focus": 245,
+            "agent-removed": 2
+          },
+          "timings": {
+            "statusTicks": {
+              "count": 1153,
+              "totalMs": 123242.446,
+              "maxMs": 704.107,
+              "lastMs": 35.998
+            },
+            "terminalTicks": {
+              "count": 1153,
+              "totalMs": 17287.093,
+              "maxMs": 94.631,
+              "lastMs": 11.013
+            },
+            "focusedTerminalTicks": {
+              "count": 11312,
+              "totalMs": 33814.387,
+              "maxMs": 43.528,
+              "lastMs": 21.896
+            },
+            "tmuxCaptureTail": {
+              "count": 7402,
+              "totalMs": 32960.794,
+              "maxMs": 28.135,
+              "lastMs": 3.374
+            },
+            "tmuxCaptureTailRaw": {
+              "count": 1928,
+              "totalMs": 20128.292,
+              "maxMs": 18.404,
+              "lastMs": 9.08
+            },
+            "sseBroadcasts": {
+              "count": 449,
+              "totalMs": 17.859,
+              "maxMs": 0.133,
+              "lastMs": 0.055
+            },
+            "tailRequests": {
+              "count": 18,
+              "totalMs": 267.798,
+              "maxMs": 25.822,
+              "lastMs": 12.084
+            }
+          }
+        }
+      },
+      "deltaFromPrevious": {
+        "sseOpenedDelta": 0,
+        "sseClosedDelta": 0,
+        "activeSseConnections": 2,
+        "sseBroadcastsByEventDelta": {
+          "session-update": 0,
+          "agent-update": 0,
+          "terminal-output": 0,
+          "terminal-output-focus": 1,
+          "agent-removed": 0
+        },
+        "timings": {
+          "statusTicks": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 35.998,
+            "maxMs": 704.107
+          },
+          "terminalTicks": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 11.013,
+            "maxMs": 94.631
+          },
+          "focusedTerminalTicks": {
+            "countDelta": 2,
+            "totalDeltaMs": 65.424,
+            "avgDeltaMs": 32.712,
+            "lastMs": 21.896,
+            "maxMs": 43.528
+          },
+          "tmuxCaptureTail": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 3.374,
+            "maxMs": 28.135
+          },
+          "tmuxCaptureTailRaw": {
+            "countDelta": 4,
+            "totalDeltaMs": 47.294,
+            "avgDeltaMs": 11.824,
+            "lastMs": 9.08,
+            "maxMs": 18.404
+          },
+          "sseBroadcasts": {
+            "countDelta": 1,
+            "totalDeltaMs": 0.055,
+            "avgDeltaMs": 0.055,
+            "lastMs": 0.055,
+            "maxMs": 0.133
+          },
+          "tailRequests": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 12.084,
+            "maxMs": 25.822
+          }
+        }
+      }
+    },
+    {
+      "phase": "during",
+      "index": 24,
+      "sampledAt": "2026-07-04T11:01:03.350Z",
+      "fetchMs": 3.841,
+      "body": {
+        "timestamp": "2026-07-04T11:01:03.349Z",
+        "liveUpdates": {
+          "startedAt": "2026-07-04T10:20:16.705Z",
+          "activeSseConnections": 2,
+          "sseConnections": {
+            "opened": 6,
+            "closed": 4
+          },
+          "sseBroadcastsByEvent": {
+            "session-update": 1,
+            "agent-update": 47,
+            "terminal-output": 154,
+            "terminal-output-focus": 246,
+            "agent-removed": 2
+          },
+          "timings": {
+            "statusTicks": {
+              "count": 1153,
+              "totalMs": 123242.446,
+              "maxMs": 704.107,
+              "lastMs": 35.998
+            },
+            "terminalTicks": {
+              "count": 1153,
+              "totalMs": 17287.093,
+              "maxMs": 94.631,
+              "lastMs": 11.013
+            },
+            "focusedTerminalTicks": {
+              "count": 11314,
+              "totalMs": 33866.942,
+              "maxMs": 43.528,
+              "lastMs": 25.249
+            },
+            "tmuxCaptureTail": {
+              "count": 7402,
+              "totalMs": 32960.794,
+              "maxMs": 28.135,
+              "lastMs": 3.374
+            },
+            "tmuxCaptureTailRaw": {
+              "count": 1932,
+              "totalMs": 20181.887,
+              "maxMs": 18.404,
+              "lastMs": 9.807
+            },
+            "sseBroadcasts": {
+              "count": 450,
+              "totalMs": 17.969,
+              "maxMs": 0.133,
+              "lastMs": 0.11
+            },
+            "tailRequests": {
+              "count": 18,
+              "totalMs": 267.798,
+              "maxMs": 25.822,
+              "lastMs": 12.084
+            }
+          }
+        }
+      },
+      "deltaFromPrevious": {
+        "sseOpenedDelta": 0,
+        "sseClosedDelta": 0,
+        "activeSseConnections": 2,
+        "sseBroadcastsByEventDelta": {
+          "session-update": 0,
+          "agent-update": 0,
+          "terminal-output": 0,
+          "terminal-output-focus": 1,
+          "agent-removed": 0
+        },
+        "timings": {
+          "statusTicks": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 35.998,
+            "maxMs": 704.107
+          },
+          "terminalTicks": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 11.013,
+            "maxMs": 94.631
+          },
+          "focusedTerminalTicks": {
+            "countDelta": 2,
+            "totalDeltaMs": 52.555,
+            "avgDeltaMs": 26.278,
+            "lastMs": 25.249,
+            "maxMs": 43.528
+          },
+          "tmuxCaptureTail": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 3.374,
+            "maxMs": 28.135
+          },
+          "tmuxCaptureTailRaw": {
+            "countDelta": 4,
+            "totalDeltaMs": 53.595,
+            "avgDeltaMs": 13.399,
+            "lastMs": 9.807,
+            "maxMs": 18.404
+          },
+          "sseBroadcasts": {
+            "countDelta": 1,
+            "totalDeltaMs": 0.11,
+            "avgDeltaMs": 0.11,
+            "lastMs": 0.11,
+            "maxMs": 0.133
+          },
+          "tailRequests": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 12.084,
+            "maxMs": 25.822
+          }
+        }
+      }
+    },
+    {
+      "phase": "during",
+      "index": 25,
+      "sampledAt": "2026-07-04T11:01:03.855Z",
+      "fetchMs": 4.262,
+      "body": {
+        "timestamp": "2026-07-04T11:01:03.854Z",
+        "liveUpdates": {
+          "startedAt": "2026-07-04T10:20:16.705Z",
+          "activeSseConnections": 2,
+          "sseConnections": {
+            "opened": 6,
+            "closed": 4
+          },
+          "sseBroadcastsByEvent": {
+            "session-update": 1,
+            "agent-update": 47,
+            "terminal-output": 154,
+            "terminal-output-focus": 248,
+            "agent-removed": 2
+          },
+          "timings": {
+            "statusTicks": {
+              "count": 1153,
+              "totalMs": 123242.446,
+              "maxMs": 704.107,
+              "lastMs": 35.998
+            },
+            "terminalTicks": {
+              "count": 1153,
+              "totalMs": 17287.093,
+              "maxMs": 94.631,
+              "lastMs": 11.013
+            },
+            "focusedTerminalTicks": {
+              "count": 11316,
+              "totalMs": 33916.631,
+              "maxMs": 43.528,
+              "lastMs": 23.375
+            },
+            "tmuxCaptureTail": {
+              "count": 7402,
+              "totalMs": 32960.794,
+              "maxMs": 28.135,
+              "lastMs": 3.374
+            },
+            "tmuxCaptureTailRaw": {
+              "count": 1936,
+              "totalMs": 20227.631,
+              "maxMs": 18.404,
+              "lastMs": 9.775
+            },
+            "sseBroadcasts": {
+              "count": 452,
+              "totalMs": 18.188,
+              "maxMs": 0.133,
+              "lastMs": 0.105
+            },
+            "tailRequests": {
+              "count": 18,
+              "totalMs": 267.798,
+              "maxMs": 25.822,
+              "lastMs": 12.084
+            }
+          }
+        }
+      },
+      "deltaFromPrevious": {
+        "sseOpenedDelta": 0,
+        "sseClosedDelta": 0,
+        "activeSseConnections": 2,
+        "sseBroadcastsByEventDelta": {
+          "session-update": 0,
+          "agent-update": 0,
+          "terminal-output": 0,
+          "terminal-output-focus": 2,
+          "agent-removed": 0
+        },
+        "timings": {
+          "statusTicks": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 35.998,
+            "maxMs": 704.107
+          },
+          "terminalTicks": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 11.013,
+            "maxMs": 94.631
+          },
+          "focusedTerminalTicks": {
+            "countDelta": 2,
+            "totalDeltaMs": 49.689,
+            "avgDeltaMs": 24.844,
+            "lastMs": 23.375,
+            "maxMs": 43.528
+          },
+          "tmuxCaptureTail": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 3.374,
+            "maxMs": 28.135
+          },
+          "tmuxCaptureTailRaw": {
+            "countDelta": 4,
+            "totalDeltaMs": 45.744,
+            "avgDeltaMs": 11.436,
+            "lastMs": 9.775,
+            "maxMs": 18.404
+          },
+          "sseBroadcasts": {
+            "countDelta": 2,
+            "totalDeltaMs": 0.219,
+            "avgDeltaMs": 0.109,
+            "lastMs": 0.105,
+            "maxMs": 0.133
+          },
+          "tailRequests": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 12.084,
+            "maxMs": 25.822
+          }
+        }
+      }
+    },
+    {
+      "phase": "during",
+      "index": 26,
+      "sampledAt": "2026-07-04T11:01:04.382Z",
+      "fetchMs": 25.338,
+      "body": {
+        "timestamp": "2026-07-04T11:01:04.380Z",
+        "liveUpdates": {
+          "startedAt": "2026-07-04T10:20:16.705Z",
+          "activeSseConnections": 2,
+          "sseConnections": {
+            "opened": 6,
+            "closed": 4
+          },
+          "sseBroadcastsByEvent": {
+            "session-update": 1,
+            "agent-update": 47,
+            "terminal-output": 154,
+            "terminal-output-focus": 250,
+            "agent-removed": 2
+          },
+          "timings": {
+            "statusTicks": {
+              "count": 1154,
+              "totalMs": 123277.401,
+              "maxMs": 704.107,
+              "lastMs": 34.955
+            },
+            "terminalTicks": {
+              "count": 1154,
+              "totalMs": 17297.95,
+              "maxMs": 94.631,
+              "lastMs": 10.857
+            },
+            "focusedTerminalTicks": {
+              "count": 11319,
+              "totalMs": 33979.654,
+              "maxMs": 43.528,
+              "lastMs": 24.666
+            },
+            "tmuxCaptureTail": {
+              "count": 7407,
+              "totalMs": 32982.056,
+              "maxMs": 28.135,
+              "lastMs": 3.448
+            },
+            "tmuxCaptureTailRaw": {
+              "count": 1942,
+              "totalMs": 20288.965,
+              "maxMs": 18.404,
+              "lastMs": 9.301
+            },
+            "sseBroadcasts": {
+              "count": 454,
+              "totalMs": 18.324,
+              "maxMs": 0.133,
+              "lastMs": 0.091
+            },
+            "tailRequests": {
+              "count": 18,
+              "totalMs": 267.798,
+              "maxMs": 25.822,
+              "lastMs": 12.084
+            }
+          }
+        }
+      },
+      "deltaFromPrevious": {
+        "sseOpenedDelta": 0,
+        "sseClosedDelta": 0,
+        "activeSseConnections": 2,
+        "sseBroadcastsByEventDelta": {
+          "session-update": 0,
+          "agent-update": 0,
+          "terminal-output": 0,
+          "terminal-output-focus": 2,
+          "agent-removed": 0
+        },
+        "timings": {
+          "statusTicks": {
+            "countDelta": 1,
+            "totalDeltaMs": 34.955,
+            "avgDeltaMs": 34.955,
+            "lastMs": 34.955,
+            "maxMs": 704.107
+          },
+          "terminalTicks": {
+            "countDelta": 1,
+            "totalDeltaMs": 10.857,
+            "avgDeltaMs": 10.857,
+            "lastMs": 10.857,
+            "maxMs": 94.631
+          },
+          "focusedTerminalTicks": {
+            "countDelta": 3,
+            "totalDeltaMs": 63.023,
+            "avgDeltaMs": 21.008,
+            "lastMs": 24.666,
+            "maxMs": 43.528
+          },
+          "tmuxCaptureTail": {
+            "countDelta": 5,
+            "totalDeltaMs": 21.262,
+            "avgDeltaMs": 4.252,
+            "lastMs": 3.448,
+            "maxMs": 28.135
+          },
+          "tmuxCaptureTailRaw": {
+            "countDelta": 6,
+            "totalDeltaMs": 61.334,
+            "avgDeltaMs": 10.222,
+            "lastMs": 9.301,
+            "maxMs": 18.404
+          },
+          "sseBroadcasts": {
+            "countDelta": 2,
+            "totalDeltaMs": 0.136,
+            "avgDeltaMs": 0.068,
+            "lastMs": 0.091,
+            "maxMs": 0.133
+          },
+          "tailRequests": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 12.084,
+            "maxMs": 25.822
+          }
+        }
+      }
+    },
+    {
+      "phase": "during",
+      "index": 27,
+      "sampledAt": "2026-07-04T11:01:04.886Z",
+      "fetchMs": 3.415,
+      "body": {
+        "timestamp": "2026-07-04T11:01:04.885Z",
+        "liveUpdates": {
+          "startedAt": "2026-07-04T10:20:16.705Z",
+          "activeSseConnections": 2,
+          "sseConnections": {
+            "opened": 6,
+            "closed": 4
+          },
+          "sseBroadcastsByEvent": {
+            "session-update": 1,
+            "agent-update": 47,
+            "terminal-output": 154,
+            "terminal-output-focus": 251,
+            "agent-removed": 2
+          },
+          "timings": {
+            "statusTicks": {
+              "count": 1154,
+              "totalMs": 123277.401,
+              "maxMs": 704.107,
+              "lastMs": 34.955
+            },
+            "terminalTicks": {
+              "count": 1154,
+              "totalMs": 17297.95,
+              "maxMs": 94.631,
+              "lastMs": 10.857
+            },
+            "focusedTerminalTicks": {
+              "count": 11321,
+              "totalMs": 34034.883,
+              "maxMs": 43.528,
+              "lastMs": 26.069
+            },
+            "tmuxCaptureTail": {
+              "count": 7407,
+              "totalMs": 32982.056,
+              "maxMs": 28.135,
+              "lastMs": 3.448
+            },
+            "tmuxCaptureTailRaw": {
+              "count": 1946,
+              "totalMs": 20345.026,
+              "maxMs": 18.432,
+              "lastMs": 11.049
+            },
+            "sseBroadcasts": {
+              "count": 455,
+              "totalMs": 18.409,
+              "maxMs": 0.133,
+              "lastMs": 0.085
+            },
+            "tailRequests": {
+              "count": 18,
+              "totalMs": 267.798,
+              "maxMs": 25.822,
+              "lastMs": 12.084
+            }
+          }
+        }
+      },
+      "deltaFromPrevious": {
+        "sseOpenedDelta": 0,
+        "sseClosedDelta": 0,
+        "activeSseConnections": 2,
+        "sseBroadcastsByEventDelta": {
+          "session-update": 0,
+          "agent-update": 0,
+          "terminal-output": 0,
+          "terminal-output-focus": 1,
+          "agent-removed": 0
+        },
+        "timings": {
+          "statusTicks": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 34.955,
+            "maxMs": 704.107
+          },
+          "terminalTicks": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 10.857,
+            "maxMs": 94.631
+          },
+          "focusedTerminalTicks": {
+            "countDelta": 2,
+            "totalDeltaMs": 55.229,
+            "avgDeltaMs": 27.614,
+            "lastMs": 26.069,
+            "maxMs": 43.528
+          },
+          "tmuxCaptureTail": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 3.448,
+            "maxMs": 28.135
+          },
+          "tmuxCaptureTailRaw": {
+            "countDelta": 4,
+            "totalDeltaMs": 56.061,
+            "avgDeltaMs": 14.015,
+            "lastMs": 11.049,
+            "maxMs": 18.432
+          },
+          "sseBroadcasts": {
+            "countDelta": 1,
+            "totalDeltaMs": 0.085,
+            "avgDeltaMs": 0.085,
+            "lastMs": 0.085,
+            "maxMs": 0.133
+          },
+          "tailRequests": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 12.084,
+            "maxMs": 25.822
+          }
+        }
+      }
+    },
+    {
+      "phase": "during",
+      "index": 28,
+      "sampledAt": "2026-07-04T11:01:05.389Z",
+      "fetchMs": 3.535,
+      "body": {
+        "timestamp": "2026-07-04T11:01:05.388Z",
+        "liveUpdates": {
+          "startedAt": "2026-07-04T10:20:16.705Z",
+          "activeSseConnections": 2,
+          "sseConnections": {
+            "opened": 6,
+            "closed": 4
+          },
+          "sseBroadcastsByEvent": {
+            "session-update": 1,
+            "agent-update": 47,
+            "terminal-output": 154,
+            "terminal-output-focus": 252,
+            "agent-removed": 2
+          },
+          "timings": {
+            "statusTicks": {
+              "count": 1154,
+              "totalMs": 123277.401,
+              "maxMs": 704.107,
+              "lastMs": 34.955
+            },
+            "terminalTicks": {
+              "count": 1154,
+              "totalMs": 17297.95,
+              "maxMs": 94.631,
+              "lastMs": 10.857
+            },
+            "focusedTerminalTicks": {
+              "count": 11323,
+              "totalMs": 34085.594,
+              "maxMs": 43.528,
+              "lastMs": 25.177
+            },
+            "tmuxCaptureTail": {
+              "count": 7407,
+              "totalMs": 32982.056,
+              "maxMs": 28.135,
+              "lastMs": 3.448
+            },
+            "tmuxCaptureTailRaw": {
+              "count": 1950,
+              "totalMs": 20394.83,
+              "maxMs": 18.432,
+              "lastMs": 10.525
+            },
+            "sseBroadcasts": {
+              "count": 456,
+              "totalMs": 18.534,
+              "maxMs": 0.133,
+              "lastMs": 0.125
+            },
+            "tailRequests": {
+              "count": 18,
+              "totalMs": 267.798,
+              "maxMs": 25.822,
+              "lastMs": 12.084
+            }
+          }
+        }
+      },
+      "deltaFromPrevious": {
+        "sseOpenedDelta": 0,
+        "sseClosedDelta": 0,
+        "activeSseConnections": 2,
+        "sseBroadcastsByEventDelta": {
+          "session-update": 0,
+          "agent-update": 0,
+          "terminal-output": 0,
+          "terminal-output-focus": 1,
+          "agent-removed": 0
+        },
+        "timings": {
+          "statusTicks": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 34.955,
+            "maxMs": 704.107
+          },
+          "terminalTicks": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 10.857,
+            "maxMs": 94.631
+          },
+          "focusedTerminalTicks": {
+            "countDelta": 2,
+            "totalDeltaMs": 50.711,
+            "avgDeltaMs": 25.355,
+            "lastMs": 25.177,
+            "maxMs": 43.528
+          },
+          "tmuxCaptureTail": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 3.448,
+            "maxMs": 28.135
+          },
+          "tmuxCaptureTailRaw": {
+            "countDelta": 4,
+            "totalDeltaMs": 49.804,
+            "avgDeltaMs": 12.451,
+            "lastMs": 10.525,
+            "maxMs": 18.432
+          },
+          "sseBroadcasts": {
+            "countDelta": 1,
+            "totalDeltaMs": 0.125,
+            "avgDeltaMs": 0.125,
+            "lastMs": 0.125,
+            "maxMs": 0.133
+          },
+          "tailRequests": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 12.084,
+            "maxMs": 25.822
+          }
+        }
+      }
+    },
+    {
+      "phase": "during",
+      "index": 29,
+      "sampledAt": "2026-07-04T11:01:05.892Z",
+      "fetchMs": 3.071,
+      "body": {
+        "timestamp": "2026-07-04T11:01:05.891Z",
+        "liveUpdates": {
+          "startedAt": "2026-07-04T10:20:16.705Z",
+          "activeSseConnections": 2,
+          "sseConnections": {
+            "opened": 6,
+            "closed": 4
+          },
+          "sseBroadcastsByEvent": {
+            "session-update": 1,
+            "agent-update": 47,
+            "terminal-output": 154,
+            "terminal-output-focus": 254,
+            "agent-removed": 2
+          },
+          "timings": {
+            "statusTicks": {
+              "count": 1154,
+              "totalMs": 123277.401,
+              "maxMs": 704.107,
+              "lastMs": 34.955
+            },
+            "terminalTicks": {
+              "count": 1154,
+              "totalMs": 17297.95,
+              "maxMs": 94.631,
+              "lastMs": 10.857
+            },
+            "focusedTerminalTicks": {
+              "count": 11325,
+              "totalMs": 34137.78,
+              "maxMs": 43.528,
+              "lastMs": 23.199
+            },
+            "tmuxCaptureTail": {
+              "count": 7407,
+              "totalMs": 32982.056,
+              "maxMs": 28.135,
+              "lastMs": 3.448
+            },
+            "tmuxCaptureTailRaw": {
+              "count": 1954,
+              "totalMs": 20450.258,
+              "maxMs": 18.432,
+              "lastMs": 11.248
+            },
+            "sseBroadcasts": {
+              "count": 458,
+              "totalMs": 18.691,
+              "maxMs": 0.133,
+              "lastMs": 0.072
+            },
+            "tailRequests": {
+              "count": 18,
+              "totalMs": 267.798,
+              "maxMs": 25.822,
+              "lastMs": 12.084
+            }
+          }
+        }
+      },
+      "deltaFromPrevious": {
+        "sseOpenedDelta": 0,
+        "sseClosedDelta": 0,
+        "activeSseConnections": 2,
+        "sseBroadcastsByEventDelta": {
+          "session-update": 0,
+          "agent-update": 0,
+          "terminal-output": 0,
+          "terminal-output-focus": 2,
+          "agent-removed": 0
+        },
+        "timings": {
+          "statusTicks": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 34.955,
+            "maxMs": 704.107
+          },
+          "terminalTicks": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 10.857,
+            "maxMs": 94.631
+          },
+          "focusedTerminalTicks": {
+            "countDelta": 2,
+            "totalDeltaMs": 52.186,
+            "avgDeltaMs": 26.093,
+            "lastMs": 23.199,
+            "maxMs": 43.528
+          },
+          "tmuxCaptureTail": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 3.448,
+            "maxMs": 28.135
+          },
+          "tmuxCaptureTailRaw": {
+            "countDelta": 4,
+            "totalDeltaMs": 55.428,
+            "avgDeltaMs": 13.857,
+            "lastMs": 11.248,
+            "maxMs": 18.432
+          },
+          "sseBroadcasts": {
+            "countDelta": 2,
+            "totalDeltaMs": 0.157,
+            "avgDeltaMs": 0.079,
+            "lastMs": 0.072,
+            "maxMs": 0.133
+          },
+          "tailRequests": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 12.084,
+            "maxMs": 25.822
+          }
+        }
+      }
+    },
+    {
+      "phase": "after",
+      "index": 0,
+      "sampledAt": "2026-07-04T11:01:05.893Z",
+      "fetchMs": 1.727,
+      "body": {
+        "timestamp": "2026-07-04T11:01:05.893Z",
+        "liveUpdates": {
+          "startedAt": "2026-07-04T10:20:16.705Z",
+          "activeSseConnections": 2,
+          "sseConnections": {
+            "opened": 6,
+            "closed": 4
+          },
+          "sseBroadcastsByEvent": {
+            "session-update": 1,
+            "agent-update": 47,
+            "terminal-output": 154,
+            "terminal-output-focus": 254,
+            "agent-removed": 2
+          },
+          "timings": {
+            "statusTicks": {
+              "count": 1154,
+              "totalMs": 123277.401,
+              "maxMs": 704.107,
+              "lastMs": 34.955
+            },
+            "terminalTicks": {
+              "count": 1154,
+              "totalMs": 17297.95,
+              "maxMs": 94.631,
+              "lastMs": 10.857
+            },
+            "focusedTerminalTicks": {
+              "count": 11325,
+              "totalMs": 34137.78,
+              "maxMs": 43.528,
+              "lastMs": 23.199
+            },
+            "tmuxCaptureTail": {
+              "count": 7407,
+              "totalMs": 32982.056,
+              "maxMs": 28.135,
+              "lastMs": 3.448
+            },
+            "tmuxCaptureTailRaw": {
+              "count": 1954,
+              "totalMs": 20450.258,
+              "maxMs": 18.432,
+              "lastMs": 11.248
+            },
+            "sseBroadcasts": {
+              "count": 458,
+              "totalMs": 18.691,
+              "maxMs": 0.133,
+              "lastMs": 0.072
+            },
+            "tailRequests": {
+              "count": 18,
+              "totalMs": 267.798,
+              "maxMs": 25.822,
+              "lastMs": 12.084
+            }
+          }
+        }
+      },
+      "deltaFromPrevious": {
+        "sseOpenedDelta": 0,
+        "sseClosedDelta": 0,
+        "activeSseConnections": 2,
+        "sseBroadcastsByEventDelta": {
+          "session-update": 0,
+          "agent-update": 0,
+          "terminal-output": 0,
+          "terminal-output-focus": 0,
+          "agent-removed": 0
+        },
+        "timings": {
+          "statusTicks": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 34.955,
+            "maxMs": 704.107
+          },
+          "terminalTicks": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 10.857,
+            "maxMs": 94.631
+          },
+          "focusedTerminalTicks": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 23.199,
+            "maxMs": 43.528
+          },
+          "tmuxCaptureTail": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 3.448,
+            "maxMs": 28.135
+          },
+          "tmuxCaptureTailRaw": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 11.248,
+            "maxMs": 18.432
+          },
+          "sseBroadcasts": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 0.072,
+            "maxMs": 0.133
+          },
+          "tailRequests": {
+            "countDelta": 0,
+            "totalDeltaMs": 0,
+            "avgDeltaMs": null,
+            "lastMs": 12.084,
+            "maxMs": 25.822
+          }
+        }
+      }
+    }
+  ]
+}

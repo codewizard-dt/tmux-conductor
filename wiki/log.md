@@ -438,3 +438,69 @@ Created ROADMAP-015 for latency improvements across focused terminal transport, 
 
 ## [2026-07-04] roadmap | ROADMAP-016 Observability improvements
 Created ROADMAP-016 for local-first observability across event-loop metrics, tmux operation metrics, terminal WebSocket/input latency, structured logs, diagnostics, and guardrails. Owner: David Taylor. 5 phases, 11 inline placeholder items.
+
+## [2026-07-04] task | TASK-084 focused terminal latency baseline
+Created task TASK-084: capture representative focused-terminal latency metrics before changing focused transport ownership or runtime defaults.
+
+## [2026-07-04] task | TASK-085 focused transport ownership acceptance criteria
+Created task TASK-085: define the focused WebSocket/SSE ownership contract and acceptance evidence for ROADMAP-015.
+
+## [2026-07-04] task | TASK-086 focused terminal WebSocket exclusive output and input path
+Created task TASK-086: make focused WebSocket the exclusive focused output/input owner while preserving SSE/REST fallback behavior.
+
+## [2026-07-04] task | TASK-087 Vite dev proxy WebSocket support
+Created task TASK-087: enable WebSocket upgrades through the Vite `/api` dev proxy without changing HTTP proxy behavior.
+
+## [2026-07-04] task | TASK-088 coalesce focused WebSocket output frames
+Created task TASK-088: coalesce focused WebSocket terminal snapshots and avoid redundant sends.
+
+## [2026-07-04] task | TASK-089 configurable live-update intervals and capture depths
+Created task TASK-089: move live-update cadences and capture depths into conductor.conf-backed host-server configuration.
+
+## [2026-07-04] task | TASK-090 tune focused capture defaults from measured data
+Created task TASK-090: tune focused terminal capture defaults from baseline and post-transport measurements.
+
+## [2026-07-04] task | TASK-091 backend-owned agent status contract
+Created task TASK-091: define backend-owned status values, evidence fields, and frontend consumption rules.
+
+## [2026-07-04] task | TASK-092 dashboard status display uses backend status fields
+Created task TASK-092: migrate dashboard status rendering to backend-owned status fields.
+
+## [2026-07-04] task | TASK-093 duplicate focused-capture regression checks
+Created task TASK-093: add checks that fail when focused WebSocket and focused SSE capture duplicate work for one pane.
+
+## [2026-07-04] task | TASK-094 focused input echo-latency regression checks
+Created task TASK-094: add measurable focused input acknowledgement and echo-latency regression checks.
+
+## [2026-07-04] task | TASK-091 backend-owned agent status contract
+Implemented TASK-091: `/api/status` and `agent-update` now include a backend-owned `status` object with display state, reason, needs-attention flag, active task, and state evidence while preserving legacy `state`.
+
+## [2026-07-04] task | TASK-086 focused terminal WebSocket exclusive output and input path
+Implemented TASK-086: focused `LogTail` now disables focused SSE while its WebSocket is connected, direct input prefers WebSocket with REST fallback, and the host-server skips focused SSE capture for WebSocket-owned panes.
+
+## [2026-07-04] task | TASK-088 coalesce focused WebSocket output frames
+Implemented TASK-088: focused WebSocket snapshots remain change-aware and now skip additional full-screen sends while the client has buffered data, preserving the latest snapshot for a later tick instead of building an output backlog.
+
+## [2026-07-04] task | TASK-090 tune focused capture defaults from measured data
+Implemented TASK-090: tuned focused terminal defaults to 250 ms cadence and 300-line focused snapshots based on the TASK-084 baseline plus exclusive/coalesced WebSocket ownership.
+
+## [2026-07-04] measurement | TASK-090 post-transport tuned focused terminal run
+Captured `live-updates-post-transport-tuned.json` against current code on port 8798 with a focused WebSocket open for agent 17. Results: `tmuxCaptureTailRaw` p95 15.118 ms, focused SSE broadcasts 0, focused tick p95 0.005 ms while WebSocket ownership excluded duplicate focused capture.
+
+## [2026-07-04] task | TASK-092 dashboard status display uses backend status fields
+Implemented TASK-092: dashboard status derivation now prefers the backend-owned `agent.status.display` contract, preserving the legacy local derivation only as fallback for older payloads.
+
+## [2026-07-04] task | TASK-093 duplicate focused-capture regression checks
+Implemented TASK-093: host performance guardrails now assert the focused WebSocket owner registry, focused SSE exclusion for WebSocket-owned panes, and WebSocket output backpressure handling.
+
+## [2026-07-04] task | TASK-094 focused input echo-latency regression checks
+Implemented TASK-094: focused WebSocket input frames now carry input ids and sent timestamps, acknowledgements echo timing metadata, and the browser latency probe can collect input ack samples.
+
+## [2026-07-04] task | TASK-087 Vite dev proxy WebSocket support
+Started TASK-087 and implemented explicit Vite `/api` proxy WebSocket upgrade support.
+
+## [2026-07-04] uat | UAT-084..UAT-094 passed (auto) · TASK-084..TASK-094 done
+Verified baseline artifacts, focused transport ownership, Vite WebSocket proxying, focused WebSocket coalescing, runtime live-update knobs, tuned defaults, backend-owned status, dashboard status consumption, duplicate-capture guardrails, and focused input acknowledgement timing. Marked TASK-084 through TASK-094 done and checked off ROADMAP-015.
+
+## [2026-07-04] roadmap | ROADMAP-015 completed
+All ROADMAP-015 checklist items completed. Marked ROADMAP-015 done and removed it from the active roadmap index.

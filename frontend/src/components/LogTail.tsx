@@ -45,6 +45,74 @@ function mapKey(e: KeyboardEvent<HTMLDivElement>): KeysPayload | null {
 
 const pendingDeletes = new Map<number, ReturnType<typeof setTimeout>>()
 
+type FocusedLatencyTransport = 'websocket' | 'sse'
+
+interface FocusedLatencySample {
+  transport: FocusedLatencyTransport
+  agentId: number
+  receivedAt: number
+  paintedAt: number
+  receiptToPaintMs: number
+  bytes: number
+  lines: number | null
+  windowPresent: boolean | null
+}
+
+interface FocusedInputAckSample {
+  agentId: number
+  inputId: number
+  sentAt: number
+  acknowledgedAt: number
+  ackLatencyMs: number
+}
+
+interface FocusedLatencyProbe {
+  enabled?: boolean
+  samples?: FocusedLatencySample[]
+  inputAcks?: FocusedInputAckSample[]
+}
+
+function recordFocusedLatencySample(
+  transport: FocusedLatencyTransport,
+  agentId: number,
+  text: string,
+  lines: number | null,
+  windowPresent: boolean | null,
+  receivedAt: number,
+): void {
+  const probe = (window as Window & { __focusedTerminalLatencyBaseline?: FocusedLatencyProbe }).__focusedTerminalLatencyBaseline
+  if (probe?.enabled !== true || !Array.isArray(probe.samples)) return
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      const paintedAt = performance.now()
+      probe.samples?.push({
+        transport,
+        agentId,
+        receivedAt,
+        paintedAt,
+        receiptToPaintMs: Math.round((paintedAt - receivedAt) * 1000) / 1000,
+        bytes: text.length,
+        lines,
+        windowPresent,
+      })
+    })
+  })
+}
+
+function recordFocusedInputAck(agentId: number, inputId: number | undefined, sentAt: number | undefined): void {
+  const probe = (window as Window & { __focusedTerminalLatencyBaseline?: FocusedLatencyProbe }).__focusedTerminalLatencyBaseline
+  if (probe?.enabled !== true || !Array.isArray(probe.inputAcks)) return
+  if (inputId === undefined || sentAt === undefined) return
+  const acknowledgedAt = performance.now()
+  probe.inputAcks.push({
+    agentId,
+    inputId,
+    sentAt,
+    acknowledgedAt,
+    ackLatencyMs: Math.round((acknowledgedAt - sentAt) * 1000) / 1000,
+  })
+}
+
 export default function LogTail({ agentId, agentName, maxHeightClass, focused, fillContainer, interactSignal, onInteractChange, onCloseModal, expanded, onToggleExpand }: {
   /** Globally-unique agent id — used for all API calls and SSE filtering. */
   agentId: number
@@ -77,6 +145,7 @@ export default function LogTail({ agentId, agentName, maxHeightClass, focused, f
   const [sendError, setSendError] = useState<string | null>(null)
   const [uploading, setUploading] = useState(false)
   const [dragOver, setDragOver] = useState(false)
+  const [terminalWsConnected, setTerminalWsConnected] = useState(false)
   const [escHint, setEscHint] = useState(false)
   // Serializes POSTs so keystroke order survives key repeat; .catch keeps the chain alive.
   const queueRef = useRef<Promise<void>>(Promise.resolve())
@@ -223,23 +292,40 @@ export default function LogTail({ agentId, agentName, maxHeightClass, focused, f
     if (!focused) {
       terminalWsRef.current?.close()
       terminalWsRef.current = null
+      setTerminalWsConnected(false)
       return
     }
+    setTerminalWsConnected(false)
     const client = connectTerminalWebSocket(
       agentId,
       (message) => {
+        const receivedAt = performance.now()
+        if (message.type === 'ack') {
+          recordFocusedInputAck(agentId, message.inputId, message.sentAt)
+          return
+        }
         if (message.type !== 'output' || message.agentId !== agentId || typeof message.text !== 'string') return
         pendingTextRef.current = message.text
         setWindowPresent(message.windowPresent ?? true)
-        if (followRef.current) applySnapshot(message.text)
+        if (followRef.current) {
+          applySnapshot(message.text)
+          recordFocusedLatencySample('websocket', agentId, message.text, message.lines ?? null, message.windowPresent ?? null, receivedAt)
+        }
       },
       () => {
-        if (terminalWsRef.current === client) terminalWsRef.current = null
+        if (terminalWsRef.current === client) {
+          terminalWsRef.current = null
+          setTerminalWsConnected(false)
+        }
       },
+      () => { setTerminalWsConnected(true) },
     )
     terminalWsRef.current = client
     return () => {
-      if (terminalWsRef.current === client) terminalWsRef.current = null
+      if (terminalWsRef.current === client) {
+        terminalWsRef.current = null
+        setTerminalWsConnected(false)
+      }
       client.close()
     }
   }, [agentId, focused])
@@ -247,12 +333,17 @@ export default function LogTail({ agentId, agentName, maxHeightClass, focused, f
   useSSEEvent<{ agentId: number; agent: string; text: string; lines: number }>(
     focused ? 'terminal-output-focus' : 'terminal-output',
     (payload) => {
+      const receivedAt = performance.now()
       if (payload.agentId !== agentId) return
       pendingTextRef.current = payload.text
       // Only repaint while following the live tail; if the user scrolled up to read history,
       // leave the buffer untouched (the snapshot is applied when they scroll back to the bottom).
-      if (followRef.current) applySnapshot(payload.text)
+      if (followRef.current) {
+        applySnapshot(payload.text)
+        if (focused) recordFocusedLatencySample('sse', agentId, payload.text, payload.lines ?? null, null, receivedAt)
+      }
     },
+    !focused || !terminalWsConnected,
   )
 
   useEffect(() => {

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { API_BASE, addTask, renameAgent, type Task } from '../lib/api'
+import { API_BASE, addTask, renameAgent, type AgentDisplayStatus, type AgentRunState, type AgentStatusContract, type Task } from '../lib/api'
 import AddTaskForm from './AddTaskForm'
 import ErrorBoundary from './ErrorBoundary'
 import LogTail from './LogTail'
@@ -10,18 +10,7 @@ import { useSSEEvent } from '../hooks/useSSE'
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
-export type AgentStatus =
-  | 'busy'
-  | 'idle'
-  | 'idle-waiting'
-  | 'empty'
-  | 'error'
-  | 'awaiting'
-  | 'stalled'
-  | 'starting'
-  | 'no-window'
-  | 'exited'
-  | 'unknown'
+export type AgentStatus = AgentDisplayStatus
 
 export type AgentMode = 'default' | 'acceptEdits' | 'plan' | 'bypass' | 'unknown'
 export type AgentType = 'claude' | 'codex' | 'custom'
@@ -31,7 +20,8 @@ export interface Agent {
   name: string
   projectId: number | null
   projectName: string | null
-  state: string
+  state: AgentRunState
+  status?: AgentStatusContract
   mode: AgentMode
   agentType?: AgentType
   windowPresent: boolean
@@ -98,6 +88,7 @@ export function needsAttention(status: AgentStatus): boolean {
 }
 
 export function deriveStatus(agent: Agent): AgentStatus {
+  if (agent.status) return agent.status.display
   if (agent.state === 'no-window') return 'no-window'
   if (agent.state === 'awaiting') return 'awaiting'
   if (agent.state === 'stalled') return 'stalled'

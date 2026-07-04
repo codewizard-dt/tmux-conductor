@@ -101,6 +101,7 @@ function subscribe(eventName: string, cb: Subscriber): () => void {
 export function useSSEEvent<T = unknown>(
   eventName: string,
   callback: (payload: T) => void,
+  enabled = true,
 ): void {
   // Keep a ref to the latest callback so callers can pass an inline closure
   // without re-subscribing (and bouncing the shared connection) every render.
@@ -109,7 +110,8 @@ export function useSSEEvent<T = unknown>(
   callbackRef.current = callback
 
   useEffect(() => {
+    if (!enabled) return undefined
     const cb: Subscriber = (payload) => { callbackRef.current(payload as T) }
     return subscribe(eventName, cb)
-  }, [eventName])
+  }, [eventName, enabled])
 }
