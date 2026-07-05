@@ -11,7 +11,7 @@ import fastifyWebsocket from '@fastify/websocket';
 import type { WebSocket } from 'ws';
 import { readConductorConf, DEFAULT_CONF_PATH, appendBgProcessToConf, removeBgProcessFromConf, removeBgLink, addBgLink, clearConfCache } from './config.ts';
 import { openDb, getDbPath, listAgents, getAgentById, createAgent, deleteAgent, updateAgentName, agentWindowName, addTask, deleteTask, reorderTasks, jumpTaskToHead, listTasksForAgentId, listTasksByProject, listProjects, createProject, updateProject, deleteProject, nextAgentName, listSchedules, createSchedule, updateSchedule, deleteSchedule, dueSchedules, fireSchedule } from './db.ts';
-import { detectAgentStatus, detectAgentMode, detectAgentType, readTmuxWindowInventory, isTmuxWindowPresent, windowState, getActiveTask, capturePaneTail as capturePaneTailUninstrumented, capturePaneTailRaw as capturePaneTailRawUninstrumented, sendTextToPane, extractPaneLabel, type AgentMode, type AgentType } from './state.ts';
+import { detectAgentStatus, detectAgentMode, detectAgentType, readTmuxWindowInventory, isTmuxWindowPresent, windowState, getActiveTask, capturePaneTail as capturePaneTailUninstrumented, capturePaneTailRaw as capturePaneTailRawUninstrumented, sendTextToPane, extractPaneLabel, type AgentMode, type AgentRunState, type AgentType } from './state.ts';
 import { getAgentContext, getCodexAgentContext, type AgentContext } from './context.ts';
 import dotenv from 'dotenv';
 import { getUserSkills, getPluginSkills, getProjectSkills } from './skills.ts';
@@ -86,6 +86,7 @@ const db = openDb(getDbPath(readConductorConf()));
 const UPLOAD_DIR = path.join(REPO_ROOT, 'tmp', 'dashboard-drops');
 const UPLOAD_MAX_BYTES = 25 * 1024 * 1024;
 const UPLOAD_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+const FOCUSED_WS_BUFFERED_BYTES_LIMIT = 256 * 1024;
 const IMAGE_EXT_BY_MIME: Record<string, string> = {
   'image/png': 'png',
   'image/jpeg': 'jpg',
@@ -122,13 +123,7 @@ function healMonitorWindow(sessionName: string): boolean {
 let sessionStartInFlight = false;
 let lastMonitorHealAttempt = 0;
 const MONITOR_HEAL_COOLDOWN_MS = 30_000;
-const TAIL_POLL_MS = 2000;
-const TAIL_POLL_FOCUS_MS = 200;
 const CONTEXT_REFRESH_MS = 10_000;
-const TAIL_LINES = 100;
-// The focused agent (open detail modal) gets a deeper capture so its xterm scrollback
-// holds real history; unfocused card polling stays shallow to keep SSE payloads small.
-const TAIL_LINES_FOCUS = 500;
 
 // ── Background-process status (shared by /status and the poll loop) ──────────
 
@@ -562,8 +557,87 @@ async function sendDirectInput(agentId: number, payload: DirectInputPayload): Pr
 interface Snapshot {
   sessionAlive: boolean;
   sessionExists: boolean;
-  agents: Array<{ id: number; name: string; projectId: number | null; projectName: string | null; state: string; mode: AgentMode; agentType: AgentType; windowPresent: boolean; queuedTasks: number; launchCmd: string; workdir: string; activeTask: string | null; label: string | null; linkedBg: string | null } & AgentContext>;
+  agents: Array<{ id: number; name: string; projectId: number | null; projectName: string | null; state: AgentRunState; status: AgentStatusContract; mode: AgentMode; agentType: AgentType; windowPresent: boolean; queuedTasks: number; launchCmd: string; workdir: string; activeTask: string | null; label: string | null; linkedBg: string | null } & AgentContext>;
   bgProcesses: BgStatus[];
+}
+
+type AgentDisplayStatus = AgentRunState | 'empty' | 'idle-waiting';
+
+interface AgentStatusEvidence {
+  windowName: string;
+  windowPresent: boolean;
+  paneCurrentCommand: string | null;
+  stateFile: {
+    path: string;
+    present: boolean;
+    value: string | null;
+    ageSeconds: number | null;
+  };
+  activeTaskRetained: boolean;
+}
+
+interface AgentStatusContract {
+  state: AgentRunState;
+  display: AgentDisplayStatus;
+  reason: string;
+  needsAttention: boolean;
+  activeTask: string | null;
+  evidence: AgentStatusEvidence;
+}
+
+function buildAgentStatusContract(input: {
+  conf: ReturnType<typeof readConductorConf>;
+  windowName: string;
+  state: AgentRunState;
+  agentType: AgentType;
+  queuedTasks: number;
+  windowPresent: boolean;
+  paneCurrentCommand: string | null;
+  activeTask: string | null;
+}): AgentStatusContract {
+  const statePath = path.join(input.conf.stateDir, `${input.windowName}.state`);
+  let fileValue: string | null = null;
+  let fileAgeSeconds: number | null = null;
+  let filePresent = false;
+  try {
+    const stat = statSync(statePath);
+    fileAgeSeconds = Math.max(0, (Date.now() - stat.mtimeMs) / 1000);
+    fileValue = readFileSync(statePath, 'utf8').replace(/\r/g, '').split('\n')[0]?.trim() || null;
+    filePresent = true;
+  } catch {
+    // Missing state files are expected for custom agents and pre-hook sessions.
+  }
+
+  const display: AgentDisplayStatus =
+    input.state === 'idle' && input.queuedTasks === 0 ? 'empty'
+      : input.state === 'idle' && input.agentType === 'codex' ? 'idle-waiting'
+        : input.state;
+
+  const reason =
+    input.state === 'no-window' ? 'tmux window is absent'
+      : input.state === 'exited' ? 'pane command fell back to a shell'
+        : filePresent ? 'state file plus pane evidence'
+          : 'pane regex fallback';
+
+  return {
+    state: input.state,
+    display,
+    reason,
+    needsAttention: input.state === 'awaiting' || input.state === 'stalled',
+    activeTask: input.activeTask,
+    evidence: {
+      windowName: input.windowName,
+      windowPresent: input.windowPresent,
+      paneCurrentCommand: input.paneCurrentCommand,
+      stateFile: {
+        path: statePath,
+        present: filePresent,
+        value: fileValue,
+        ageSeconds: fileAgeSeconds,
+      },
+      activeTaskRetained: input.activeTask !== null && (input.state === 'busy' || input.state === 'awaiting' || input.state === 'stalled'),
+    },
+  };
 }
 
 let prevSnapshot: Snapshot | null = null;
@@ -577,8 +651,17 @@ await fastify.register((api) => {
   });
 
   api.get('/perf/live-updates', async (_req, reply) => {
+    const conf = readConductorConf();
     reply.send({
       timestamp: new Date().toISOString(),
+      settings: {
+        statusPollMs: conf.statusPollMs,
+        terminalPollMs: conf.terminalPollMs,
+        focusedTerminalPollMs: conf.focusedTerminalPollMs,
+        focusedTerminalWsPollMs: conf.focusedTerminalWsPollMs,
+        terminalTailLines: conf.terminalTailLines,
+        focusedTerminalTailLines: conf.focusedTerminalTailLines,
+      },
       liveUpdates: liveUpdateMetrics,
       eventLoop: readEventLoopMetrics(),
     });
@@ -610,6 +693,16 @@ await fastify.register((api) => {
         projectId: agent.projectId,
         projectName: agent.projectName,
         state: 'unknown',
+        status: buildAgentStatusContract({
+          conf,
+          windowName: agentWindowName(agent),
+          state: 'unknown',
+          agentType,
+          queuedTasks: listTasksForAgentId(db, agent.id, agent.projectId).length,
+          windowPresent: false,
+          paneCurrentCommand: null,
+          activeTask: null,
+        }),
         mode: 'unknown',
         agentType,
         windowPresent: false,
@@ -1219,7 +1312,7 @@ await fastify.register((api) => {
       const name = entry.name;
 
       const parsed = parseInt(req.query.lines ?? '', 10);
-      const lines = Number.isNaN(parsed) ? 100 : Math.min(1000, Math.max(1, parsed));
+      const lines = Number.isNaN(parsed) ? conf.terminalTailLines : Math.min(1000, Math.max(1, parsed));
 
       const winName = agentWindowName(entry);
       if (!isTmuxWindowPresent(conf.sessionName, winName)) {
@@ -1263,7 +1356,7 @@ await fastify.register((api) => {
       return;
     }
 
-    focusedAgents.add(agentId);
+    addFocusedWebSocketOwner(agentId);
     prevTailMapFocus.delete(agentId);
     let lastText = '';
     let pendingEchoStartedAt: number | null = null;
@@ -1281,11 +1374,14 @@ await fastify.register((api) => {
       }
       const winName = agentWindowName(current);
       if (!isTmuxWindowPresent(conf.sessionName, winName)) {
-        socket.send(JSON.stringify({ type: 'output', agentId, agent: current.name, lines: TAIL_LINES_FOCUS, windowPresent: false, text: '' }));
+        const lines = conf.focusedTerminalTailLines;
+        socket.send(JSON.stringify({ type: 'output', agentId, agent: current.name, lines, windowPresent: false, text: '' }));
         return;
       }
-      const text = capturePaneTailRaw(conf.sessionName, winName, TAIL_LINES_FOCUS, 'terminal-ws');
+      const lines = conf.focusedTerminalTailLines;
+      const text = capturePaneTailRaw(conf.sessionName, winName, lines, 'terminal-ws');
       if (text === lastText) return;
+      if (socket.bufferedAmount > FOCUSED_WS_BUFFERED_BYTES_LIMIT) return;
       lastText = text;
       recordTiming('terminalWsSnapshots', performance.now() - snapshotStarted);
       if (pendingEchoStartedAt !== null) {
@@ -1295,11 +1391,21 @@ await fastify.register((api) => {
         liveUpdateMetrics.terminalWebSocket.inputEchoes += 1;
         socket.send(JSON.stringify({ type: 'echo', latencyMs: roundMs(echoMs) }));
       }
-      socket.send(JSON.stringify({ type: 'output', agentId, agent: current.name, lines: TAIL_LINES_FOCUS, windowPresent: true, text }));
+      socket.send(JSON.stringify({ type: 'output', agentId, agent: current.name, lines, windowPresent: true, text }));
     };
 
-    const timer = setInterval(sendSnapshot, TAIL_POLL_FOCUS_MS);
     sendSnapshot();
+    let snapshotTimer: ReturnType<typeof setTimeout> | null = null;
+    let socketClosed = false;
+    const scheduleSnapshot = () => {
+      snapshotTimer = setTimeout(() => {
+        snapshotTimer = null;
+        if (socketClosed) return;
+        sendSnapshot();
+        scheduleSnapshot();
+      }, readConductorConf().focusedTerminalWsPollMs);
+    };
+    scheduleSnapshot();
 
     socket.on('message', (message: Buffer) => {
       void (async () => {
@@ -1317,6 +1423,8 @@ await fastify.register((api) => {
           socket.send(JSON.stringify({ type: 'error', error: 'payload is required' }));
           return;
         }
+        const inputId = 'inputId' in parsed && typeof parsed.inputId === 'number' ? parsed.inputId : null;
+        const sentAt = 'sentAt' in parsed && typeof parsed.sentAt === 'number' ? parsed.sentAt : null;
         try {
           const ackStarted = performance.now();
           const sent = await sendDirectInput(agentId, (parsed as { payload: DirectInputPayload }).payload);
@@ -1324,7 +1432,7 @@ await fastify.register((api) => {
           pendingEchoStartedAt = ackStarted;
           recordTiming('terminalWsInputAck', ackMs);
           liveUpdateMetrics.terminalWebSocket.inputAcks += 1;
-          socket.send(JSON.stringify({ type: 'ack', sent, latencyMs: roundMs(ackMs) }));
+          socket.send(JSON.stringify({ type: 'ack', inputId, sentAt, acknowledgedAt: Date.now(), sent, latencyMs: roundMs(ackMs) }));
         } catch (err) {
           liveUpdateMetrics.terminalWebSocket.errors += 1;
           socket.send(JSON.stringify({ type: 'error', error: err instanceof Error ? err.message : 'tmux send failed' }));
@@ -1333,8 +1441,9 @@ await fastify.register((api) => {
     });
 
     socket.on('close', () => {
-      clearInterval(timer);
-      focusedAgents.delete(agentId);
+      socketClosed = true;
+      if (snapshotTimer !== null) clearTimeout(snapshotTimer);
+      removeFocusedWebSocketOwner(agentId);
       prevTailMapFocus.delete(agentId);
       liveUpdateMetrics.terminalWebSocket.closed += 1;
       liveUpdateMetrics.terminalWebSocket.activeConnections = Math.max(0, liveUpdateMetrics.terminalWebSocket.activeConnections - 1);
@@ -1774,6 +1883,7 @@ await fastify.register((api) => {
           label: agent.label,
           linkedBg: agent.linkedBg,
           name: agent.name, state: agent.state, mode: agent.mode,
+          status: agent.status,
           queuedTasks: agent.queuedTasks, windowPresent: agent.windowPresent,
           launchCmd: agent.launchCmd, workdir: agent.workdir, activeTask: agent.activeTask,
           model: agent.model, modelId: agent.modelId,
@@ -1809,8 +1919,23 @@ await fastify.register((api) => {
 const prevTailMap = new Map<number, string>();
 const prevTailMapFocus = new Map<number, string>();
 const focusedAgents = new Set<number>();
+const focusedWebSocketAgents = new Map<number, number>();
 const agentLabelCache = new Map<number, string | null>();
 const agentContextCache = new Map<number, AgentContext>();
+
+function addFocusedWebSocketOwner(agentId: number): void {
+  focusedWebSocketAgents.set(agentId, (focusedWebSocketAgents.get(agentId) ?? 0) + 1);
+}
+
+function removeFocusedWebSocketOwner(agentId: number): void {
+  const next = (focusedWebSocketAgents.get(agentId) ?? 0) - 1;
+  if (next > 0) {
+    focusedWebSocketAgents.set(agentId, next);
+    return;
+  }
+  focusedWebSocketAgents.delete(agentId);
+  prevTailMapFocus.delete(agentId);
+}
 
 function buildSnapshot(): Snapshot {
   const conf = readConductorConf();
@@ -1837,19 +1962,30 @@ function buildSnapshot(): Snapshot {
       agentLabelCache.set(agent.id, extractPaneLabel(tail15));
     }
     const label = agentLabelCache.get(agent.id) ?? null;
+    const activeTask = getActiveTask(conf, wn, state);
     return {
       id: agent.id,
       name: agent.name,
       projectId: agent.projectId,
       projectName: agent.projectName,
       state,
+      status: buildAgentStatusContract({
+        conf,
+        windowName: wn,
+        state,
+        agentType: detectAgentType(agent.launchCmd),
+        queuedTasks: queuedTaskCounts.get(agent.id) ?? 0,
+        windowPresent,
+        paneCurrentCommand,
+        activeTask,
+      }),
       mode: windowPresent ? detectAgentMode(conf, wn, agent.launchCmd, tail15) : 'unknown',
       agentType: detectAgentType(agent.launchCmd),
       windowPresent,
       queuedTasks: queuedTaskCounts.get(agent.id) ?? 0,
       launchCmd: agent.launchCmd,
       workdir: agent.workdir,
-      activeTask: getActiveTask(conf, wn, state),
+      activeTask,
       label,
       linkedBg: conf.agentBgLinks[agent.name] ?? null,
       ...(agentContextCache.get(agent.id) ?? emptyAgentContext(conf)),
@@ -1893,6 +2029,9 @@ function pollAndDiff() {
     if (
       !prev ||
       prev.state !== agent.state ||
+      prev.status.display !== agent.status.display ||
+      prev.status.reason !== agent.status.reason ||
+      prev.status.needsAttention !== agent.status.needsAttention ||
       prev.mode !== agent.mode ||
       prev.queuedTasks !== agent.queuedTasks ||
       prev.windowPresent !== agent.windowPresent ||
@@ -1918,6 +2057,7 @@ function pollAndDiff() {
         projectName: agent.projectName,
         agentType: agent.agentType,
         state: agent.state,
+        status: agent.status,
         mode: agent.mode,
         queuedTasks: agent.queuedTasks,
         windowPresent: agent.windowPresent,
@@ -1968,9 +2108,10 @@ function tailPollLoop() {
     );
     for (const a of agents) {
       const wn = agentWindowName(a);
-      const text = capturePaneTail(conf.sessionName, wn, TAIL_LINES, 'terminal-loop');
+      const lines = conf.terminalTailLines;
+      const text = capturePaneTail(conf.sessionName, wn, lines, 'terminal-loop');
       if (prevTailMap.get(a.id) !== text) {
-        broadcastSSE('terminal-output', { agentId: a.id, agent: a.name, text, lines: TAIL_LINES });
+        broadcastSSE('terminal-output', { agentId: a.id, agent: a.name, text, lines });
         prevTailMap.set(a.id, text);
         const found = extractPaneLabel(text);
         if (found !== null) agentLabelCache.set(a.id, found);
@@ -1987,13 +2128,14 @@ function tailPollLoopFocus() {
     if (inventory.timedOut) return;
     if (!inventory.sessionExists) return;
     const agents = listAgents(db).filter(
-      (a) => focusedAgents.has(a.id) && inventory.windows.has(agentWindowName(a)),
+      (a) => focusedAgents.has(a.id) && !focusedWebSocketAgents.has(a.id) && inventory.windows.has(agentWindowName(a)),
     );
     for (const a of agents) {
       const wn = agentWindowName(a);
-      const text = capturePaneTailRaw(conf.sessionName, wn, TAIL_LINES_FOCUS, 'focused-terminal-loop');
+      const lines = conf.focusedTerminalTailLines;
+      const text = capturePaneTailRaw(conf.sessionName, wn, lines, 'focused-terminal-loop');
       if (prevTailMapFocus.get(a.id) !== text) {
-        broadcastSSE('terminal-output-focus', { agentId: a.id, agent: a.name, text, lines: TAIL_LINES_FOCUS });
+        broadcastSSE('terminal-output-focus', { agentId: a.id, agent: a.name, text, lines });
         prevTailMapFocus.set(a.id, text);
         const found = extractPaneLabel(text);
         if (found !== null) agentLabelCache.set(a.id, found);
@@ -2017,6 +2159,13 @@ const host = process.env['HOST'] ?? '127.0.0.1';
 // Background timer handles — hoisted so gracefulShutdown can clear them.
 const timers = new Set<NodeJS.Timeout>();
 const loopWarnedAt = new Map<string, number>();
+
+type ManagedLoopMs = number | (() => number);
+
+function resolveLoopMs(value: ManagedLoopMs): number {
+  const ms = typeof value === 'function' ? value() : value;
+  return Number.isFinite(ms) && ms > 0 ? ms : 1;
+}
 
 /**
  * Bind the listen port, retrying on EADDRINUSE. A stale host-server from a
@@ -2060,9 +2209,9 @@ let shuttingDown = false;
 
 function startManagedLoop(
   name: string,
-  delayMs: number,
+  delayMs: ManagedLoopMs,
   fn: () => void | Promise<void>,
-  opts: { warnAfterMs?: number; backoffMs?: number } = {},
+  opts: { warnAfterMs?: ManagedLoopMs; backoffMs?: ManagedLoopMs } = {},
 ): void {
   const schedule = (ms: number) => {
     const timer = setTimeout(() => {
@@ -2076,7 +2225,8 @@ function startManagedLoop(
           console.error(`${name} loop failed:`, err);
         }
         const elapsed = Date.now() - started;
-        const warnAfterMs = opts.warnAfterMs ?? delayMs;
+        const currentDelayMs = resolveLoopMs(delayMs);
+        const warnAfterMs = resolveLoopMs(opts.warnAfterMs ?? currentDelayMs);
         const slow = elapsed > warnAfterMs;
         if (slow) {
           const lastWarn = loopWarnedAt.get(name) ?? 0;
@@ -2086,18 +2236,18 @@ function startManagedLoop(
               loop: name,
               elapsedMs: elapsed,
               warnAfterMs,
-              nextDelayMs: Math.max(delayMs, opts.backoffMs ?? delayMs),
+              nextDelayMs: Math.max(currentDelayMs, resolveLoopMs(opts.backoffMs ?? currentDelayMs)),
             });
             loopWarnedAt.set(name, Date.now());
           }
         }
-        const nextDelay = slow ? Math.max(delayMs, opts.backoffMs ?? delayMs) : delayMs;
+        const nextDelay = slow ? Math.max(currentDelayMs, resolveLoopMs(opts.backoffMs ?? currentDelayMs)) : currentDelayMs;
         schedule(nextDelay);
       })();
     }, ms);
     timers.add(timer);
   };
-  schedule(delayMs);
+  schedule(resolveLoopMs(delayMs));
 }
 
 /**
@@ -2131,9 +2281,9 @@ await listenWithRetry();
 
 refreshAgentContextCache(readConductorConf());
 startManagedLoop('context refresh', CONTEXT_REFRESH_MS, () => { refreshAgentContextCache(readConductorConf()); }, { warnAfterMs: 4000, backoffMs: 15_000 });
-startManagedLoop('status poll', 2000, () => { timeSync('statusTicks', pollAndDiff); }, { warnAfterMs: 1500, backoffMs: 5000 });
-startManagedLoop('tail poll', TAIL_POLL_MS, () => { timeSync('terminalTicks', tailPollLoop); }, { warnAfterMs: 1500, backoffMs: 5000 });
-startManagedLoop('focused tail poll', TAIL_POLL_FOCUS_MS, () => { timeSync('focusedTerminalTicks', tailPollLoopFocus); }, { warnAfterMs: 150, backoffMs: 1000 });
+startManagedLoop('status poll', () => readConductorConf().statusPollMs, () => { timeSync('statusTicks', pollAndDiff); }, { warnAfterMs: 1500, backoffMs: 5000 });
+startManagedLoop('tail poll', () => readConductorConf().terminalPollMs, () => { timeSync('terminalTicks', tailPollLoop); }, { warnAfterMs: 1500, backoffMs: 5000 });
+startManagedLoop('focused tail poll', () => readConductorConf().focusedTerminalPollMs, () => { timeSync('focusedTerminalTicks', tailPollLoopFocus); }, { warnAfterMs: 150, backoffMs: 1000 });
 startManagedLoop(
   'schedule poll',
   5000,

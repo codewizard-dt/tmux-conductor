@@ -173,6 +173,39 @@ export interface ApiAgent {
   createdAt: string;
 }
 
+export type AgentRunState =
+  | 'busy'
+  | 'idle'
+  | 'awaiting'
+  | 'stalled'
+  | 'starting'
+  | 'no-window'
+  | 'exited'
+  | 'error'
+  | 'unknown';
+
+export type AgentDisplayStatus = AgentRunState | 'empty' | 'idle-waiting';
+
+export interface AgentStatusContract {
+  state: AgentRunState;
+  display: AgentDisplayStatus;
+  reason: string;
+  needsAttention: boolean;
+  activeTask: string | null;
+  evidence: {
+    windowName: string;
+    windowPresent: boolean;
+    paneCurrentCommand: string | null;
+    stateFile: {
+      path: string;
+      present: boolean;
+      value: string | null;
+      ageSeconds: number | null;
+    };
+    activeTaskRetained: boolean;
+  };
+}
+
 export async function fetchAgents(): Promise<ApiAgent[]> {
   const res = await apiFetch(`${API_BASE}/agents`);
   if (!res.ok) throw new Error(`HTTP ${res.status.toString()}`);

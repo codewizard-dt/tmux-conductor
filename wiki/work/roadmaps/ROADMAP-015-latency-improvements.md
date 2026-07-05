@@ -1,7 +1,7 @@
 ---
 id: ROADMAP-015
 title: Latency improvements — terminal transport, runtime knobs, state simplification
-status: active
+status: done
 created: 2026-07-04
 updated: 2026-07-04
 owner: David Taylor
@@ -18,29 +18,29 @@ Reduce dashboard and focused-terminal latency by removing duplicate focused capt
 
 ## Phase 1: Baseline
 
-- [ ] Capture a representative focused-terminal latency baseline
-- [ ] Define focused transport ownership acceptance criteria
+- [x] [[TASK-084: focused terminal latency baseline]]
+- [x] [[TASK-085: focused transport ownership acceptance criteria]]
 
 ## Phase 2: Transport
 
-- [ ] Make focused terminal WebSocket the exclusive focused output/input path
-- [ ] Fix Vite dev proxy WebSocket support
-- [ ] Coalesce focused WebSocket output frames
+- [x] [[TASK-086: focused terminal WebSocket exclusive output and input path]]
+- [x] [[TASK-087: Vite dev proxy WebSocket support]]
+- [x] [[TASK-088: coalesce focused WebSocket output frames]]
 
 ## Phase 3: Runtime
 
-- [ ] Add configurable live-update intervals and capture depths
-- [ ] Tune focused capture defaults from measured data
+- [x] [[TASK-089: configurable live-update intervals and capture depths]]
+- [x] [[TASK-090: tune focused capture defaults from measured data]]
 
 ## Phase 4: State
 
-- [ ] Define a backend-owned agent status contract
-- [ ] Migrate dashboard status display to backend status fields
+- [x] [[TASK-091: backend-owned agent status contract]]
+- [x] [[TASK-092: dashboard status display uses backend status fields]]
 
 ## Phase 5: Validation
 
-- [ ] Add duplicate focused-capture regression checks
-- [ ] Add focused input echo-latency regression checks
+- [x] [[TASK-093: duplicate focused-capture regression checks]]
+- [x] [[TASK-094: focused input echo-latency regression checks]]
 
 ## Notes
 

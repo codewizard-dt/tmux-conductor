@@ -4,6 +4,7 @@ import { spawnSync } from 'child_process';
 import type { ConductorConf } from './config.ts';
 
 export type AgentType = 'claude' | 'codex' | 'custom';
+export type AgentRunState = 'no-window' | 'exited' | 'idle' | 'busy' | 'awaiting' | 'stalled' | 'starting' | 'unknown';
 
 const TMUX_SYNC_TIMEOUT_MS = Number(process.env['TMUX_SYNC_TIMEOUT_MS'] ?? '100');
 const GREP_SYNC_TIMEOUT_MS = Number(process.env['GREP_SYNC_TIMEOUT_MS'] ?? '100');
@@ -252,7 +253,7 @@ export function detectAgentStatus(
   precapturedTail?: string,
   windowPresent?: boolean,
   paneCurrentCommand?: string | null,
-): string {
+): AgentRunState {
   const { sessionName, stateDir, pollInterval, stallTimeout } = conf;
   const { type, idlePattern, busyPattern, awaitingPattern } = profileForAgent(conf, launchCmd);
 
