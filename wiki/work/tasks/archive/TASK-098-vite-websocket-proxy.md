@@ -1,17 +1,17 @@
 ---
-id: TASK-087
+id: TASK-098
 title: "Vite dev proxy WebSocket support"
 status: done
 created: 2026-07-04
 updated: 2026-07-04
 depends_on: []
-blocks: [TASK-086, TASK-094]
-parallel_safe_with: [TASK-084, TASK-085, TASK-089, TASK-091]
-uat: "[[UAT-087]]"
+blocks: [TASK-097, TASK-105]
+parallel_safe_with: [TASK-095, TASK-096, TASK-100, TASK-102]
+uat: "[[UAT-098]]"
 tags: [frontend, vite, websocket, roadmap-015]
 ---
 
-# TASK-087 — Vite dev proxy WebSocket support
+# TASK-098 — Vite dev proxy WebSocket support
 
 ## Objective
 
@@ -52,3 +52,7 @@ None.
 ### Roadmap
 
 Implements ROADMAP-015 Phase 2, item "Fix Vite dev proxy WebSocket support" — `wiki/work/roadmaps/ROADMAP-015-latency-improvements.md`.
+
+### Renumbering note
+
+Originally filed as `TASK-087`. Renumbered to `TASK-098` on 2026-07-06 to resolve an ID collision with an unrelated ROADMAP-016 task that was independently assigned the same number the same day. See `wiki/log.md` for the full renumbering record.

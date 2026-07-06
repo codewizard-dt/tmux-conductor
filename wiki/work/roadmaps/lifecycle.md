@@ -15,7 +15,7 @@ Active files are **never moved** after creation; state lives in the `status:` fr
 |-----|----------|-------|
 | `id` | yes | `ROADMAP-NNN` |
 | `title` | yes | roadmap goal |
-| `status` | yes | `active \| done` |
+| `status` | yes | `active \| done \| abandoned` |
 | `created` / `updated` | yes | `YYYY-MM-DD` |
 | `owner` | no | accountable person/role |
 | `linked_requirements` | no | `REQ-NNN` back-links |
@@ -26,7 +26,10 @@ Active files are **never moved** after creation; state lives in the `status:` fr
 
 ```
 active ──▶ done
+   │
+   └──▶ abandoned
 ```
 
 - **active** — at least one unchecked item remains. Items are added with `/roadmap-add`; task-linked items auto-check when their task completes.
 - **done** — every checklist item is checked. Completion is implicit; flip `status` to `done` when the last box is ticked.
+- **abandoned** — terminal, but *not* completion: the roadmap's goal was later invalidated (e.g. an architectural revert undid the implementation) rather than delivered. Checkboxes are left as-is (a historical record of what was built at the time) but a banner note at the top of the file must explain what changed and why. Treated as terminal for archival purposes exactly like `done`.

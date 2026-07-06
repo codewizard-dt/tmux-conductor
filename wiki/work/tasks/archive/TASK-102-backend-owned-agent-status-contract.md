@@ -1,17 +1,17 @@
 ---
-id: TASK-091
+id: TASK-102
 title: "backend-owned agent status contract"
 status: done
 created: 2026-07-04
 updated: 2026-07-04
 depends_on: []
-blocks: [TASK-092]
-parallel_safe_with: [TASK-084, TASK-085, TASK-087, TASK-089]
-uat: "[[UAT-091]]"
+blocks: [TASK-103]
+parallel_safe_with: [TASK-095, TASK-096, TASK-098, TASK-100]
+uat: "[[UAT-102]]"
 tags: [host-server, frontend, state, roadmap-015]
 ---
 
-# TASK-091 — backend-owned agent status contract
+# TASK-102 — backend-owned agent status contract
 
 ## Objective
 
@@ -53,3 +53,7 @@ None.
 ### Roadmap
 
 Implements ROADMAP-015 Phase 4, item "Define a backend-owned agent status contract" — `wiki/work/roadmaps/ROADMAP-015-latency-improvements.md`.
+
+### Renumbering note
+
+Originally filed as `TASK-091`. Renumbered to `TASK-102` on 2026-07-06 to resolve an ID collision with an unrelated ROADMAP-016 task that was independently assigned the same number the same day. See `wiki/log.md` for the full renumbering record.

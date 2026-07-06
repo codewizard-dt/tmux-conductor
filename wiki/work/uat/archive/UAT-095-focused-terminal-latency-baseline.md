@@ -1,17 +1,17 @@
 ---
-id: UAT-084
+id: UAT-095
 title: "UAT: focused terminal latency baseline"
 status: passed
-task: TASK-084
+task: TASK-095
 created: 2026-07-04
 updated: 2026-07-04
 ---
 
-# UAT-084 — UAT: focused terminal latency baseline
+# UAT-095 — UAT: focused terminal latency baseline
 
-implements::[[TASK-084]]
+implements::[[TASK-095]]
 
-> **Source task**: [[TASK-084]]
+> **Source task**: [[TASK-095]]
 > **Generated**: 2026-07-04
 
 ---
@@ -35,3 +35,7 @@ implements::[[TASK-084]]
   ```
 - **Expected Result**: Command exits 0.
 - [x] Pass <!-- 2026-07-04 -->
+
+### Renumbering note
+
+Originally filed as `UAT-084`. Renumbered to `UAT-095` on 2026-07-06 to resolve an ID collision with an unrelated ROADMAP-016 UAT that was independently assigned the same number the same day.

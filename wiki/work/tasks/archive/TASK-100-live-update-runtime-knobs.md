@@ -1,17 +1,17 @@
 ---
-id: TASK-089
+id: TASK-100
 title: "configurable live-update intervals and capture depths"
 status: done
 created: 2026-07-04
 updated: 2026-07-04
-depends_on: [TASK-084]
-blocks: [TASK-090, TASK-093]
-parallel_safe_with: [TASK-085, TASK-087, TASK-091]
-uat: "[[UAT-089]]"
+depends_on: [TASK-095]
+blocks: [TASK-101, TASK-104]
+parallel_safe_with: [TASK-096, TASK-098, TASK-102]
+uat: "[[UAT-100]]"
 tags: [host-server, config, performance, roadmap-015]
 ---
 
-# TASK-089 — configurable live-update intervals and capture depths
+# TASK-100 — configurable live-update intervals and capture depths
 
 ## Objective
 
@@ -42,7 +42,7 @@ Add tuning settings to `conductor.conf` and `host-server/config.ts`, resolve def
 ### 3. Consume runtime knobs  <!-- agent: general-purpose -->
 
 - [x] Replace hard-coded host-server constants with config-derived values.
-- [x] Keep existing defaults until TASK-090 tunes them from the baseline.
+- [x] Keep existing defaults until TASK-101 tunes them from the baseline.
 - [x] Surface the effective values in `/api/perf/live-updates` if that endpoint already reports runtime settings.
 
 <!-- Updated: 2026-07-04 05:57 -->
@@ -62,8 +62,12 @@ Add tuning settings to `conductor.conf` and `host-server/config.ts`, resolve def
 
 ## Dependencies
 
-- **DEPENDS ON [TASK-084](TASK-084-focused-terminal-latency-baseline.md)**.
+- **DEPENDS ON [TASK-095](TASK-095-focused-terminal-latency-baseline.md)**.
 
 ### Roadmap
 
 Implements ROADMAP-015 Phase 3, item "Add configurable live-update intervals and capture depths" — `wiki/work/roadmaps/ROADMAP-015-latency-improvements.md`.
+
+### Renumbering note
+
+Originally filed as `TASK-089`. Renumbered to `TASK-100` on 2026-07-06 to resolve an ID collision with an unrelated ROADMAP-016 task that was independently assigned the same number the same day. See `wiki/log.md` for the full renumbering record.

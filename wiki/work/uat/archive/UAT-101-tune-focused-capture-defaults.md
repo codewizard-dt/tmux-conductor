@@ -1,17 +1,17 @@
 ---
-id: UAT-090
+id: UAT-101
 title: "UAT: tune focused capture defaults from measured data"
 status: passed
-task: TASK-090
+task: TASK-101
 created: 2026-07-04
 updated: 2026-07-04
 ---
 
-# UAT-090 — UAT: tune focused capture defaults from measured data
+# UAT-101 — UAT: tune focused capture defaults from measured data
 
-implements::[[TASK-090]]
+implements::[[TASK-101]]
 
-> **Source task**: [[TASK-090]]
+> **Source task**: [[TASK-101]]
 > **Generated**: 2026-07-04
 
 ---
@@ -25,3 +25,7 @@ implements::[[TASK-090]]
   ```
 - **Expected Result**: Command exits 0.
 - [x] Pass <!-- 2026-07-04 -->
+
+### Renumbering note
+
+Originally filed as `UAT-090`. Renumbered to `UAT-101` on 2026-07-06 to resolve an ID collision with an unrelated ROADMAP-016 UAT that was independently assigned the same number the same day.

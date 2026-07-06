@@ -1,17 +1,17 @@
 ---
-id: TASK-094
+id: TASK-105
 title: "focused input echo-latency regression checks"
 status: done
 created: 2026-07-04
 updated: 2026-07-04
-depends_on: [TASK-086, TASK-087, TASK-088, TASK-090]
+depends_on: [TASK-097, TASK-098, TASK-099, TASK-101]
 blocks: []
-parallel_safe_with: [TASK-093]
-uat: "[[UAT-094]]"
+parallel_safe_with: [TASK-104]
+uat: "[[UAT-105]]"
 tags: [tests, websocket, latency, terminal, roadmap-015]
 ---
 
-# TASK-094 — focused input echo-latency regression checks
+# TASK-105 — focused input echo-latency regression checks
 
 ## Objective
 
@@ -48,11 +48,15 @@ Use the focused WebSocket path to add measurable input acknowledgements or timin
 
 ## Dependencies
 
-- **DEPENDS ON [TASK-086](TASK-086-focused-websocket-exclusive-path.md)**.
-- **DEPENDS ON [TASK-087](TASK-087-vite-websocket-proxy.md)**.
-- **DEPENDS ON [TASK-088](TASK-088-coalesce-focused-websocket-output.md)**.
-- **DEPENDS ON [TASK-090](TASK-090-tune-focused-capture-defaults.md)**.
+- **DEPENDS ON [TASK-097](TASK-097-focused-websocket-exclusive-path.md)**.
+- **DEPENDS ON [TASK-098](TASK-098-vite-websocket-proxy.md)**.
+- **DEPENDS ON [TASK-099](TASK-099-coalesce-focused-websocket-output.md)**.
+- **DEPENDS ON [TASK-101](TASK-101-tune-focused-capture-defaults.md)**.
 
 ### Roadmap
 
 Implements ROADMAP-015 Phase 5, item "Add focused input echo-latency regression checks" — `wiki/work/roadmaps/ROADMAP-015-latency-improvements.md`.
+
+### Renumbering note
+
+Originally filed as `TASK-094`. Renumbered to `TASK-105` on 2026-07-06 for consistency with the rest of the ROADMAP-015 task block, which was renumbered to resolve an ID collision with unrelated ROADMAP-016 tasks assigned the same numbers the same day. See `wiki/log.md` for the full renumbering record.

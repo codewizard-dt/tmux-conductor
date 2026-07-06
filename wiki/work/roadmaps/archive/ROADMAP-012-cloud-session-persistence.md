@@ -1,9 +1,9 @@
 ---
 id: ROADMAP-012
 title: Cloud session persistence — keep agents running when the local host goes offline
-status: active
+status: abandoned
 created: 2026-06-13
-updated: 2026-06-13
+updated: 2026-07-06
 owner: David Taylor
 linked_requirements: []
 linked_decisions: []
@@ -11,6 +11,8 @@ tags: [cloud, persistence, resilience]
 ---
 
 # Roadmap 012: Cloud session persistence — keep agents running when the local host goes offline
+
+> **ABANDONED (2026-07-06).** This roadmap explicitly depended on [ROADMAP-002](ROADMAP-002-hosted-portal-oauth-relay-installer.md)'s relay infrastructure for the portal-side routing layer — that relay was reverted and ROADMAP-002 itself is abandoned. The project is refocusing on localhost-only, single-user usage, so cloud handoff/persistence is out of scope. 0/8 items were ever implemented — nothing to unwind in code.
 
 ## Goal
 

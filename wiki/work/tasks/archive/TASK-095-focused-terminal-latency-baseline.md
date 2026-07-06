@@ -1,17 +1,17 @@
 ---
-id: TASK-084
+id: TASK-095
 title: "focused terminal latency baseline"
 status: done
 created: 2026-07-04
 updated: 2026-07-04
 depends_on: []
-blocks: [TASK-086, TASK-089, TASK-090]
-parallel_safe_with: [TASK-085, TASK-087, TASK-091]
-uat: "[[UAT-084]]"
+blocks: [TASK-097, TASK-100, TASK-101]
+parallel_safe_with: [TASK-096, TASK-098, TASK-102]
+uat: "[[UAT-095]]"
 tags: [performance, latency, terminal, roadmap-015]
 ---
 
-# TASK-084 — focused terminal latency baseline
+# TASK-095 — focused terminal latency baseline
 
 ## Objective
 
@@ -63,3 +63,7 @@ None.
 ### Roadmap
 
 Implements ROADMAP-015 Phase 1, item "Capture a representative focused-terminal latency baseline" — `wiki/work/roadmaps/ROADMAP-015-latency-improvements.md`.
+
+### Renumbering note
+
+Originally filed as `TASK-084`. Renumbered to `TASK-095` on 2026-07-06 to resolve an ID collision with an unrelated ROADMAP-016 task that was independently assigned the same number the same day. See `wiki/log.md` for the full renumbering record.

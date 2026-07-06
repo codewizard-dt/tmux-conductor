@@ -1,9 +1,9 @@
 ---
 id: ROADMAP-002
 title: Hosted portal with Google OAuth, device relay, and installer
-status: active
+status: abandoned
 created: 2026-06-12
-updated: 2026-06-14
+updated: 2026-07-06
 owner: David
 linked_requirements: []
 linked_decisions: []
@@ -11,6 +11,8 @@ tags: [portal, auth, relay, installer]
 ---
 
 # Roadmap 002: Hosted portal with Google OAuth, device relay, and installer
+
+> **ABANDONED (2026-07-06).** This roadmap reached 25/27 checked by 2026-06-14, but the entire implementation was reverted six days later in commit `ce53273` (2026-06-22, "Simplify to local-only architecture: remove daemon, app services, deployment configs; move frontend to root") — `app/api/`, `app/frontend/`, `daemon/`, and `deploy/` were all deleted and the frontend moved back to repo-root `frontend/`. Per the project owner: the hosted-portal/relay architecture was reverted because **performance issues were too severe**. The deleted code survives on git branch `archive/multi-user-relay` if this direction is ever revisited. Current `main` has a single local-only `host-server/` backend with no auth, relay, or cloud deploy — none of the work below exists in code today. The checkboxes below are left as a historical record of what was actually built at the time, not a claim about current state. Caught by a 2026-07-06 codebase audit (`raw/research/comprehensive-app-audit/`) after the roadmap index went 21 days without being corrected.
 
 ## Goal
 

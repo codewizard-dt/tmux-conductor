@@ -62,3 +62,14 @@ Terminal UAT files (`passed`, `skipped`, or `trashed`) moved here by `/wiki-arch
 | [[UAT-091]] | UAT: add focused terminal debug overlay | passed | 2026-07-04 |
 | [[UAT-092]] | UAT: add local diagnostic bundle command | passed | 2026-07-04 |
 | [[UAT-093]] | UAT: extend performance scripts and metric threshold docs | passed | 2026-07-04 |
+| [[UAT-095]] | UAT: focused terminal latency baseline (renumbered from UAT-084) | passed | 2026-07-06 |
+| [[UAT-096]] | UAT: focused transport ownership acceptance criteria (renumbered from UAT-085) | passed | 2026-07-06 |
+| [[UAT-097]] | UAT: focused terminal WebSocket exclusive output and input path (renumbered from UAT-086) | passed | 2026-07-06 |
+| [[UAT-098]] | UAT: Vite dev proxy WebSocket support (renumbered from UAT-087) | passed | 2026-07-06 |
+| [[UAT-099]] | UAT: coalesce focused WebSocket output frames (renumbered from UAT-088) | passed | 2026-07-06 |
+| [[UAT-100]] | UAT: configurable live-update intervals and capture depths (renumbered from UAT-089) | passed | 2026-07-06 |
+| [[UAT-101]] | UAT: tune focused capture defaults from measured data (renumbered from UAT-090) | passed | 2026-07-06 |
+| [[UAT-102]] | UAT: backend-owned agent status contract (renumbered from UAT-091) | passed | 2026-07-06 |
+| [[UAT-103]] | UAT: dashboard status display uses backend status fields (renumbered from UAT-092) | passed | 2026-07-06 |
+| [[UAT-104]] | UAT: duplicate focused-capture regression checks (renumbered from UAT-093) | passed | 2026-07-06 |
+| [[UAT-105]] | UAT: focused input echo-latency regression checks (renumbered from UAT-094) | passed | 2026-07-06 |

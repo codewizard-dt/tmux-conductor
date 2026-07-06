@@ -82,3 +82,14 @@ Terminal task files (`done` or `trashed`) moved here by `/wiki-archive` to reduc
 | [[TASK-091]] | add focused terminal debug overlay | done | 2026-07-04 |
 | [[TASK-092]] | add local diagnostic bundle command | done | 2026-07-04 |
 | [[TASK-093]] | extend performance scripts and metric threshold docs | done | 2026-07-04 |
+| [[TASK-095]] | focused terminal latency baseline (renumbered from TASK-084) | done | 2026-07-06 |
+| [[TASK-096]] | focused transport ownership acceptance criteria (renumbered from TASK-085) | done | 2026-07-06 |
+| [[TASK-097]] | focused terminal WebSocket exclusive output and input path (renumbered from TASK-086) | done | 2026-07-06 |
+| [[TASK-098]] | Vite dev proxy WebSocket support (renumbered from TASK-087) | done | 2026-07-06 |
+| [[TASK-099]] | coalesce focused WebSocket output frames (renumbered from TASK-088) | done | 2026-07-06 |
+| [[TASK-100]] | configurable live-update intervals and capture depths (renumbered from TASK-089) | done | 2026-07-06 |
+| [[TASK-101]] | tune focused capture defaults from measured data (renumbered from TASK-090) | done | 2026-07-06 |
+| [[TASK-102]] | backend-owned agent status contract (renumbered from TASK-091) | done | 2026-07-06 |
+| [[TASK-103]] | dashboard status display uses backend status fields (renumbered from TASK-092) | done | 2026-07-06 |
+| [[TASK-104]] | duplicate focused-capture regression checks (renumbered from TASK-093) | done | 2026-07-06 |
+| [[TASK-105]] | focused input echo-latency regression checks (renumbered from TASK-094) | done | 2026-07-06 |

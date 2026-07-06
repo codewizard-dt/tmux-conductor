@@ -1,9 +1,9 @@
 ---
 id: ROADMAP-008
 title: GitHub & CI integration — PR creation and autonomous CI fix loop
-status: active
+status: abandoned
 created: 2026-06-13
-updated: 2026-06-13
+updated: 2026-07-06
 owner: David Taylor
 linked_requirements: []
 linked_decisions: []
@@ -11,6 +11,8 @@ tags: [github, ci, automation]
 ---
 
 # Roadmap 008: GitHub & CI integration — PR creation and autonomous CI fix loop
+
+> **ABANDONED (2026-07-06).** The project is refocusing on localhost-only, single-user usage; the hosted (remote-browser) path this roadmap's Phase 2 explicitly routed through the relay/`app/api` is gone (see the already-abandoned [ROADMAP-002](ROADMAP-002-hosted-portal-oauth-relay-installer.md)). PR-creation and CI-fix automation could in principle still apply locally, but per the project owner this is out of scope for now alongside the other multi-user/hosted work. 0/9 items were ever implemented — nothing to unwind in code.
 
 ## Goal
 

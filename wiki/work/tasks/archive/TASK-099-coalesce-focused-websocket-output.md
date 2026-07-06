@@ -1,17 +1,17 @@
 ---
-id: TASK-088
+id: TASK-099
 title: "coalesce focused WebSocket output frames"
 status: done
 created: 2026-07-04
 updated: 2026-07-04
-depends_on: [TASK-085, TASK-086]
-blocks: [TASK-090, TASK-093, TASK-094]
-parallel_safe_with: [TASK-091]
-uat: "[[UAT-088]]"
+depends_on: [TASK-096, TASK-097]
+blocks: [TASK-101, TASK-104, TASK-105]
+parallel_safe_with: [TASK-102]
+uat: "[[UAT-099]]"
 tags: [host-server, websocket, terminal, performance, roadmap-015]
 ---
 
-# TASK-088 — coalesce focused WebSocket output frames
+# TASK-099 — coalesce focused WebSocket output frames
 
 ## Objective
 
@@ -48,9 +48,13 @@ Keep the xterm full-snapshot contract, but avoid sending redundant or overly fre
 
 ## Dependencies
 
-- **DEPENDS ON [TASK-085](TASK-085-focused-transport-ownership-criteria.md)**.
-- **DEPENDS ON [TASK-086](TASK-086-focused-websocket-exclusive-path.md)**.
+- **DEPENDS ON [TASK-096](TASK-096-focused-transport-ownership-criteria.md)**.
+- **DEPENDS ON [TASK-097](TASK-097-focused-websocket-exclusive-path.md)**.
 
 ### Roadmap
 
 Implements ROADMAP-015 Phase 2, item "Coalesce focused WebSocket output frames" — `wiki/work/roadmaps/ROADMAP-015-latency-improvements.md`.
+
+### Renumbering note
+
+Originally filed as `TASK-088`. Renumbered to `TASK-099` on 2026-07-06 to resolve an ID collision with an unrelated ROADMAP-016 task that was independently assigned the same number the same day. See `wiki/log.md` for the full renumbering record.

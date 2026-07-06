@@ -1,17 +1,17 @@
 ---
-id: UAT-085
+id: UAT-096
 title: "UAT: focused transport ownership acceptance criteria"
 status: passed
-task: TASK-085
+task: TASK-096
 created: 2026-07-04
 updated: 2026-07-04
 ---
 
-# UAT-085 — UAT: focused transport ownership acceptance criteria
+# UAT-096 — UAT: focused transport ownership acceptance criteria
 
-implements::[[TASK-085]]
+implements::[[TASK-096]]
 
-> **Source task**: [[TASK-085]]
+> **Source task**: [[TASK-096]]
 > **Generated**: 2026-07-04
 
 ---
@@ -26,3 +26,7 @@ implements::[[TASK-085]]
   ```
 - **Expected Result**: Command exits 0.
 - [x] Pass <!-- 2026-07-04 -->
+
+### Renumbering note
+
+Originally filed as `UAT-085`. Renumbered to `UAT-096` on 2026-07-06 to resolve an ID collision with an unrelated ROADMAP-016 UAT that was independently assigned the same number the same day.

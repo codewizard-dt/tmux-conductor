@@ -1,17 +1,17 @@
 ---
-id: UAT-086
+id: UAT-097
 title: "UAT: focused terminal WebSocket exclusive output and input path"
 status: passed
-task: TASK-086
+task: TASK-097
 created: 2026-07-04
 updated: 2026-07-04
 ---
 
-# UAT-086 — UAT: focused terminal WebSocket exclusive output and input path
+# UAT-097 — UAT: focused terminal WebSocket exclusive output and input path
 
-implements::[[TASK-086]]
+implements::[[TASK-097]]
 
-> **Source task**: [[TASK-086]]
+> **Source task**: [[TASK-097]]
 > **Generated**: 2026-07-04
 
 ---
@@ -33,3 +33,7 @@ implements::[[TASK-086]]
   ```
 - **Expected Result**: Command exits 0.
 - [x] Pass <!-- 2026-07-04 -->
+
+### Renumbering note
+
+Originally filed as `UAT-086`. Renumbered to `UAT-097` on 2026-07-06 to resolve an ID collision with an unrelated ROADMAP-016 UAT that was independently assigned the same number the same day.

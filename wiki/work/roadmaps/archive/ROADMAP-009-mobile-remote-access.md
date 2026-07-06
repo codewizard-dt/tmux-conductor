@@ -1,9 +1,9 @@
 ---
 id: ROADMAP-009
 title: Mobile & remote access — PWA, push notifications, voice input, share links
-status: active
+status: abandoned
 created: 2026-06-13
-updated: 2026-06-13
+updated: 2026-07-06
 owner: David Taylor
 linked_requirements: []
 linked_decisions: []
@@ -11,6 +11,8 @@ tags: [mobile, pwa, notifications, voice]
 ---
 
 # Roadmap 009: Mobile & remote access — PWA, push notifications, voice input, share links
+
+> **ABANDONED (2026-07-06).** This roadmap explicitly depended on [ROADMAP-002](ROADMAP-002-hosted-portal-oauth-relay-installer.md)'s portal relay being deployed to provide the remote HTTPS endpoint the PWA connects to — that relay was reverted and ROADMAP-002 itself is abandoned. The project is refocusing on localhost-only, single-user usage, so remote/mobile access is out of scope. 0/17 items were ever implemented — nothing to unwind in code.
 
 ## Goal
 

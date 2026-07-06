@@ -1,17 +1,17 @@
 ---
-id: UAT-088
+id: UAT-099
 title: "UAT: coalesce focused WebSocket output frames"
 status: passed
-task: TASK-088
+task: TASK-099
 created: 2026-07-04
 updated: 2026-07-04
 ---
 
-# UAT-088 — UAT: coalesce focused WebSocket output frames
+# UAT-099 — UAT: coalesce focused WebSocket output frames
 
-implements::[[TASK-088]]
+implements::[[TASK-099]]
 
-> **Source task**: [[TASK-088]]
+> **Source task**: [[TASK-099]]
 > **Generated**: 2026-07-04
 
 ---
@@ -25,3 +25,7 @@ implements::[[TASK-088]]
   ```
 - **Expected Result**: Command exits 0.
 - [x] Pass <!-- 2026-07-04 -->
+
+### Renumbering note
+
+Originally filed as `UAT-088`. Renumbered to `UAT-099` on 2026-07-06 to resolve an ID collision with an unrelated ROADMAP-016 UAT that was independently assigned the same number the same day.

@@ -1,17 +1,17 @@
 ---
-id: TASK-092
+id: TASK-103
 title: "dashboard status display uses backend status fields"
 status: done
 created: 2026-07-04
 updated: 2026-07-04
-depends_on: [TASK-091]
+depends_on: [TASK-102]
 blocks: []
-parallel_safe_with: [TASK-090]
-uat: "[[UAT-092]]"
+parallel_safe_with: [TASK-101]
+uat: "[[UAT-103]]"
 tags: [frontend, state, dashboard, roadmap-015]
 ---
 
-# TASK-092 — dashboard status display uses backend status fields
+# TASK-103 — dashboard status display uses backend status fields
 
 ## Objective
 
@@ -31,7 +31,7 @@ Update frontend API types and components so badges, CTAs, active task display, a
 
 ### 2. Consume backend contract  <!-- agent: general-purpose -->
 
-- [x] Update frontend types to match TASK-091's backend status contract.
+- [x] Update frontend types to match TASK-102's backend status contract.
 - [x] Render status badge labels from backend status fields.
 - [x] Use backend active-task fields for busy/awaiting/stalled display.
 - [x] Keep UI copy consistent: use "waiting" for user-action-required display if that is the existing dashboard label.
@@ -49,8 +49,12 @@ Update frontend API types and components so badges, CTAs, active task display, a
 
 ## Dependencies
 
-- **DEPENDS ON [TASK-091](TASK-091-backend-owned-agent-status-contract.md)**.
+- **DEPENDS ON [TASK-102](TASK-102-backend-owned-agent-status-contract.md)**.
 
 ### Roadmap
 
 Implements ROADMAP-015 Phase 4, item "Migrate dashboard status display to backend status fields" — `wiki/work/roadmaps/ROADMAP-015-latency-improvements.md`.
+
+### Renumbering note
+
+Originally filed as `TASK-092`. Renumbered to `TASK-103` on 2026-07-06 to resolve an ID collision with an unrelated ROADMAP-016 task that was independently assigned the same number the same day. See `wiki/log.md` for the full renumbering record.

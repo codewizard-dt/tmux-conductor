@@ -1,9 +1,9 @@
 ---
 id: ROADMAP-011
 title: Multi-user team accounts — organisations, memberships, and RBAC
-status: active
+status: abandoned
 created: 2026-06-13
-updated: 2026-06-13
+updated: 2026-07-06
 owner: David Taylor
 linked_requirements: []
 linked_decisions: []
@@ -11,6 +11,8 @@ tags: [team, multi-user, rbac]
 ---
 
 # Roadmap 011: Multi-user team accounts — organisations, memberships, and RBAC
+
+> **ABANDONED (2026-07-06).** This roadmap explicitly depended on [ROADMAP-002](ROADMAP-002-hosted-portal-oauth-relay-installer.md)'s portal foundation (users, devices, sessions) being deployed — that foundation was reverted and ROADMAP-002 itself is abandoned. The project is refocusing on localhost-only, single-user usage, so multi-user/team accounts are out of scope. 0/8 items were ever implemented — nothing to unwind in code.
 
 ## Goal
 

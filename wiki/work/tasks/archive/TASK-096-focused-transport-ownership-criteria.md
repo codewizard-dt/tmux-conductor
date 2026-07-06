@@ -1,17 +1,17 @@
 ---
-id: TASK-085
+id: TASK-096
 title: "focused transport ownership acceptance criteria"
 status: done
 created: 2026-07-04
 updated: 2026-07-04
 depends_on: []
-blocks: [TASK-086, TASK-088, TASK-093]
-parallel_safe_with: [TASK-084, TASK-087, TASK-089, TASK-091]
-uat: "[[UAT-085]]"
+blocks: [TASK-097, TASK-099, TASK-104]
+parallel_safe_with: [TASK-095, TASK-098, TASK-100, TASK-102]
+uat: "[[UAT-096]]"
 tags: [performance, terminal, websocket, roadmap-015]
 ---
 
-# TASK-085 — focused transport ownership acceptance criteria
+# TASK-096 — focused transport ownership acceptance criteria
 
 ## Objective
 
@@ -59,3 +59,7 @@ None.
 ### Roadmap
 
 Implements ROADMAP-015 Phase 1, item "Define focused transport ownership acceptance criteria" — `wiki/work/roadmaps/ROADMAP-015-latency-improvements.md`.
+
+### Renumbering note
+
+Originally filed as `TASK-085`. Renumbered to `TASK-096` on 2026-07-06 to resolve an ID collision with an unrelated ROADMAP-016 task that was independently assigned the same number the same day. See `wiki/log.md` for the full renumbering record.

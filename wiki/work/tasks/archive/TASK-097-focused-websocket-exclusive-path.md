@@ -1,17 +1,17 @@
 ---
-id: TASK-086
+id: TASK-097
 title: "focused terminal WebSocket exclusive output and input path"
 status: done
 created: 2026-07-04
 updated: 2026-07-04
-depends_on: [TASK-084, TASK-085]
-blocks: [TASK-088, TASK-090, TASK-092, TASK-093, TASK-094]
-parallel_safe_with: [TASK-087, TASK-091]
-uat: "[[UAT-086]]"
+depends_on: [TASK-095, TASK-096]
+blocks: [TASK-099, TASK-101, TASK-103, TASK-104, TASK-105]
+parallel_safe_with: [TASK-098, TASK-102]
+uat: "[[UAT-097]]"
 tags: [frontend, host-server, websocket, terminal, roadmap-015]
 ---
 
-# TASK-086 — focused terminal WebSocket exclusive output and input path
+# TASK-097 — focused terminal WebSocket exclusive output and input path
 
 ## Objective
 
@@ -56,9 +56,13 @@ Move focused ownership into one explicit client state. `LogTail` should not subs
 
 ## Dependencies
 
-- **DEPENDS ON [TASK-084](TASK-084-focused-terminal-latency-baseline.md)** — baseline should be captured first.
-- **DEPENDS ON [TASK-085](TASK-085-focused-transport-ownership-criteria.md)** — ownership contract must be defined first.
+- **DEPENDS ON [TASK-095](TASK-095-focused-terminal-latency-baseline.md)** — baseline should be captured first.
+- **DEPENDS ON [TASK-096](TASK-096-focused-transport-ownership-criteria.md)** — ownership contract must be defined first.
 
 ### Roadmap
 
 Implements ROADMAP-015 Phase 2, item "Make focused terminal WebSocket the exclusive focused output/input path" — `wiki/work/roadmaps/ROADMAP-015-latency-improvements.md`.
+
+### Renumbering note
+
+Originally filed as `TASK-086`. Renumbered to `TASK-097` on 2026-07-06 to resolve an ID collision with an unrelated ROADMAP-016 task that was independently assigned the same number the same day. See `wiki/log.md` for the full renumbering record.
