@@ -2,6 +2,7 @@ import Database from 'better-sqlite3';
 import * as fs from 'fs';
 import * as path from 'path';
 import { readConductorConf, DEFAULT_CONF_PATH, type ConductorConf } from './config.ts';
+import { getGitRoot, createWorktree } from './git.ts';
 
 // ─── Row interfaces ───────────────────────────────────────────────────────────
 
@@ -20,6 +21,8 @@ export interface Agent {
   launchCmd: string;
   projectId: number | null;
   projectName: string | null;
+  worktreePath: string | null;
+  branch: string | null;
   createdAt: string;
 }
 
@@ -64,6 +67,47 @@ export interface Schedule {
   createdAt: string;
 }
 
+/** One row per (agent, session): rolling per-session token/cost totals that the
+ *  poll-cycle writer overwrites idempotently (per-message JSONL usage values are
+ *  streaming snapshots, not durable increments). */
+export interface AgentUsage {
+  id: number;
+  agentId: number;
+  sessionStart: string;
+  inputTokens: number;
+  outputTokens: number;
+  cacheCreationInputTokens: number;
+  cacheReadInputTokens: number;
+  costUsd: number;
+  updatedAt: string;
+}
+
+export interface AgentUsageTotals {
+  agentId: number;
+  inputTokens: number;
+  outputTokens: number;
+  cacheCreationInputTokens: number;
+  cacheReadInputTokens: number;
+  costUsd: number;
+  sessions: number;
+}
+
+export interface AgentCheckpoint {
+  id: number;
+  agentId: number;
+  ts: number;
+  stashRef: string;
+  createdAt: number;
+}
+
+
+export interface AgentTerminalLog {
+  id: number;
+  agentId: number;
+  ts: string;
+  chunk: string;
+}
+
 // Raw DB row shapes (snake_case from SQLite) ──────────────────────────────────
 
 interface ProjectRow {
@@ -80,6 +124,8 @@ interface AgentRow {
   workdir: string;
   launch_cmd: string;
   project_id: number | null;
+  worktree_path?: string | null;
+  branch?: string | null;
   created_at: string;
 }
 
@@ -121,6 +167,34 @@ interface ScheduleRow {
   created_at: string;
 }
 
+interface AgentUsageRow {
+  id: number;
+  agent_id: number;
+  session_start: string;
+  input_tokens: number;
+  output_tokens: number;
+  cache_creation_input_tokens: number;
+  cache_read_input_tokens: number;
+  cost_usd: number;
+  updated_at: string;
+}
+
+interface AgentCheckpointRow {
+  id: number;
+  agent_id: number;
+  ts: number;
+  stash_ref: string;
+  created_at: number;
+}
+
+
+interface AgentTerminalLogRow {
+  id: number;
+  agent_id: number;
+  ts: string;
+  chunk: string;
+}
+
 // ─── Row mappers ──────────────────────────────────────────────────────────────
 
 function mapProject(r: ProjectRow): Project {
@@ -129,7 +203,7 @@ function mapProject(r: ProjectRow): Project {
 
 function mapAgent(r: AgentRow | AgentWithProjectRow): Agent {
   const projectName = 'project_name' in r ? r.project_name : null;
-  return { id: r.id, name: r.name, workdir: r.workdir, launchCmd: r.launch_cmd, projectId: r.project_id, projectName, createdAt: r.created_at };
+  return { id: r.id, name: r.name, workdir: r.workdir, launchCmd: r.launch_cmd, projectId: r.project_id, projectName, worktreePath: r.worktree_path ?? null, branch: r.branch ?? null, createdAt: r.created_at };
 }
 
 function mapBgProcess(r: BgProcessRow): BgProcess {
@@ -151,6 +225,25 @@ function mapSchedule(r: ScheduleRow): Schedule {
     enabled: r.enabled, skipIfPending: r.skip_if_pending, lastEnqueuedAt: r.last_enqueued_at,
     createdAt: r.created_at,
   };
+}
+
+function mapAgentUsage(r: AgentUsageRow): AgentUsage {
+  return {
+    id: r.id, agentId: r.agent_id, sessionStart: r.session_start,
+    inputTokens: r.input_tokens, outputTokens: r.output_tokens,
+    cacheCreationInputTokens: r.cache_creation_input_tokens,
+    cacheReadInputTokens: r.cache_read_input_tokens,
+    costUsd: r.cost_usd, updatedAt: r.updated_at,
+  };
+}
+
+function mapAgentCheckpoint(r: AgentCheckpointRow): AgentCheckpoint {
+  return { id: r.id, agentId: r.agent_id, ts: r.ts, stashRef: r.stash_ref, createdAt: r.created_at };
+}
+
+
+function mapAgentTerminalLog(r: AgentTerminalLogRow): AgentTerminalLog {
+  return { id: r.id, agentId: r.agent_id, ts: r.ts, chunk: r.chunk };
 }
 
 // ─── DB path resolution ───────────────────────────────────────────────────────
@@ -259,9 +352,54 @@ function runMigrations(db: Database.Database): void {
     db.pragma('foreign_keys = ON');
     db.prepare(`INSERT OR REPLACE INTO meta VALUES ('schema_version', '2')`).run();
   }
+  if (version < 3) {
+    db.exec(`ALTER TABLE agents ADD COLUMN worktree_path TEXT`);
+    db.exec(`ALTER TABLE agents ADD COLUMN branch TEXT`);
+    db.prepare(`INSERT OR REPLACE INTO meta VALUES ('schema_version', '3')`).run();
+  }
+  if (version < 4) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS agent_usage (
+        id INTEGER PRIMARY KEY,
+        agent_id INTEGER NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+        session_start TEXT NOT NULL,
+        input_tokens INTEGER NOT NULL DEFAULT 0,
+        output_tokens INTEGER NOT NULL DEFAULT 0,
+        cache_creation_input_tokens INTEGER NOT NULL DEFAULT 0,
+        cache_read_input_tokens INTEGER NOT NULL DEFAULT 0,
+        cost_usd REAL NOT NULL DEFAULT 0,
+        updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+        UNIQUE (agent_id, session_start)
+      );
+    `);
+    db.prepare(`INSERT OR REPLACE INTO meta VALUES ('schema_version', '4')`).run();
+  }
+  if (version < 5) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS agent_checkpoints (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        agent_id INTEGER NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+        ts INTEGER NOT NULL,
+        stash_ref TEXT NOT NULL,
+        created_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000)
+      );
+      CREATE INDEX IF NOT EXISTS idx_agent_checkpoints_agent_id ON agent_checkpoints(agent_id);
+    `);
+    db.prepare(`INSERT OR REPLACE INTO meta VALUES ('schema_version', '5')`).run();
+  }
+  if (version < 6) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS agent_terminal_log (
+        id INTEGER PRIMARY KEY,
+        agent_id INTEGER NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+        ts TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+        chunk TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_agent_terminal_log_agent_ts ON agent_terminal_log(agent_id, ts);
+    `);
+    db.prepare(`INSERT OR REPLACE INTO meta VALUES ('schema_version', '6')`).run();
+  }
 }
-
-// ─── Legacy seed (runs once) ──────────────────────────────────────────────────
 
 function seedFromLegacy(db: Database.Database): void {
   const guard = db.prepare(`SELECT value FROM meta WHERE key='legacy_import'`).get() as { value: string } | undefined;
@@ -386,6 +524,26 @@ export function createAgent(db: Database.Database, data: { name: string; workdir
   const row = db.prepare(
     `INSERT INTO agents (name, workdir, launch_cmd, project_id) VALUES (?, ?, ?, ?) RETURNING id`
   ).get(data.name, data.workdir, data.launchCmd, data.projectId ?? null) as { id: number };
+
+  // TASK-061 step 2: detect whether workdir sits inside a git repo. `gitRoot`
+  // is `null` when it doesn't (or git is unavailable/times out) — in that
+  // case we proceed without a worktree, same as today.
+  // TASK-061 step 3: when `gitRoot` is non-null, create a worktree + branch
+  // for this agent and persist them. Worktree creation is best-effort: a
+  // failure is logged as a warning and the columns are left NULL, but it
+  // never aborts agent creation.
+  const gitRoot = getGitRoot(data.workdir);
+  if (gitRoot) {
+    const worktreePath = path.join(gitRoot, 'worktrees', String(row.id));
+    const branch = `conductor/${row.id}`;
+    const created = createWorktree(gitRoot, worktreePath, branch);
+    if (created) {
+      db.prepare(`UPDATE agents SET worktree_path = ?, branch = ? WHERE id = ?`).run(worktreePath, branch, row.id);
+    } else {
+      console.warn(`[conductor] createAgent: failed to create worktree at ${worktreePath} for branch ${branch} (agent ${row.id}); continuing without a worktree`);
+    }
+  }
+
   return findAgentById(db, row.id);
 }
 
@@ -629,4 +787,144 @@ export function fireSchedule(db: Database.Database, schedule: Schedule, nowEpoch
   });
   tx();
   return result;
+}
+
+// ─── Agent usage (per-session token/cost totals) ──────────────────────────────
+
+/** Idempotent upsert keyed on (agent_id, session_start): the writer passes
+ *  absolute session totals, so a re-run overwrites rather than accumulates. */
+export function upsertAgentUsage(db: Database.Database, data: {
+  agentId: number;
+  sessionStart: string;
+  inputTokens: number;
+  outputTokens: number;
+  cacheCreationInputTokens?: number;
+  cacheReadInputTokens?: number;
+  costUsd: number;
+}): AgentUsage {
+  const row = db.prepare(
+    `INSERT INTO agent_usage (agent_id, session_start, input_tokens, output_tokens, cache_creation_input_tokens, cache_read_input_tokens, cost_usd)
+     VALUES (?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(agent_id, session_start) DO UPDATE SET
+       input_tokens=excluded.input_tokens,
+       output_tokens=excluded.output_tokens,
+       cache_creation_input_tokens=excluded.cache_creation_input_tokens,
+       cache_read_input_tokens=excluded.cache_read_input_tokens,
+       cost_usd=excluded.cost_usd,
+       updated_at=strftime('%Y-%m-%dT%H:%M:%SZ','now')
+     RETURNING *`
+  ).get(
+    data.agentId,
+    data.sessionStart,
+    data.inputTokens,
+    data.outputTokens,
+    data.cacheCreationInputTokens ?? 0,
+    data.cacheReadInputTokens ?? 0,
+    data.costUsd,
+  ) as AgentUsageRow;
+  return mapAgentUsage(row);
+}
+
+export function listAgentUsage(db: Database.Database, agentId: number): AgentUsage[] {
+  const rows = db.prepare(
+    `SELECT * FROM agent_usage WHERE agent_id = ? ORDER BY session_start DESC`
+  ).all(agentId) as AgentUsageRow[];
+  return rows.map(mapAgentUsage);
+}
+
+export function getAgentUsageTotals(db: Database.Database, agentId: number): AgentUsageTotals {
+  const row = db.prepare(`
+    SELECT COALESCE(SUM(input_tokens), 0) AS input_tokens,
+           COALESCE(SUM(output_tokens), 0) AS output_tokens,
+           COALESCE(SUM(cache_creation_input_tokens), 0) AS cache_creation_input_tokens,
+           COALESCE(SUM(cache_read_input_tokens), 0) AS cache_read_input_tokens,
+           COALESCE(SUM(cost_usd), 0) AS cost_usd,
+           COUNT(*) AS sessions
+    FROM agent_usage WHERE agent_id = ?
+  `).get(agentId) as {
+    input_tokens: number; output_tokens: number;
+    cache_creation_input_tokens: number; cache_read_input_tokens: number;
+    cost_usd: number; sessions: number;
+  };
+  return {
+    agentId,
+    inputTokens: row.input_tokens, outputTokens: row.output_tokens,
+    cacheCreationInputTokens: row.cache_creation_input_tokens,
+    cacheReadInputTokens: row.cache_read_input_tokens,
+    costUsd: row.cost_usd, sessions: row.sessions,
+  };
+}
+
+export function getAllAgentUsageTotals(db: Database.Database): AgentUsageTotals[] {
+  const rows = db.prepare(`
+    SELECT agent_id,
+           SUM(input_tokens) AS input_tokens,
+           SUM(output_tokens) AS output_tokens,
+           SUM(cache_creation_input_tokens) AS cache_creation_input_tokens,
+           SUM(cache_read_input_tokens) AS cache_read_input_tokens,
+           SUM(cost_usd) AS cost_usd,
+           COUNT(*) AS sessions
+    FROM agent_usage GROUP BY agent_id
+  `).all() as {
+    agent_id: number; input_tokens: number; output_tokens: number;
+    cache_creation_input_tokens: number; cache_read_input_tokens: number;
+    cost_usd: number; sessions: number;
+  }[];
+  return rows.map((r) => ({
+    agentId: r.agent_id,
+    inputTokens: r.input_tokens, outputTokens: r.output_tokens,
+    cacheCreationInputTokens: r.cache_creation_input_tokens,
+    cacheReadInputTokens: r.cache_read_input_tokens,
+    costUsd: r.cost_usd, sessions: r.sessions,
+  }));
+}
+
+// ─── Agent checkpoints ─────────────────────────────────────────────────────────
+
+export function insertCheckpoint(db: Database.Database, agentId: number, ts: number, stashRef: string): AgentCheckpoint {
+  const row = db.prepare(
+    `INSERT INTO agent_checkpoints (agent_id, ts, stash_ref) VALUES (?, ?, ?) RETURNING *`
+  ).get(agentId, ts, stashRef) as AgentCheckpointRow;
+  return mapAgentCheckpoint(row);
+}
+
+export function listCheckpoints(db: Database.Database, agentId: number): AgentCheckpoint[] {
+  return (db.prepare(
+    `SELECT * FROM agent_checkpoints WHERE agent_id = ? ORDER BY ts DESC`
+  ).all(agentId) as AgentCheckpointRow[]).map(mapAgentCheckpoint);
+}
+
+export function getCheckpoint(db: Database.Database, id: number): AgentCheckpoint | undefined {
+  const row = db.prepare(`SELECT * FROM agent_checkpoints WHERE id = ?`).get(id) as AgentCheckpointRow | undefined;
+  return row ? mapAgentCheckpoint(row) : undefined;
+}
+
+
+// ─── Agent terminal log ─────────────────────────────────────────────────────────
+
+export function appendTerminalLogChunk(db: Database.Database, agentId: number, chunk: string, maxRowsPerAgent: number): AgentTerminalLog {
+  let result!: AgentTerminalLog;
+  const tx = db.transaction(() => {
+    const row = db.prepare(
+      `INSERT INTO agent_terminal_log (agent_id, chunk) VALUES (?, ?) RETURNING *`
+    ).get(agentId, chunk) as AgentTerminalLogRow;
+    db.prepare(
+      `DELETE FROM agent_terminal_log
+       WHERE agent_id = ? AND id NOT IN (
+         SELECT id FROM agent_terminal_log
+         WHERE agent_id = ?
+         ORDER BY ts DESC, id DESC
+         LIMIT ?
+       )`
+    ).run(agentId, agentId, maxRowsPerAgent);
+    result = mapAgentTerminalLog(row);
+  });
+  tx();
+  return result;
+}
+
+export function listTerminalLog(db: Database.Database, agentId: number): AgentTerminalLog[] {
+  return (db.prepare(
+    `SELECT * FROM agent_terminal_log WHERE agent_id = ? ORDER BY ts ASC, id ASC`
+  ).all(agentId) as AgentTerminalLogRow[]).map(mapAgentTerminalLog);
 }

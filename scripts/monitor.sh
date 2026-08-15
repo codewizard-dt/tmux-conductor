@@ -438,6 +438,9 @@ while true; do
         log "$name — dispatching task [queue=$LAST_QUEUE_KIND remaining=$LAST_QUEUE_REMAINING detection=$LAST_DETECTION]: $task"
         emit_dispatch_jsonl "$window_name" "$task" "$LAST_QUEUE_KIND" "$LAST_QUEUE_REMAINING" "$target"
         mark_busy "$window_name"
+        # Pre-dispatch checkpoint (ROADMAP-007): snapshot the worktree before the
+        # task runs so it can be rolled back. No-op for agents without a worktree.
+        checkpoint_agent "${AGENT_IDS[$name]}"
         if [[ "$LAST_QUEUE_KIND" == "project" ]]; then
           dispatch "$target" "/clear"
         fi

@@ -3,7 +3,7 @@ id: ROADMAP-010
 title: Agent observability & UX — token tracking, session recording, role templates
 status: active
 created: 2026-06-13
-updated: 2026-06-13
+updated: 2026-07-06
 owner: David Taylor
 linked_requirements: []
 linked_decisions: []
@@ -18,19 +18,19 @@ Surface per-agent token cost, full session history, and role-based system prompt
 
 ## Phase 1: Token & Cost Tracking
 
-- [ ] Add `agent_usage` table to SQLite (`agent_id`, `session_start`, `input_tokens`, `output_tokens`, `cost_usd`)
-- [ ] Parse Claude Code usage summary from pane tail via regex on each poll cycle
-- [ ] Accumulate rolling token totals per agent in the `agent_usage` table
-- [ ] Add compact token/cost badge to agent card header in the dashboard
-- [ ] Add per-session usage breakdown view inside `AgentDetailModal`
+- [x] [[TASK-072: agent_usage table — SQLite schema migration + DB helpers (agent_id, session_start, tokens, cost_usd)]]
+- [x] [[TASK-073: Per-agent usage extraction — parse Claude Code transcript JSONL each poll (supersedes pane-tail regex)]]
+- [ ] [[TASK-075: Accumulate rolling token totals per agent in agent_usage — usage-store + pricing table + snapshot exposure]]
+- [ ] [[TASK-074: Token/cost badge — compact usage badge on agent card header in dashboard]]
+- [ ] [[TASK-076: Per-session usage breakdown — GET /agents/:id/usage endpoint + session table in AgentDetailModal]]
 
 ## Phase 2: Session Recording
 
-- [ ] Add `agent_terminal_log` table to SQLite (`agent_id`, `ts`, `chunk` text, capped to configurable max per agent)
-- [ ] Append terminal output to the log table during SSE pane polling
-- [ ] Add `GET /api/agents/:agent/log` endpoint to retrieve the full persisted log history
-- [ ] Add "History" toggle to the LogTail component to switch between live SSE and persisted log
-- [ ] Display session boundary markers (timestamps) when rendering the historical log
+- [x] [[TASK-106: agent_terminal_log table — SQLite schema migration + DB helpers (agent_id, ts, chunk, capped per agent)]]
+- [x] [[TASK-107: Append terminal output to agent_terminal_log during SSE pane polling]]
+- [x] [[TASK-108: GET /api/agents/:id/log endpoint — retrieve full persisted terminal-log history]]
+- [ ] [[TASK-109: History toggle — switch LogTail between live SSE and persisted terminal log]]
+- [ ] [[TASK-110: Session boundary markers — per-chunk timestamp dividers in LogTail history view]]
 
 ## Phase 3: Role Templates
 

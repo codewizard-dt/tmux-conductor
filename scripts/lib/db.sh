@@ -129,3 +129,40 @@ pop_task_sql() {
 
   [[ -n "$POPPED_TASK" ]]
 }
+
+# ---------------------------------------------------------------------------
+# 6. checkpoint_agent — pre-dispatch git-stash snapshot of an agent's worktree
+# ---------------------------------------------------------------------------
+# Takes a `git stash push` snapshot of the agent's worktree (ROADMAP-007 Phase
+# 3) and records the stash commit SHA in agent_checkpoints. Best-effort: an
+# agent with no worktree_path, a clean worktree (nothing to stash), or any git
+# failure logs a warning (stderr) and returns 0 so dispatch is never blocked.
+#
+# The stash entry's SHA is resolved from `stash@{0}` and stored rather than the
+# literal `stash@{N}` name: checkpoints accumulate over time and every later
+# stash shifts the numbering, so only the SHA remains a stable ref for rolling
+# back to an *older* checkpoint (TASK-070's `git stash apply <stash_ref>`).
+# Millisecond ts comes from node (portable) rather than `date +%s%3N`, which is
+# a GNU-only extension that BSD/macOS date does not support.
+checkpoint_agent() {
+  local agent_id="$1"
+  local worktree_path ts push_out stash_ref
+  worktree_path="$(sql_one "SELECT COALESCE(worktree_path,'') FROM agents WHERE id=${agent_id}")" || return 0
+  if [[ -z "$worktree_path" ]]; then
+    return 0
+  fi
+  ts="$(node -e 'process.stdout.write(String(Date.now()))')" || return 0
+  if ! push_out="$(git -C "$worktree_path" stash push -m "conductor-checkpoint-${ts}" 2>&1)"; then
+    echo "WARN: checkpoint_agent: git stash failed for agent ${agent_id} (${worktree_path}): ${push_out}" >&2
+    return 0
+  fi
+  if [[ "$push_out" == *"No local changes to save"* ]]; then
+    echo "WARN: checkpoint_agent: clean worktree, nothing stashed for agent ${agent_id}" >&2
+    return 0
+  fi
+  stash_ref="$(git -C "$worktree_path" rev-parse 'stash@{0}' 2>/dev/null)" || return 0
+  if [[ -z "$stash_ref" ]]; then
+    return 0
+  fi
+  sql "INSERT INTO agent_checkpoints (agent_id, ts, stash_ref) VALUES (${agent_id}, ${ts}, '${stash_ref}');" >/dev/null || true
+}

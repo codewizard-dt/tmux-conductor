@@ -73,3 +73,14 @@ Terminal UAT files (`passed`, `skipped`, or `trashed`) moved here by `/wiki-arch
 | [[UAT-103]] | UAT: dashboard status display uses backend status fields (renumbered from UAT-092) | passed | 2026-07-06 |
 | [[UAT-104]] | UAT: duplicate focused-capture regression checks (renumbered from UAT-093) | passed | 2026-07-06 |
 | [[UAT-105]] | UAT: focused input echo-latency regression checks (renumbered from UAT-094) | passed | 2026-07-06 |
+| [[UAT-060]] | UAT: agents table schema — add worktree_path and branch columns | passed | 2026-07-06 |
+| [[UAT-064]] | UAT: Diff endpoint — GET /api/agents/:id/diff (git diff base..HEAD) | passed | 2026-07-06 |
+| [[UAT-065]] | UAT: Base-branch endpoint — GET /api/agents/:id/base-branch auto-detects default branch | passed | 2026-07-06 |
+| [[UAT-067]] | UAT: agent_checkpoints table — SQLite schema migration (agent_id, ts, stash_ref) | passed | 2026-07-06 |
+| [[UAT-061]] | UAT: Worktree spawn — detect git repo on agent spawn, create worktree + branch, store in DB | passed | 2026-07-06 |
+| [[UAT-072]] | UAT: agent_usage table — SQLite schema migration + DB helpers | passed | 2026-07-06 |
+| [[UAT-106]] | UAT: agent_terminal_log table — SQLite schema migration + DB helpers | passed | 2026-07-06 |
+| [[UAT-069]] | UAT: Checkpoints list endpoint — GET /api/agents/:id/checkpoints | passed | 2026-07-06 |
+| [[UAT-073]] | UAT: Per-agent usage extraction — parse Claude Code transcript JSONL each poll | passed | 2026-07-06 |
+| [[UAT-107]] | UAT: Append terminal output to agent_terminal_log during SSE pane polling | passed | 2026-07-06 |
+| [[UAT-108]] | UAT: GET /api/agents/:id/log endpoint — retrieve full persisted terminal-log history | passed | 2026-07-06 |

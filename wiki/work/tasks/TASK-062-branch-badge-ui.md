@@ -1,13 +1,13 @@
 ---
 id: TASK-062
 title: "Branch badge — display branch name on agent card in dashboard"
-status: todo
+status: pending-uat
 created: 2026-06-14
 updated: 2026-06-14
 depends_on: [TASK-061]
 blocks: []
 parallel_safe_with: [TASK-063, TASK-064, TASK-065, TASK-066, TASK-067]
-uat: ""
+uat: "[[UAT-062]]"
 tags: [frontend, ui, git, branch, roadmap-007]
 ---
 
@@ -25,29 +25,30 @@ The `GET /agents` and `GET /status` responses already return agent rows from SQL
 
 ### 1. Expose branch in API responses  <!-- agent: general-purpose -->
 
-- [ ] Use `mcp__serena__get_symbols_overview` on `host-server/index.ts` to find the `GET /agents` and `GET /status` serialisation paths.
-- [ ] Ensure `branch` and `worktree_path` are included in the agent objects returned by both endpoints (add them if omitted by a `SELECT *` shortcut or an explicit column list).
+- [x] Use `mcp__serena__get_symbols_overview` on `host-server/index.ts` to find the `GET /agents` and `GET /status` serialisation paths.
+- [x] Ensure `branch` and `worktree_path` are included in the agent objects returned by both endpoints (add them if omitted by a `SELECT *` shortcut or an explicit column list). Note: confirmed actual field names are camelCase `branch`/`worktreePath` (not snake_case). `GET /agents` already passed through full rows (no change needed). `GET /status` explicitly enumerated fields in both its snapshot path (`buildSnapshot`) and cold-start fallback path, omitting branch/worktreePath in both — fixed both, plus the `Snapshot` interface's inline agent type.
+- [x] Two SSE broadcast sites (`GET /events` initial-state send, and `pollAndDiff`'s `broadcastSSE('agent-update', ...)`) also explicitly enumerated fields and omitted `branch`/`worktreePath`. Confirmed via frontend trace that this was a real runtime gap: `AgentList` inserts SSE-originated agents (newly spawned worktree agents, or all agents under an SSE-beats-`/status` race) from the raw SSE payload, so the badge would never appear for them. Fixed both SSE payloads to include `worktreePath: agent.worktreePath, branch: agent.branch,` (adjacent to `workdir`, mirroring `buildSnapshot`/`GET /status`). `tsc --noEmit` in `host-server/` passes. Closes both gaps — SSE-originated agents now carry `branch`, so the badge renders regardless of whether `/status` seeded the row.
 
 ### 2. Update frontend API types  <!-- agent: general-purpose -->
 
-- [ ] In `app/frontend/src/lib/api.ts`, add `branch?: string | null` and `worktree_path?: string | null` to the `Agent` TypeScript interface.
+- [x] In `frontend/src/lib/api.ts` (NOT `app/frontend/...` — stale path in this task's original text), add `branch?: string | null` and `worktreePath?: string | null` (camelCase, confirmed via step 1) to the `Agent` TypeScript interface. Note: interface is actually named `ApiAgent` (not `Agent`) in this file; fields added after `projectId`, before `createdAt`. `tsc --noEmit` in `frontend/` passes.
 
 ### 3. Render the branch badge  <!-- agent: general-purpose -->
 
-- [ ] In `app/frontend/src/components/AgentList.tsx`, locate the agent card markup.
-- [ ] Add a conditional `{agent.branch && <span className="branch-badge">⎇ {agent.branch}</span>}` (or equivalent Tailwind chip) next to or below the agent name.
-- [ ] Keep the badge visually subtle — small text, muted colour — so it does not compete with the agent status indicators.
+- [x] In `frontend/src/components/AgentList.tsx` (NOT `app/frontend/...` — stale path), locate the agent card markup. Note: file defines its own local `Agent` interface (separate from `ApiAgent` in `frontend/src/lib/api.ts`); added `branch?: string | null` to it too so `agent.branch` type-checks.
+- [x] Added a conditional branch badge in `AgentItem` (~line 795-863): `{agent.branch && <span className="block truncate font-mono text-[10px] text-muted-2" title={agent.branch}>⎇ {agent.branch}</span>}`, placed between Row 2 label/context and the active-task block.
+- [x] Kept it visually subtle — matched the plain muted `activeTask` span convention (`font-mono text-[10px] text-muted-2`, no background chip), not the colored status/label pill style, so it doesn't compete with status indicators. `tsc --noEmit` in `frontend/` passes.
 
 ### 4. Typecheck + build  <!-- agent: general-purpose -->
 
-- [ ] Run `npx tsc --noEmit` in `app/frontend/` — zero errors.
-- [ ] Run `npm run build` in `app/frontend/` — clean build.
+- [x] Run `npx tsc --noEmit` in `frontend/` (NOT `app/frontend/` — stale path) — zero errors.
+- [x] Run `npm run build` in `frontend/` — clean build (only a pre-existing Vite chunk-size advisory warning, unrelated to this task).
 
 ## Acceptance Criteria
 
-- [ ] Agent cards for agents with a `branch` value display a branch badge showing the branch name.
-- [ ] Agent cards for agents with `branch = NULL` show no badge.
-- [ ] `npx tsc --noEmit` and `npm run build` pass cleanly in `app/frontend/`.
+- [DEFERRED-TO-UAT] Agent cards for agents with a `branch` value display a branch badge showing the branch name. (Implemented — conditional render in `AgentItem`; runtime/visual verification belongs to UAT.)
+- [DEFERRED-TO-UAT] Agent cards for agents with `branch = NULL` show no badge. (Implemented via `agent.branch &&` guard; runtime verification belongs to UAT.)
+- [x] `npx tsc --noEmit` and `npm run build` pass cleanly in `frontend/` (NOT `app/frontend/`).
 
 ## Dependencies
 
@@ -56,3 +57,6 @@ The `GET /agents` and `GET /status` responses already return agent rows from SQL
 ### Roadmap
 
 Implements ROADMAP-007 Phase 1, item "Display branch name badge on agent card in the dashboard" — `wiki/work/roadmaps/ROADMAP-007-git-workflow.md`.
+
+<!-- Updated: 2026-07-06 (verification pass: confirmed all steps implemented in host-server/index.ts, frontend/src/lib/api.ts, frontend/src/components/AgentList.tsx; closed the SSE branch/worktreePath omission gap so newly-spawned worktree agents show the badge live) -->
+

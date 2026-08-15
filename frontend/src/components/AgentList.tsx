@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { API_BASE, addTask, renameAgent, type AgentDisplayStatus, type AgentRunState, type AgentStatusContract, type Task } from '../lib/api'
 import AddTaskForm from './AddTaskForm'
+import DiffPanel from './DiffPanel'
 import ErrorBoundary from './ErrorBoundary'
 import LogTail from './LogTail'
 import ModeSwitcher from './ModeSwitcher'
@@ -28,6 +29,7 @@ export interface Agent {
   queuedTasks: number
   launchCmd: string
   workdir: string
+  branch?: string | null
   linkedBg: string | null
   activeTask: string | null
   label?: string | null
@@ -36,6 +38,14 @@ export interface Agent {
   contextTokens?: number | null
   contextPct?: number | null
   contextLimit?: number | null
+  usage?: {
+    inputTokens: number
+    outputTokens: number
+    cacheCreationInputTokens: number
+    cacheReadInputTokens: number
+    costUsd: number
+    sessions: number
+  } | null
 }
 
 export interface BgProcess {
@@ -190,8 +200,25 @@ function contextColor(pct: number): string {
 
 /** Compact token count, e.g. 55336 → "55k". */
 function formatTokens(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`
   if (n >= 1000) return `${String(Math.round(n / 1000))}k`
   return String(n)
+}
+
+function formatCost(usd: number): string {
+  if (usd >= 0.01) return `$${usd.toFixed(2)}`
+  if (usd > 0) return '<$0.01'
+  return ''
+}
+
+// session_start is normally the session's first-record ISO timestamp, but falls
+// back to the session UUID (TASK-075) — never render those as "Invalid Date".
+function formatSessionStart(s: string): string {
+  const d = new Date(s)
+  if (!Number.isNaN(d.getTime())) {
+    return d.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+  }
+  return `${s.slice(0, 8)}…`
 }
 
 function modelForAgentType(type: AgentType, model: string | null | undefined): string | null {
@@ -250,6 +277,101 @@ function ContextMeter({ agent, detailed = false }: { agent: Agent; detailed?: bo
   )
 }
 
+function UsageBadge({ agent }: { agent: Agent }) {
+  const u = agent.usage
+  if (!u) return null
+  const totalTokens = u.inputTokens + u.outputTokens + u.cacheCreationInputTokens + u.cacheReadInputTokens
+  if (totalTokens === 0 && u.costUsd === 0) return null
+  const cost = formatCost(u.costUsd)
+  const label = cost ? `${cost} · ${formatTokens(totalTokens)}` : formatTokens(totalTokens)
+  const title = `Session usage: ${cost || 'cost n/a'} · in ${String(u.inputTokens)} / out ${String(u.outputTokens)} / cache-w ${String(u.cacheCreationInputTokens)} / cache-r ${String(u.cacheReadInputTokens)} · ${String(u.sessions)} session(s)`
+  return (
+    <span
+      className="flex-shrink-0 rounded-pill bg-[#f1f2f4] px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-[#4f5a78]"
+      title={title}
+      aria-label={title}
+    >
+      {label}
+    </span>
+  )
+}
+
+// Per-session usage table for the detail modal. Fetches its own data on mount
+// (lazy — per-session rows are not on the snapshot payload) and renders nothing
+// for agents without usage rows (Codex/Aider, fresh sessions, fetch errors).
+function UsageBreakdown({ agentId }: { agentId: number }) {
+  const [sessions, setSessions] = useState<AgentUsageSession[] | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    fetch(`${API_BASE}/agents/${agentId.toString()}/usage`)
+      .then((r) => r.json() as Promise<AgentUsageResponse>)
+      .then((data) => { if (!cancelled) setSessions(data.sessions) })
+      .catch(() => { })
+    return () => { cancelled = true }
+  }, [agentId])
+
+  if (!sessions || sessions.length === 0) return null
+
+  // updatedAt, not sessionStart: UUID fallback keys don't sort chronologically.
+  const sorted = [...sessions].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+  const totalOf = (s: AgentUsageSession) =>
+    s.inputTokens + s.outputTokens + s.cacheCreationInputTokens + s.cacheReadInputTokens
+  const sum = (f: (s: AgentUsageSession) => number) => sessions.reduce((acc, s) => acc + f(s), 0)
+  const numTh = 'px-2 py-0.5 text-right'
+  const numTd = 'px-2 py-0.5 text-right tabular-nums'
+
+  return (
+    <details className="mt-3 flex-shrink-0">
+      <summary className="cursor-pointer text-[11px] font-semibold uppercase tracking-[0.08em] text-muted select-none">
+        Usage ({sessions.length} session{sessions.length === 1 ? '' : 's'})
+      </summary>
+      <div className="mt-2 overflow-x-auto">
+        <table className="w-full text-[11px]">
+          <thead>
+            <tr className="text-[10px] font-semibold uppercase tracking-wider text-muted-2">
+              <th className="px-2 py-0.5 text-left">Session</th>
+              <th className={numTh}>In</th>
+              <th className={numTh}>Out</th>
+              <th className={numTh}>Cache W</th>
+              <th className={numTh}>Cache R</th>
+              <th className={numTh}>Total</th>
+              <th className={numTh}>Cost</th>
+            </tr>
+          </thead>
+          <tbody>
+            {sorted.map((s) => {
+              const started = formatSessionStart(s.sessionStart)
+              return (
+                <tr key={s.id}>
+                  <td className={`px-2 py-0.5 text-left${started.endsWith('…') ? ' font-mono' : ''}`} title={s.sessionStart}>{started}</td>
+                  <td className={numTd} title={String(s.inputTokens)}>{formatTokens(s.inputTokens)}</td>
+                  <td className={numTd} title={String(s.outputTokens)}>{formatTokens(s.outputTokens)}</td>
+                  <td className={numTd} title={String(s.cacheCreationInputTokens)}>{formatTokens(s.cacheCreationInputTokens)}</td>
+                  <td className={numTd} title={String(s.cacheReadInputTokens)}>{formatTokens(s.cacheReadInputTokens)}</td>
+                  <td className={numTd} title={String(totalOf(s))}>{formatTokens(totalOf(s))}</td>
+                  <td className={numTd} title={String(s.costUsd)}>{formatCost(s.costUsd)}</td>
+                </tr>
+              )
+            })}
+          </tbody>
+          <tfoot>
+            <tr className="border-t border-line font-semibold">
+              <td className="px-2 py-0.5 text-left">Total</td>
+              <td className={numTd} title={String(sum((s) => s.inputTokens))}>{formatTokens(sum((s) => s.inputTokens))}</td>
+              <td className={numTd} title={String(sum((s) => s.outputTokens))}>{formatTokens(sum((s) => s.outputTokens))}</td>
+              <td className={numTd} title={String(sum((s) => s.cacheCreationInputTokens))}>{formatTokens(sum((s) => s.cacheCreationInputTokens))}</td>
+              <td className={numTd} title={String(sum((s) => s.cacheReadInputTokens))}>{formatTokens(sum((s) => s.cacheReadInputTokens))}</td>
+              <td className={numTd} title={String(sum(totalOf))}>{formatTokens(sum(totalOf))}</td>
+              <td className={numTd} title={String(sum((s) => s.costUsd))}>{formatCost(sum((s) => s.costUsd))}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </details>
+  )
+}
+
 interface QueueResponse {
   agent: string
   tasks: Task[]
@@ -268,6 +390,23 @@ interface SkillsResponse {
   agent: string
   project: Skill[]
   user: Skill[]
+}
+
+interface AgentUsageSession {
+  id: number
+  agentId: number
+  sessionStart: string
+  inputTokens: number
+  outputTokens: number
+  cacheCreationInputTokens: number
+  cacheReadInputTokens: number
+  costUsd: number
+  updatedAt: string
+}
+
+interface AgentUsageResponse {
+  agent: string
+  sessions: AgentUsageSession[]
 }
 
 function SkillBadge({ skill }: { skill: Skill }) {
@@ -639,6 +778,11 @@ function AgentDetailModal({ agent, project, projectId, status, onClose, armInter
                 </div>
               </details>
             )}
+
+            {!logExpanded && <DiffPanel agentId={agent.id} />}
+
+            {/* Per-session usage breakdown */}
+            {!logExpanded && <UsageBreakdown agentId={agent.id} />}
           </div>
         </div>
       </div>
@@ -669,6 +813,7 @@ function AgentItem({ agent, project, onExpand }: {
       <div className="flex items-center gap-2">
         <ProjectBadge name={project} />
         <span className="min-w-0 flex-1 truncate text-[13px] font-semibold tracking-tight text-ink">{agent.name}</span>
+        <UsageBadge agent={agent} />
         <AgentTypeBadge agent={agent} />
         <StatusBadge status={status} />
       </div>
@@ -686,6 +831,13 @@ function AgentItem({ agent, project, onExpand }: {
           )}
           <div className="ml-auto"><ContextMeter agent={agent} /></div>
         </div>
+      )}
+
+      {/* Branch badge — subtle, muted; only rendered when the agent has a git branch */}
+      {agent.branch && (
+        <span className="block truncate font-mono text-[10px] text-muted-2" title={agent.branch}>
+          ⎇ {agent.branch}
+        </span>
       )}
 
       {/* Active task — own slot when present */}

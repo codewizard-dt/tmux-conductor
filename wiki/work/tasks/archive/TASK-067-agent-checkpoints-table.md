@@ -1,13 +1,13 @@
 ---
 id: TASK-067
 title: "agent_checkpoints table — SQLite schema migration (agent_id, ts, stash_ref)"
-status: todo
+status: done
 created: 2026-06-14
-updated: 2026-06-14
+updated: 2026-07-06
 depends_on: []
 blocks: [TASK-068, TASK-069, TASK-070]
 parallel_safe_with: [TASK-060, TASK-061, TASK-062, TASK-063, TASK-064, TASK-065, TASK-066]
-uat: ""
+uat: "[[UAT-067]]"
 tags: [git, sqlite, schema, checkpoint, roadmap-007]
 ---
 
@@ -33,12 +33,16 @@ Add a TypeScript interface `AgentCheckpoint` with these fields. Export any DB he
 
 ### 1. Read the current DB init block  <!-- agent: general-purpose -->
 
-- [ ] Use `mcp__serena__get_symbols_overview` on `host-server/db.ts` to find the existing `CREATE TABLE` statements and TypeScript types.
+- [x] Use `mcp__serena__get_symbols_overview` on `host-server/db.ts` to find the existing `CREATE TABLE` statements and TypeScript types.
+
+> **Findings (2026-07-06):** `runMigrations` is version-gated and already at **schema_version 4** (`agent_usage`, landed via TASK-072) — this task's block is **version 5**. `agents.id` is `INTEGER PRIMARY KEY`, so `agent_id` here must be `INTEGER NOT NULL REFERENCES agents(id) ON DELETE CASCADE` (not TEXT as originally drafted; matches the `agent_usage` precedent). Helper style: named exports taking `db: Database.Database` first, `RETURNING *` + `.get()` for inserts, snake_case `*Row` interface + `map*` converter per table.
 
 ### 2. Add the table  <!-- agent: general-purpose -->
 
-- [ ] Add `CREATE TABLE IF NOT EXISTS agent_checkpoints (...)` with the columns above and an `ON DELETE CASCADE` FK to `agents(id)`.
-- [ ] Add an index: `CREATE INDEX IF NOT EXISTS idx_agent_checkpoints_agent_id ON agent_checkpoints(agent_id)`.
+- [x] Add `CREATE TABLE IF NOT EXISTS agent_checkpoints (...)` with the columns above and an `ON DELETE CASCADE` FK to `agents(id)`. (Landed as the `if (version < 5)` block in `runMigrations`; `agent_id` is INTEGER per Step 1 findings.)
+- [x] Add an index: `CREATE INDEX IF NOT EXISTS idx_agent_checkpoints_agent_id ON agent_checkpoints(agent_id)`.
+
+<!-- Updated: 2026-07-06 22:00 -->
 
 ### 3. Add TypeScript types and helpers  <!-- agent: general-purpose -->
 

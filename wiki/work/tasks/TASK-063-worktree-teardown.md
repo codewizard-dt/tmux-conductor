@@ -1,13 +1,13 @@
 ---
 id: TASK-063
 title: "Worktree teardown — git worktree remove --force on agent delete"
-status: todo
+status: pending-uat
 created: 2026-06-14
 updated: 2026-06-14
 depends_on: [TASK-060]
 blocks: []
 parallel_safe_with: [TASK-061, TASK-062, TASK-064, TASK-065, TASK-067]
-uat: ""
+uat: "[[UAT-063]]"
 tags: [git, worktree, cleanup, host-server, roadmap-007]
 ---
 
@@ -25,34 +25,36 @@ Extend the agent-delete path in `host-server/index.ts` (the `DELETE /agents/:age
 
 ### 1. Read the delete handler  <!-- agent: general-purpose -->
 
-- [ ] Use `mcp__serena__get_symbols_overview` on `host-server/index.ts` to locate the agent-delete route (`DELETE /agents/:agent`).
-- [ ] Confirm it reads the agent row before deleting (or add a `SELECT` to fetch `worktree_path` and `branch` first).
+- [x] Use `mcp__serena__get_symbols_overview` on `host-server/index.ts` to locate the agent-delete route (`DELETE /agents/:agent`).
+- [x] Confirm it reads the agent row before deleting (or add a `SELECT` to fetch `worktree_path` and `branch` first). — route already fetched the full row via `getAgentById(db, agentId)` (`entry`), which exposes `worktreePath`/`branch`/`workdir` from TASK-060/061; no new SELECT needed.
 
 ### 2. Add worktree cleanup  <!-- agent: general-purpose -->
 
-- [ ] Before the `DELETE FROM agents` statement, fetch the agent row.
-- [ ] If `worktree_path` is non-null, run `git worktree remove --force <worktree_path>` via `execSync`; catch and log any error without throwing.
-- [ ] Optionally delete the associated branch: derive `gitRoot` from `worktree_path` (parent of the `worktrees/` directory) and run `git -C <gitRoot> branch -D <branch>`, catching errors.
+- [x] Before the `DELETE FROM agents` statement, fetch the agent row. — `entry` already held.
+- [x] If `worktree_path` is non-null, run `git worktree remove --force <worktree_path>` via `execSync`; catch and log any error without throwing. — added `removeWorktree(gitRoot, worktreePath)` helper in `host-server/git.ts` (uses `spawnSync`, consistent with the rest of the file, returns boolean instead of throwing) and call it from the `DELETE /agents/:id` handler inside a try/catch that only logs (`console.warn`) on failure.
+- [x] Optionally delete the associated branch: derive `gitRoot` from `worktree_path` (parent of the `worktrees/` directory) and run `git -C <gitRoot> branch -D <branch>`, catching errors. — added `deleteBranch(gitRoot, branch)` helper alongside `removeWorktree`; `gitRoot` is derived via the existing `getGitRoot(entry.workdir)` helper (added by TASK-061) with a string-derived fallback (`path.dirname(path.dirname(entry.worktreePath))`) if that resolves to null.
 
 ### 3. Proceed with DB delete  <!-- agent: general-purpose -->
 
-- [ ] Run the `DELETE FROM agents WHERE id = ?` regardless of whether the git cleanup succeeded, so the DB stays consistent.
+- [x] Run the `DELETE FROM agents WHERE id = ?` regardless of whether the git cleanup succeeded, so the DB stays consistent. — `deleteAgent(db, entry.id)` sits after the try/catch block, outside it, so it always runs.
 
 ### 4. Typecheck  <!-- agent: general-purpose -->
 
-- [ ] Run `npx tsc --noEmit` in `host-server/` — zero errors.
+- [x] Run `npx tsc --noEmit` in `host-server/` — zero errors. — confirmed independently by the orchestrator: exit 0, no output.
 
 ### 5. Manual smoke test  <!-- agent: general-purpose -->
 
-- [ ] Delete an agent that has a worktree; confirm the `worktrees/<id>/` directory and `conductor/<id>` branch are removed.
-- [ ] Delete an agent with no worktree (`worktree_path = NULL`); confirm it deletes cleanly with no git errors.
+- [DEFERRED-TO-UAT] Delete an agent that has a worktree; confirm the `worktrees/<id>/` directory and `conductor/<id>` branch are removed.
+- [DEFERRED-TO-UAT] Delete an agent with no worktree (`worktree_path = NULL`); confirm it deletes cleanly with no git errors.
 
 ## Acceptance Criteria
 
-- [ ] Deleting an agent with a `worktree_path` removes the worktree directory and (optionally) the branch from the git repo.
-- [ ] Deleting an agent with `worktree_path = NULL` succeeds silently with no git errors.
-- [ ] A git error during cleanup does not block the DB delete (agent row is always removed).
-- [ ] `npx tsc --noEmit` passes in `host-server/`.
+- [DEFERRED-TO-UAT] Deleting an agent with a `worktree_path` removes the worktree directory and (optionally) the branch from the git repo.
+- [DEFERRED-TO-UAT] Deleting an agent with `worktree_path = NULL` succeeds silently with no git errors.
+- [x] A git error during cleanup does not block the DB delete (agent row is always removed). — cleanup wrapped in try/catch (log-only), `deleteAgent` call sits after it, unconditional.
+- [x] `npx tsc --noEmit` passes in `host-server/`.
+
+<!-- Updated: 2026-07-06 14:00 -->
 
 ## Dependencies
 

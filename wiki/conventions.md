@@ -75,6 +75,8 @@ Keep the two organizing laws separate — do not file a stateful artifact under 
 
 Cross-domain links are encouraged and carry meaning — e.g. a decision `derived_from::` a source, a task `implements::` a requirement.
 
+**Template-owned infrastructure (exempt from both laws).** A small set of files inside `wiki/` is owned by the bootstrap templates, not by this wiki: `conventions.md` (this file), every `work/<family>/lifecycle.md`, `dashboard.html`, and everything under `guides/` (delivered reference guides — MCP tool rules, anti-patterns, opted-in frameworks). They carry no frontmatter, are never listed as knowledge pages, are exempt from the atomic-page rule, and must **never be edited in place** — they are refreshed by `npx @codewizard-dt/bootstrap update`, which overwrites local changes.
+
 ---
 
 ## 5. Archiving terminal items

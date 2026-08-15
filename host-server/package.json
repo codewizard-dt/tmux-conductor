@@ -1,12 +1,13 @@
 {
   "name": "tmux-conductor-host-server",
-  "version": "3.2.2",
+  "version": "3.3.0",
   "type": "module",
   "scripts": {
     "start": "node --import tsx/esm index.ts",
     "dev": "tsx watch index.ts",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
+    "test": "node --import tsx/esm --test",
     "perf:test": "node ../scripts/test-host-performance.mjs"
   },
   "engines": {

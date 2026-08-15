@@ -1,9 +1,9 @@
 ---
 id: TASK-070
 title: "Rollback endpoint — POST /api/agents/:agent/rollback"
-status: todo
+status: pending-uat
 created: 2026-06-14
-updated: 2026-06-14
+updated: 2026-07-06
 depends_on: [TASK-067]
 blocks: [TASK-071]
 parallel_safe_with: [TASK-068, TASK-069]
@@ -31,24 +31,33 @@ The request body accepts `{ checkpoint_id: number }`. The handler:
 
 ### 1. Read the route layout and DB helpers  <!-- agent: general-purpose -->
 
-- [ ] Use `mcp__serena__get_symbols_overview` on `host-server/index.ts` and `host-server/db.ts` to confirm `getCheckpoint` exists and understand the error-response conventions.
+- [x] Use `mcp__serena__get_symbols_overview` on `host-server/index.ts` and `host-server/db.ts` to confirm `getCheckpoint` exists and understand the error-response conventions.
+
+<!-- Updated: 2026-07-06 — getCheckpoint exists in db.ts (returns {id, agentId, ts, stashRef, createdAt}) but is NOT imported into index.ts. Route convention uses `:id` param (parseInt + isNaN→400), getAgentById lookup (missing→404), agent git dir = worktreePath ?? workdir. Sibling: POST /agents/:id/checkpoints. execSync already imported; git helpers live in git.ts via spawnSync. -->
+
 
 ### 2. Add the rollback route  <!-- agent: general-purpose -->
 
-- [ ] Register `POST /api/agents/:agent/rollback` with body schema `{ checkpoint_id: number }`.
-- [ ] Validate agent exists and has `worktree_path`; return 400 if no worktree.
-- [ ] Fetch checkpoint; validate ownership; 404 if mismatch.
-- [ ] Run `git -C <worktree_path> stash apply <stash_ref>` via `execSync`.
-- [ ] Return `{ ok: true, stash_ref }` on success, or 500 `{ error, detail }` on git failure.
+- [x] Register `POST /api/agents/:agent/rollback` with body schema `{ checkpoint_id: number }`.
+- [x] Validate agent exists and has `worktree_path`; return 400 if no worktree.
+- [x] Fetch checkpoint; validate ownership; 404 if mismatch.
+- [x] Run `git -C <worktree_path> stash apply <stash_ref>` via `execSync`.
+- [x] Return `{ ok: true, stash_ref }` on success, or 500 `{ error, detail }` on git failure.
+
+<!-- Updated: 2026-07-06 — Route is POST /api/agents/:id/rollback (`:id` matches every other route in index.ts; `:agent` in the title was a placeholder). Added `applyStash(gitDir, stashRef)` helper in host-server/git.ts using spawnSync arg-array (avoids shell injection vs interpolated execSync). Imported getCheckpoint (db.ts) and applyStash (git.ts) into index.ts. Handler registered right after POST /agents/:id/checkpoints. -->
+
 
 ### 3. Typecheck  <!-- agent: general-purpose -->
 
-- [ ] Run `npx tsc --noEmit` in `host-server/` — zero errors.
+- [x] Run `npx tsc --noEmit` in `host-server/` — zero errors. <!-- Updated: 2026-07-06 — tsc --noEmit exit 0, zero errors. -->
 
 ### 4. Smoke test  <!-- agent: general-purpose -->
 
-- [ ] Seed a checkpoint row manually (or via TASK-068/069); call `POST /api/agents/<id>/rollback` with its `checkpoint_id`; confirm `git stash apply` ran and working-tree state was restored.
-- [ ] Call rollback for a non-git agent; confirm 400 is returned.
+- [DEFERRED-TO-UAT] Seed a checkpoint row manually (or via TASK-068/069); call `POST /api/agents/<id>/rollback` with its `checkpoint_id`; confirm `git stash apply` ran and working-tree state was restored.
+- [DEFERRED-TO-UAT] Call rollback for a non-git agent; confirm 400 is returned.
+
+<!-- Updated: 2026-07-06 — Runtime smoke test is UAT-phase work (needs a live server + seeded checkpoint), deferred per tackle static-gates-only rule. -->
+
 
 ## Acceptance Criteria
 

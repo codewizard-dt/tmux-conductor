@@ -40,6 +40,16 @@ export async function sendAgentKeys(agentId: number, payload: KeysPayload): Prom
   }
 }
 
+
+export async function fetchAgentDiff(agentId: number): Promise<{ diff: string | null; base: string | null; truncated?: boolean }> {
+  const res = await apiFetch(`${API_BASE}/agents/${agentId}/diff`)
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({})) as { error?: string }
+    throw new Error(body.error ?? `HTTP ${res.status.toString()}`)
+  }
+  return res.json() as Promise<{ diff: string | null; base: string | null; truncated?: boolean }>
+}
+
 /** Upload a dropped/pasted image; the backend saves it and types its path into the agent's pane. Addressed by agent id. */
 export async function uploadAgentImage(agentId: number, file: File): Promise<void> {
   const qs = `filename=${encodeURIComponent(file.name)}&type=${encodeURIComponent(file.type)}`
@@ -170,6 +180,8 @@ export interface ApiAgent {
   workdir: string;
   launchCmd: string;
   projectId: number | null;
+  worktreePath?: string | null;
+  branch?: string | null;
   createdAt: string;
 }
 

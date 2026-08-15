@@ -10,11 +10,14 @@ import fastifyStatic from '@fastify/static';
 import fastifyWebsocket from '@fastify/websocket';
 import type { WebSocket } from 'ws';
 import { readConductorConf, DEFAULT_CONF_PATH, appendBgProcessToConf, removeBgProcessFromConf, removeBgLink, addBgLink, clearConfCache } from './config.ts';
-import { openDb, getDbPath, listAgents, getAgentById, createAgent, deleteAgent, updateAgentName, agentWindowName, addTask, deleteTask, reorderTasks, jumpTaskToHead, listTasksForAgentId, listTasksByProject, listProjects, createProject, updateProject, deleteProject, nextAgentName, listSchedules, createSchedule, updateSchedule, deleteSchedule, dueSchedules, fireSchedule } from './db.ts';
+import { openDb, getDbPath, listAgents, getAgentById, createAgent, deleteAgent, updateAgentName, agentWindowName, addTask, deleteTask, reorderTasks, jumpTaskToHead, listTasksForAgentId, listTasksByProject, listProjects, createProject, updateProject, deleteProject, nextAgentName, listSchedules, createSchedule, updateSchedule, deleteSchedule, dueSchedules, fireSchedule, getAllAgentUsageTotals, listAgentUsage, listCheckpoints, insertCheckpoint, getCheckpoint, listTerminalLog, appendTerminalLogChunk, type AgentUsageTotals } from './db.ts';
 import { detectAgentStatus, detectAgentMode, detectAgentType, readTmuxWindowInventory, isTmuxWindowPresent, windowState, getActiveTask, capturePaneTail as capturePaneTailUninstrumented, capturePaneTailRaw as capturePaneTailRawUninstrumented, sendTextToPane, extractPaneLabel, type AgentMode, type AgentRunState, type AgentType } from './state.ts';
 import { getAgentContext, getCodexAgentContext, type AgentContext } from './context.ts';
 import dotenv from 'dotenv';
 import { getUserSkills, getPluginSkills, getProjectSkills } from './skills.ts';
+import { isGitRepo, detectBaseBranch, getGitRoot, removeWorktree, deleteBranch, stashCheckpoint, applyStash } from './git.ts';
+import { extractUsageDeltas, resetUsageMemo } from './usage.ts';
+import { recordUsageDeltas, resetUsageStore } from './usage-store.ts';
 
 
 const envPath = new URL('../.env', import.meta.url);
@@ -228,6 +231,7 @@ function refreshAgentContextCache(conf: ReturnType<typeof readConductorConf>): v
     const ctx = windowPresent
       ? getContextForAgent(conf, agentType, wn, agent.workdir, isBusy, tail15 || undefined)
       : emptyAgentContext(conf);
+    recordUsageDeltas(db, { id: agent.id, name: wn }, extractUsageDeltas(wn, agent.workdir, conf.stateDir));
 
     agentContextCache.set(agent.id, ctx);
     if (state === 'no-window') {
@@ -557,7 +561,7 @@ async function sendDirectInput(agentId: number, payload: DirectInputPayload): Pr
 interface Snapshot {
   sessionAlive: boolean;
   sessionExists: boolean;
-  agents: Array<{ id: number; name: string; projectId: number | null; projectName: string | null; state: AgentRunState; status: AgentStatusContract; mode: AgentMode; agentType: AgentType; windowPresent: boolean; queuedTasks: number; launchCmd: string; workdir: string; activeTask: string | null; label: string | null; linkedBg: string | null } & AgentContext>;
+  agents: Array<{ id: number; name: string; projectId: number | null; projectName: string | null; state: AgentRunState; status: AgentStatusContract; mode: AgentMode; agentType: AgentType; windowPresent: boolean; queuedTasks: number; launchCmd: string; workdir: string; worktreePath: string | null; branch: string | null; activeTask: string | null; label: string | null; linkedBg: string | null; usage: AgentUsageTotals | null } & AgentContext>;
   bgProcesses: BgStatus[];
 }
 
@@ -709,7 +713,8 @@ await fastify.register((api) => {
         queuedTasks: listTasksForAgentId(db, agent.id, agent.projectId).length,
         launchCmd: agent.launchCmd,
         workdir: agent.workdir,
-        linkedBg: conf.agentBgLinks[agent.name] ?? null,
+        worktreePath: agent.worktreePath,
+        branch: agent.branch,
         activeTask: null,
         label: null,
         ...emptyAgentContext(conf),
@@ -843,6 +848,18 @@ await fastify.register((api) => {
         pane_tail: paneTail,
       };
       appendFileSync(`${conf.logDir}/dispatch.jsonl`, JSON.stringify(dispatchRecord) + '\n', 'utf8');
+      // Pre-dispatch checkpoint (ROADMAP-007): snapshot the agent's worktree so
+      // the task about to run can be rolled back. Best-effort — a clean worktree
+      // (nothing to stash) or any git error must never block the dispatch.
+      if (foundAgent.worktreePath) {
+        const ts = Date.now();
+        const stashRef = stashCheckpoint(foundAgent.worktreePath, ts);
+        if (stashRef) {
+          insertCheckpoint(db, foundAgent.id, ts, stashRef);
+        } else {
+          console.warn(`[conductor] POST /tasks: no checkpoint recorded for agent ${String(foundAgent.id)} (clean worktree or git error)`);
+        }
+      }
       sendTextToPane(conf.sessionName, win, cmdText);
       broadcastSSE('snapshot', buildSnapshot());
       return reply.status(200).send({ ok: true, dispatched: true });
@@ -1227,7 +1244,26 @@ await fastify.register((api) => {
       execSync(`tmux kill-window -t ${sessionName}:${winName}`, { timeout: TMUX_SYNC_TIMEOUT_MS });
     }
 
+    // TASK-063: best-effort worktree teardown. Never let a git failure block
+    // the DB delete below — agents without a worktree_path (non-git workdirs)
+    // are skipped silently.
+    if (entry.worktreePath) {
+      try {
+        const gitRoot = getGitRoot(entry.workdir) ?? path.dirname(path.dirname(entry.worktreePath));
+        if (!removeWorktree(gitRoot, entry.worktreePath)) {
+          console.warn(`[conductor] DELETE /agents/${String(entry.id)}: git worktree remove failed for ${entry.worktreePath}`);
+        }
+        if (entry.branch && !deleteBranch(gitRoot, entry.branch)) {
+          console.warn(`[conductor] DELETE /agents/${String(entry.id)}: git branch -D failed for ${entry.branch}`);
+        }
+      } catch (err) {
+        console.warn(`[conductor] DELETE /agents/${String(entry.id)}: worktree cleanup threw`, err);
+      }
+    }
+
     deleteAgent(db, entry.id);
+    resetUsageMemo(winName);
+    resetUsageStore(entry.id);
 
     try { unlinkSync(path.join(stateDir, `${winName}.state`)); } catch { /* no state file — fine */ }
 
@@ -1289,6 +1325,7 @@ await fastify.register((api) => {
     }
 
     try { renameSync(path.join(stateDir, `${oldWindowName}.state`), path.join(stateDir, `${newWindowName}.state`)); } catch { /* no state file — fine */ }
+    resetUsageMemo(oldWindowName); // usage memo is keyed by window name — re-bootstrap under the new one
 
     // focusedAgents / prevTailMap* are keyed by the stable agent id, so a rename
     // needs no juggling — the streams keep flowing under the same id.
@@ -1324,6 +1361,63 @@ await fastify.register((api) => {
     });
   });
 
+
+  // GET /agents/:id/diff — returns the git diff of the agent's workdir against
+  // its base branch (base..HEAD). Base-branch detection is shared via the
+  // detectBaseBranch helper in host-server/git.ts.
+  api.get<{ Params: { id: string } }>('/agents/:id/diff', (req, reply) => {
+    const agentId = parseInt(req.params.id, 10);
+    if (isNaN(agentId)) return reply.status(400).send({ error: 'invalid agent id' });
+    const entry = getAgentById(db, agentId);
+    if (!entry) {
+      return reply.status(404).send({ error: `agent ${String(agentId)} not found` });
+    }
+
+    const workdir = entry.workdir;
+
+    // Not a git repo (the "no worktree" case) → { diff: null, base: null }.
+    if (!isGitRepo(workdir)) {
+      return reply.send({ diff: null, base: null });
+    }
+
+    const base = detectBaseBranch(workdir);
+
+    const r = spawnSync('git', ['-C', workdir, 'diff', `${base}..HEAD`], {
+      encoding: 'utf8',
+      timeout: SHELL_SYNC_TIMEOUT_MS,
+      maxBuffer: 1024 * 1024,
+    });
+    if (r.status !== 0) {
+      return reply.status(500).send({ error: 'git diff failed', stderr: r.stderr });
+    }
+
+    const MAX_DIFF_BYTES = 500 * 1024;
+    let diff = r.stdout;
+    let truncated = false;
+    if (diff.length > MAX_DIFF_BYTES) {
+      diff = diff.slice(0, MAX_DIFF_BYTES);
+      truncated = true;
+    }
+
+    return reply.send({ diff, base, truncated });
+  });
+
+  // GET /agents/:id/base-branch — TASK-065: returns the agent workdir's base
+  // branch via the shared detectBaseBranch helper ({ base: null } if not a git repo).
+  api.get<{ Params: { id: string } }>('/agents/:id/base-branch', (req, reply) => {
+    const agentId = parseInt(req.params.id, 10);
+    if (isNaN(agentId)) return reply.status(400).send({ error: 'invalid agent id' });
+    const entry = getAgentById(db, agentId);
+    if (!entry) {
+      return reply.status(404).send({ error: `agent ${String(agentId)} not found` });
+    }
+
+    if (!isGitRepo(entry.workdir)) {
+      return reply.send({ base: null });
+    }
+
+    return reply.send({ base: detectBaseBranch(entry.workdir) });
+  });
   // Focus registration: modal/detail views POST on open, DELETE on close.
   // The fast tail-poll loop only runs for focused agents, skips unchanged
   // snapshots, and the slow loop skips focused agents so capture load stays
@@ -1461,6 +1555,84 @@ await fastify.register((api) => {
     const project = getProjectSkills(entry.workdir);
     const user = getUserSkills();
     return reply.send({ agent: entry.name, workdir: entry.workdir, project, user });
+  });
+
+  // Per-session usage breakdown (agent_usage rows) for the dashboard detail modal.
+  api.get<{ Params: { id: string } }>('/agents/:id/usage', (req, reply) => {
+    const agentId = parseInt(req.params.id, 10);
+    if (isNaN(agentId)) return reply.status(400).send({ error: 'invalid agent id' });
+    const entry = getAgentById(db, agentId);
+    if (!entry) {
+      return reply.status(404).send({ error: `agent ${String(agentId)} not found` });
+    }
+    return reply.send({ agent: entry.name, sessions: listAgentUsage(db, agentId) });
+  });
+
+  // Persisted terminal-log history (agent_terminal_log rows) — full chronological
+  // record for the dashboard's history view, backed by TASK-106's listTerminalLog.
+  api.get<{ Params: { id: string } }>('/agents/:id/log', (req, reply) => {
+    const agentId = parseInt(req.params.id, 10);
+    if (isNaN(agentId)) return reply.status(400).send({ error: 'invalid agent id' });
+    const entry = getAgentById(db, agentId);
+    if (!entry) {
+      return reply.status(404).send({ error: `agent ${String(agentId)} not found` });
+    }
+    return reply.send({ agent: entry.name, log: listTerminalLog(db, agentId) });
+  });
+
+  // Checkpoint history (stash refs) for an agent, for the dashboard checkpoints list.
+  api.get<{ Params: { id: string } }>('/agents/:id/checkpoints', (req, reply) => {
+    const agentId = parseInt(req.params.id, 10);
+    if (isNaN(agentId)) return reply.status(400).send({ error: 'invalid agent id' });
+    const entry = getAgentById(db, agentId);
+    if (!entry) {
+      return reply.status(404).send({ error: `agent ${String(agentId)} not found` });
+    }
+    return reply.send({ checkpoints: listCheckpoints(db, agentId) });
+  });
+
+  // Record a new checkpoint (stash ref) for an agent.
+  api.post<{ Params: { id: string }; Body: { ts?: unknown; stash_ref?: unknown } }>('/agents/:id/checkpoints', (req, reply) => {
+    const agentId = parseInt(req.params.id, 10);
+    if (isNaN(agentId)) return reply.status(400).send({ error: 'invalid agent id' });
+    const entry = getAgentById(db, agentId);
+    if (!entry) {
+      return reply.status(404).send({ error: `agent ${String(agentId)} not found` });
+    }
+    const { ts, stash_ref: stashRef } = req.body;
+    if (typeof ts !== 'number' || !Number.isFinite(ts)) {
+      return reply.status(400).send({ error: 'ts is required and must be a number' });
+    }
+    if (typeof stashRef !== 'string' || stashRef.trim() === '') {
+      return reply.status(400).send({ error: 'stash_ref is required and must be a non-empty string' });
+    }
+    return reply.status(201).send({ checkpoint: insertCheckpoint(db, agentId, ts, stashRef) });
+  });
+
+  // Roll an agent's worktree back to a recorded checkpoint by applying its stash.
+  api.post<{ Params: { id: string }; Body: { checkpoint_id?: unknown } }>('/agents/:id/rollback', (req, reply) => {
+    const agentId = parseInt(req.params.id, 10);
+    if (isNaN(agentId)) return reply.status(400).send({ error: 'invalid agent id' });
+    const entry = getAgentById(db, agentId);
+    if (!entry) {
+      return reply.status(404).send({ error: `agent ${String(agentId)} not found` });
+    }
+    if (!entry.worktreePath) {
+      return reply.status(400).send({ error: 'agent has no worktree' });
+    }
+    const { checkpoint_id: checkpointId } = req.body;
+    if (typeof checkpointId !== 'number' || !Number.isFinite(checkpointId)) {
+      return reply.status(400).send({ error: 'checkpoint_id is required and must be a number' });
+    }
+    const checkpoint = getCheckpoint(db, checkpointId);
+    if (!checkpoint || checkpoint.agentId !== agentId) {
+      return reply.status(404).send({ error: 'checkpoint not found' });
+    }
+    const result = applyStash(entry.worktreePath, checkpoint.stashRef);
+    if (!result.ok) {
+      return reply.status(500).send({ error: 'git stash apply failed', detail: result.detail });
+    }
+    return reply.send({ ok: true, stash_ref: checkpoint.stashRef });
   });
 
   // List all agents from the database.
@@ -1885,9 +2057,12 @@ await fastify.register((api) => {
           name: agent.name, state: agent.state, mode: agent.mode,
           status: agent.status,
           queuedTasks: agent.queuedTasks, windowPresent: agent.windowPresent,
-          launchCmd: agent.launchCmd, workdir: agent.workdir, activeTask: agent.activeTask,
+          launchCmd: agent.launchCmd, workdir: agent.workdir,
+          worktreePath: agent.worktreePath, branch: agent.branch,
+          activeTask: agent.activeTask,
           model: agent.model, modelId: agent.modelId,
           contextTokens: agent.contextTokens, contextPct: agent.contextPct, contextLimit: agent.contextLimit,
+          usage: agent.usage,
         });
       }
       for (const bg of prevSnapshot.bgProcesses) {
@@ -1948,6 +2123,10 @@ function buildSnapshot(): Snapshot {
   const sessionExists = inventory.sessionExists;
   const sessionAlive = sessionExists && inventory.windows.has('monitor');
   const queuedTaskCounts = buildQueuedTaskCounts(agents);
+  let usageByAgent = new Map<number, AgentUsageTotals>();
+  try {
+    usageByAgent = new Map(getAllAgentUsageTotals(db).map((t) => [t.agentId, t]));
+  } catch { /* pre-migration DB — snapshot must never break on missing usage table */ }
   const agentStatuses = agents.map((agent) => {
     const wn = agentWindowName(agent);
     const paneCurrentCommand = inventory.windows.get(wn) ?? null;
@@ -1985,9 +2164,12 @@ function buildSnapshot(): Snapshot {
       queuedTasks: queuedTaskCounts.get(agent.id) ?? 0,
       launchCmd: agent.launchCmd,
       workdir: agent.workdir,
+      worktreePath: agent.worktreePath,
+      branch: agent.branch,
       activeTask,
       label,
       linkedBg: conf.agentBgLinks[agent.name] ?? null,
+      usage: usageByAgent.get(agent.id) ?? null,
       ...(agentContextCache.get(agent.id) ?? emptyAgentContext(conf)),
     };
   });
@@ -2038,7 +2220,9 @@ function pollAndDiff() {
       prev.activeTask !== agent.activeTask ||
       prev.modelId !== agent.modelId ||
       prev.contextPct !== agent.contextPct ||
-      prev.label !== agent.label
+      prev.label !== agent.label ||
+      prev.usage?.costUsd !== agent.usage?.costUsd ||
+      prev.usage?.outputTokens !== agent.usage?.outputTokens
     ) {
       if (prev && prev.state !== agent.state) {
         const key = `${prev.state}->${agent.state}`;
@@ -2063,6 +2247,8 @@ function pollAndDiff() {
         windowPresent: agent.windowPresent,
         launchCmd: agent.launchCmd,
         workdir: agent.workdir,
+        worktreePath: agent.worktreePath,
+        branch: agent.branch,
         activeTask: agent.activeTask,
         label: agent.label,
         linkedBg: agent.linkedBg,
@@ -2071,6 +2257,7 @@ function pollAndDiff() {
         contextTokens: agent.contextTokens,
         contextPct: agent.contextPct,
         contextLimit: agent.contextLimit,
+        usage: agent.usage,
       });
     }
   }
@@ -2115,6 +2302,11 @@ function tailPollLoop() {
         prevTailMap.set(a.id, text);
         const found = extractPaneLabel(text);
         if (found !== null) agentLabelCache.set(a.id, found);
+        try {
+          appendTerminalLogChunk(db, a.id, text, conf.terminalLogMaxRowsPerAgent);
+        } catch (err) {
+          console.error('[tailPollLoop] appendTerminalLogChunk failed', err);
+        }
       }
     }
   } catch { /* tail poll is best-effort */ }

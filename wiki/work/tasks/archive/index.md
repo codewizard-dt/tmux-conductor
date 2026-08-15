@@ -93,3 +93,14 @@ Terminal task files (`done` or `trashed`) moved here by `/wiki-archive` to reduc
 | [[TASK-103]] | dashboard status display uses backend status fields (renumbered from TASK-092) | done | 2026-07-06 |
 | [[TASK-104]] | duplicate focused-capture regression checks (renumbered from TASK-093) | done | 2026-07-06 |
 | [[TASK-105]] | focused input echo-latency regression checks (renumbered from TASK-094) | done | 2026-07-06 |
+| [[TASK-060]] | agents table schema — add worktree_path and branch columns | done | 2026-07-06 |
+| [[TASK-064]] | Diff endpoint — GET /api/agents/:agent/diff (git diff base-branch..HEAD) | done | 2026-07-06 |
+| [[TASK-065]] | Base-branch endpoint — GET /api/agents/:agent/base-branch auto-detects default branch | done | 2026-07-06 |
+| [[TASK-067]] | agent_checkpoints table — SQLite schema migration (agent_id, ts, stash_ref) | done | 2026-07-06 |
+| [[TASK-061]] | Worktree spawn — detect git repo on agent spawn, create worktree + branch, store in DB | done | 2026-07-06 |
+| [[TASK-072]] | agent_usage table — SQLite schema migration + DB helpers | done | 2026-07-06 |
+| [[TASK-106]] | agent_terminal_log table — SQLite schema migration + DB helpers | done | 2026-07-06 |
+| [[TASK-069]] | Checkpoints list endpoint — GET /api/agents/:agent/checkpoints | done | 2026-07-06 |
+| [[TASK-073]] | Per-agent usage extraction — parse Claude Code transcript JSONL each poll (supersedes pane-tail regex) | done | 2026-07-06 |
+| [[TASK-107]] | Append terminal output to agent_terminal_log during SSE pane polling | done | 2026-07-06 |
+| [[TASK-108]] | GET /api/agents/:id/log endpoint — retrieve full persisted terminal-log history | done | 2026-07-06 |

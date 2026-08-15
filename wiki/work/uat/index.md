@@ -1,6 +1,6 @@
 ---
 title: UAT Index
-updated: 2026-06-11
+updated: 2026-07-06
 ---
 
 # UAT — Active Items
@@ -14,3 +14,7 @@ Entry format: `- [UAT-NNN — Title](UAT-NNN-slug.md) — verifies TASK-NNN · s
 - [UAT-006 — UAT: ID-based /api/tasks routes and SSE events](UAT-006-task-queue-routes.md) — verifies TASK-006 · pending
 - [UAT-011 — UAT: Immediate dispatch for tasks enqueued to an idle agent with an empty queue](UAT-011-immediate-dispatch.md) — verifies TASK-011 · pending
 - [UAT-012 — UAT: Replace tail polling with SSE push for terminal output](UAT-012-sse-tail-stream.md) — verifies TASK-012 · pending
+- [UAT-066 — UAT: Diff panel UI — unified diff in AgentDetailModal (colour-coded additions/deletions)](UAT-066-diff-panel-ui.md) — verifies TASK-066 · pending
+- [UAT-063 — UAT: Worktree teardown — git worktree remove --force on agent delete](UAT-063-worktree-teardown.md) — verifies TASK-063 · pending
+- [UAT-062 — UAT: Branch badge — display branch name on agent card in dashboard](UAT-062-branch-badge-ui.md) — verifies TASK-062 · pending
+- [UAT-075 — UAT: Accumulate rolling token totals per agent in agent_usage — usage-store + pricing table + snapshot exposure](UAT-075-usage-accumulation.md) — verifies TASK-075 · pending
