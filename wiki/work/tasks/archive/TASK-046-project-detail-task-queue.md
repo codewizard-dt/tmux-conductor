@@ -1,5 +1,6 @@
 ---
 id: TASK-046
+aliases: [TASK-046]
 title: "Show project-scoped task queue on the project detail page"
 status: done
 created: 2026-06-13

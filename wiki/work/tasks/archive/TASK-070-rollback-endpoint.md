@@ -1,13 +1,14 @@
 ---
 id: TASK-070
+aliases: [TASK-070]
 title: "Rollback endpoint — POST /api/agents/:agent/rollback"
-status: pending-uat
+status: done
 created: 2026-06-14
-updated: 2026-07-06
+updated: 2026-08-15
 depends_on: [TASK-067]
 blocks: [TASK-071]
 parallel_safe_with: [TASK-068, TASK-069]
-uat: ""
+uat: "[[UAT-070]]"
 tags: [api, checkpoint, rollback, host-server, roadmap-007]
 ---
 

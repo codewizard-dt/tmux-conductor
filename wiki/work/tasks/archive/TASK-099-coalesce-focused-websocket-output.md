@@ -1,5 +1,6 @@
 ---
 id: TASK-099
+aliases: [TASK-099]
 title: "coalesce focused WebSocket output frames"
 status: done
 created: 2026-07-04

@@ -1,5 +1,6 @@
 ---
 id: UAT-089
+aliases: [UAT-089]
 title: "UAT: add status-transition JSONL records"
 status: passed
 task: TASK-089

@@ -1,5 +1,6 @@
 ---
 id: TASK-095
+aliases: [TASK-095]
 title: "focused terminal latency baseline"
 status: done
 created: 2026-07-04

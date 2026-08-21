@@ -1,5 +1,6 @@
 ---
 id: UAT-056
+aliases: [UAT-056]
 title: "UAT: Frontend runtime mode detection (local-direct vs relay) + API_BASE rewire"
 status: passed
 task: TASK-056

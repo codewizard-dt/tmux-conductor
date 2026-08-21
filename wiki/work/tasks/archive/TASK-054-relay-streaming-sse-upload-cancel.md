@@ -1,5 +1,6 @@
 ---
 id: TASK-054
+aliases: [TASK-054]
 title: "Relay streaming: SSE pass-through, image-upload request bodies, cancel/backpressure — validated through the DO App Platform edge"
 status: done
 created: 2026-06-14

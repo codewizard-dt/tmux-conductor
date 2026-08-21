@@ -1,5 +1,6 @@
 ---
 id: TASK-084
+aliases: [TASK-084]
 title: "add event-loop delay and utilization metrics"
 status: done
 created: 2026-07-04

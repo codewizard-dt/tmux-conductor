@@ -1,5 +1,6 @@
 ---
 id: ROADMAP-009
+aliases: [ROADMAP-009]
 title: Mobile & remote access — PWA, push notifications, voice input, share links
 status: abandoned
 created: 2026-06-13

@@ -9,6 +9,7 @@ import {
   type LaunchCommandSelection,
 } from '../lib/launchCommands';
 import { useGitRoot } from '../lib/useGitRoot';
+import { ROLE_VALUES, resolveRoleBadge } from './AgentList';
 
 const NAME_PATTERN = /^[a-zA-Z0-9_-]+$/;
 
@@ -31,6 +32,8 @@ export default function AddAgentForm() {
   const [workdir, setWorkdir] = useState('');
   const [launchCmd, setLaunchCmd] = useState<string>(DEFAULT_LAUNCH_COMMAND);
   const [launchPreset, setLaunchPreset] = useState<LaunchCommandSelection>('claude');
+  const [role, setRole] = useState<string>('generic');
+  const [useWorktree, setUseWorktree] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
@@ -71,6 +74,8 @@ export default function AddAgentForm() {
       setWorkdir('');
       setLaunchCmd(DEFAULT_LAUNCH_COMMAND);
       setLaunchPreset('claude');
+      setRole('generic');
+      setUseWorktree(false);
       setShowAdvanced(false);
       setSuccess(true);
       setTimeout(() => { setSuccess(false); }, 4000);
@@ -79,7 +84,7 @@ export default function AddAgentForm() {
     if (selectedProject !== null) {
       setSubmitting(true);
       try {
-        await spawnAgentInProject(selectedProject.id, name.trim() || undefined, launchCmd);
+        await spawnAgentInProject(selectedProject.id, name.trim() || undefined, launchCmd, role, useWorktree);
         clearOnSuccess();
       } catch (err: unknown) {
         setError(err instanceof Error ? err.message : 'Failed to spawn agent');
@@ -103,7 +108,7 @@ export default function AddAgentForm() {
       const res = await fetch(`${API_URL}/agents`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, workdir, launchCmd }),
+        body: JSON.stringify({ name, workdir, launchCmd, role, useWorktree }),
       });
 
       if (res.status === 201) {
@@ -355,6 +360,39 @@ export default function AddAgentForm() {
               )}
             </div>
           </div>
+
+          <div className={fieldCls}>
+            <label htmlFor="agent-role" className={labelCls}>Role</label>
+            <div className="flex items-center gap-2">
+              <select
+                id="agent-role"
+                value={role}
+                onChange={(e) => { setRole(e.target.value); }}
+                className={inputCls}
+              >
+                {ROLE_VALUES.map((r) => (
+                  <option key={r} value={r}>{r === 'generic' ? 'Generic' : `${r.charAt(0).toUpperCase()}${r.slice(1)}`}</option>
+                ))}
+              </select>
+              {resolveRoleBadge(role) && (
+                <span
+                  className="h-2 w-2 flex-shrink-0 rounded-full"
+                  style={{ backgroundColor: resolveRoleBadge(role)?.dot }}
+                  title={role}
+                />
+              )}
+            </div>
+          </div>
+
+          <label className="flex cursor-pointer items-center gap-2 text-[12px] text-ink-2">
+            <input
+              type="checkbox"
+              checked={useWorktree}
+              onChange={(e) => { setUseWorktree(e.target.checked); }}
+              className="h-3.5 w-3.5 cursor-pointer accent-accent"
+            />
+            Use a git worktree (isolated branch, sibling directory) — opt-in, off by default
+          </label>
 
           <div>
             <button

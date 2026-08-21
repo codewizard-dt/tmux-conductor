@@ -1,5 +1,6 @@
 ---
 id: UAT-036
+aliases: [UAT-036]
 title: "UAT: Install react-router-dom in the Vite React frontend"
 status: passed
 task: "../tasks/TASK-036-install-react-router-dom.md"

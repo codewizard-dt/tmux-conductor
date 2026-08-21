@@ -1,5 +1,6 @@
 ---
 id: UAT-099
+aliases: [UAT-099]
 title: "UAT: coalesce focused WebSocket output frames"
 status: passed
 task: TASK-099

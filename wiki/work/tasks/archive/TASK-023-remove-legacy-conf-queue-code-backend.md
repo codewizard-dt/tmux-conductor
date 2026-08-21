@@ -1,5 +1,6 @@
 ---
 id: TASK-023
+aliases: [TASK-023]
 title: "Delete dead conf-splice + legacy file-queue code from backend/config.ts and backend/state.ts"
 status: done
 created: 2026-06-12

@@ -1,5 +1,6 @@
 ---
 id: UAT-034
+aliases: [UAT-034]
 title: "UAT: shared/relay-protocol.ts frame contract (req/res/body chunks/cancel/err, correlation ids)"
 status: passed
 task: TASK-034

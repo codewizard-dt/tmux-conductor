@@ -1,5 +1,6 @@
 ---
 id: UAT-079
+aliases: [UAT-079]
 title: "UAT: frontend live-update performance checks"
 status: passed
 task: TASK-079

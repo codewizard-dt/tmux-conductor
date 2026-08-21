@@ -1,5 +1,6 @@
 ---
 id: TASK-057
+aliases: [TASK-057]
 title: "DevicePicker (pairing code + device list/rename/revoke) and Onboarding UI"
 status: done
 created: 2026-06-14

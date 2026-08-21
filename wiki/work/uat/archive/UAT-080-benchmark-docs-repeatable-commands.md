@@ -1,5 +1,6 @@
 ---
 id: UAT-080
+aliases: [UAT-080]
 title: "UAT: benchmark documentation and repeatable commands"
 status: passed
 task: TASK-080

@@ -1,5 +1,6 @@
 ---
 id: TASK-072
+aliases: [TASK-072]
 title: "live-update timing instrumentation and counters"
 status: done
 created: 2026-06-28

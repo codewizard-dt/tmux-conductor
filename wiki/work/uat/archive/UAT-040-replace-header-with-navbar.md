@@ -1,5 +1,6 @@
 ---
 id: UAT-040
+aliases: [UAT-040]
 title: "UAT: Replace the static header in App.tsx with the NavBar component"
 status: passed
 task: TASK-040

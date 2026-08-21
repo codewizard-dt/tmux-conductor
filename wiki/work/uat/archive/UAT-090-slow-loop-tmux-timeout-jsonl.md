@@ -1,5 +1,6 @@
 ---
 id: UAT-090
+aliases: [UAT-090]
 title: "UAT: add slow-loop and tmux-timeout JSONL records"
 status: passed
 task: TASK-090

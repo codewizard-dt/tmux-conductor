@@ -1,5 +1,6 @@
 ---
 id: UAT-078
+aliases: [UAT-078]
 title: "UAT: host-server performance regression tests"
 status: passed
 task: TASK-078

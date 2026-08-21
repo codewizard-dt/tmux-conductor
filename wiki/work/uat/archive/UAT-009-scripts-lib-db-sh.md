@@ -1,5 +1,6 @@
 ---
 id: UAT-009
+aliases: [UAT-009]
 title: "UAT: Create scripts/lib/db.sh — sql wrapper, load_agents, load_bg, pop_task_sql"
 status: passed
 task: TASK-009

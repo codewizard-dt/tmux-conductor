@@ -1,5 +1,6 @@
 ---
 id: ROADMAP-003
+aliases: [ROADMAP-003]
 title: Local Agents Dashboard
 status: done
 created: 2026-06-06

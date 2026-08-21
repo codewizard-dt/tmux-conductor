@@ -1,5 +1,6 @@
 ---
 id: TASK-036
+aliases: [TASK-036]
 title: "Install react-router-dom in the Vite React frontend"
 status: done
 created: 2026-06-13

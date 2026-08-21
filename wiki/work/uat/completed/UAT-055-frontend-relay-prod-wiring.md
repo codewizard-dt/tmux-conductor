@@ -1,5 +1,6 @@
 ---
 id: UAT-055
+aliases: [UAT-055]
 title: "UAT: Wire app/frontend to call conductor endpoints through app/api (the relay) in prod"
 status: passed
 task: TASK-055

@@ -1,5 +1,6 @@
 ---
 id: UAT-017
+aliases: [UAT-017]
 title: "UAT: Frontend Schedules UI — ScheduleList + ScheduleForm with live schedule-fired updates"
 status: passed
 task: TASK-017

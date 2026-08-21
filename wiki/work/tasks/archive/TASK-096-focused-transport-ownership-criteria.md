@@ -1,5 +1,6 @@
 ---
 id: TASK-096
+aliases: [TASK-096]
 title: "focused transport ownership acceptance criteria"
 status: done
 created: 2026-07-04

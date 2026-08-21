@@ -1,5 +1,6 @@
 ---
 id: TASK-025
+aliases: [TASK-025]
 title: "Update docker-compose mounts, Dockerfile native-build step, and docs for the SQLite data layer"
 status: done
 created: 2026-06-12

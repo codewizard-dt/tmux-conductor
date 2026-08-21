@@ -1,5 +1,6 @@
 ---
 id: UAT-021
+aliases: [UAT-021]
 title: "UAT: Write install.sh — bash-3.2-safe, idempotent curl|bash installer"
 status: passed
 task: TASK-021

@@ -1,5 +1,6 @@
 ---
 id: UAT-046
+aliases: [UAT-046]
 title: "UAT: Show project-scoped task queue on the project detail page"
 status: passed
 task: TASK-046

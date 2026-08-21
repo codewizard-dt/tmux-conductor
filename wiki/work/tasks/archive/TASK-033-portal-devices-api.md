@@ -1,5 +1,6 @@
 ---
 id: TASK-033
+aliases: [TASK-033]
 title: "app/api Devices API: list with connected flag, rename, revoke (ownership-404 semantics, revoke closes live connection)"
 status: done
 created: 2026-06-13

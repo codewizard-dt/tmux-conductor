@@ -1,5 +1,6 @@
 ---
 id: UAT-053
+aliases: [UAT-053]
 title: "UAT: Relay plain JSON request/response working end-to-end"
 status: passed
 task: TASK-053

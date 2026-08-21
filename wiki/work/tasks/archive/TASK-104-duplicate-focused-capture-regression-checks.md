@@ -1,5 +1,6 @@
 ---
 id: TASK-104
+aliases: [TASK-104]
 title: "duplicate focused-capture regression checks"
 status: done
 created: 2026-07-04

@@ -1,5 +1,6 @@
 ---
 id: UAT-091
+aliases: [UAT-091]
 title: "UAT: add focused terminal debug overlay"
 status: passed
 task: TASK-091

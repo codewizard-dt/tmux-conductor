@@ -1,5 +1,6 @@
 ---
 id: TASK-034
+aliases: [TASK-034]
 title: "shared/relay-protocol.ts frame contract (req/res/body chunks/cancel/err, correlation ids)"
 status: done
 created: 2026-06-13

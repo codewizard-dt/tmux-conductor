@@ -1,5 +1,6 @@
 ---
 id: TASK-038
+aliases: [TASK-038]
 title: "Wrap app in BrowserRouter in main.tsx"
 status: done
 created: 2026-06-13

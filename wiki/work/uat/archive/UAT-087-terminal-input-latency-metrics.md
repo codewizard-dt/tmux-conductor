@@ -1,5 +1,6 @@
 ---
 id: UAT-087
+aliases: [UAT-087]
 title: "UAT: add input-to-ack and input-to-echo latency metrics"
 status: passed
 task: TASK-087

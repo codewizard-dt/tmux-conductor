@@ -1,5 +1,6 @@
 ---
 id: TASK-055
+aliases: [TASK-055]
 title: "Wire app/frontend to call conductor endpoints through app/api (the relay) in prod, replacing the dev-only host-server Vite proxy"
 status: done
 created: 2026-06-14

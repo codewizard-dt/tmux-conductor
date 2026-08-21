@@ -1,5 +1,6 @@
 ---
 id: UAT-076
+aliases: [UAT-076]
 title: "UAT: reduce focused terminal capture overhead"
 status: passed
 task: TASK-076

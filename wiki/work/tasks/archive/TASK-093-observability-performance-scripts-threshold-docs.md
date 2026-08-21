@@ -1,5 +1,6 @@
 ---
 id: TASK-093
+aliases: [TASK-093]
 title: "extend performance scripts and metric threshold docs"
 status: done
 created: 2026-07-04

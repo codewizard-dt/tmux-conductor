@@ -1,5 +1,6 @@
 ---
 id: TASK-080
+aliases: [TASK-080]
 title: "benchmark documentation and repeatable commands"
 status: done
 created: 2026-06-28

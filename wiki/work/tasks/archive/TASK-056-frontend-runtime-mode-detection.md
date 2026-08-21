@@ -1,5 +1,6 @@
 ---
 id: TASK-056
+aliases: [TASK-056]
 title: "Frontend runtime mode detection (local-direct vs relay) + API_BASE rewire"
 status: done
 created: 2026-06-14

@@ -1,5 +1,6 @@
 ---
 id: TASK-022
+aliases: [TASK-022]
 title: "Verify install.sh end-to-end into a scratch CONDUCTOR_HOME on macOS"
 status: done
 created: 2026-06-12

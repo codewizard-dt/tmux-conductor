@@ -1,5 +1,6 @@
 ---
 id: ROADMAP-006
+aliases: [ROADMAP-006]
 title: Deploy Dashboard to DO App Platform with oauth2-proxy
 status: done
 created: 2026-06-06

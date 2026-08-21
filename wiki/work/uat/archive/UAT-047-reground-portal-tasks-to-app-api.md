@@ -1,5 +1,6 @@
 ---
 id: UAT-047
+aliases: [UAT-047]
 title: "UAT: Reground ROADMAP-002 portal tasks to app/api paths and better-auth user() FK (Skipped)"
 task: wiki/work/tasks/TASK-051-reground-portal-tasks-to-app-api.md
 status: skipped

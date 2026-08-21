@@ -1,9 +1,10 @@
 ---
 id: ROADMAP-010
+aliases: [ROADMAP-010]
 title: Agent observability & UX — token tracking, session recording, role templates
 status: active
 created: 2026-06-13
-updated: 2026-07-06
+updated: 2026-08-15
 owner: David Taylor
 linked_requirements: []
 linked_decisions: []
@@ -20,7 +21,7 @@ Surface per-agent token cost, full session history, and role-based system prompt
 
 - [x] [[TASK-072: agent_usage table — SQLite schema migration + DB helpers (agent_id, session_start, tokens, cost_usd)]]
 - [x] [[TASK-073: Per-agent usage extraction — parse Claude Code transcript JSONL each poll (supersedes pane-tail regex)]]
-- [ ] [[TASK-075: Accumulate rolling token totals per agent in agent_usage — usage-store + pricing table + snapshot exposure]]
+- [x] [[TASK-075: Accumulate rolling token totals per agent in agent_usage — usage-store + pricing table + snapshot exposure]]
 - [ ] [[TASK-074: Token/cost badge — compact usage badge on agent card header in dashboard]]
 - [ ] [[TASK-076: Per-session usage breakdown — GET /agents/:id/usage endpoint + session table in AgentDetailModal]]
 
@@ -34,10 +35,10 @@ Surface per-agent token cost, full session history, and role-based system prompt
 
 ## Phase 3: Role Templates
 
-- [ ] Add `role` enum column to the `agents` SQLite table (values: generic, frontend, backend, qa, devops, security, architect)
-- [ ] Ship `presets.json` config file with a per-role CLAUDE.md fragment for each role value
-- [ ] On agent spawn, write the matching role fragment into the worktree's `CLAUDE.md`
-- [ ] Show colour-coded role badge on agent card in the dashboard
-- [ ] Add role selector dropdown to `AddAgentForm` and the project-spawn UI in `ProjectList`
+- [x] [[TASK-111: Role column — add `role` enum to the agents SQLite table (schema v7)]]
+- [x] [[TASK-112: Role presets — presets.json config with a per-role CLAUDE.md fragment]]
+- [x] [[TASK-113: Write role fragment into the agent's worktree CLAUDE.md on spawn]]
+- [ ] [[TASK-114: Role badge — colour-coded role badge on the agent card in the dashboard]]
+- [ ] [[TASK-115: Role selector — dropdown in AddAgentForm and the project-spawn UI in ProjectList]]
 
 ## Notes

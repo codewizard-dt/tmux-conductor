@@ -5,6 +5,7 @@ Terminal task files (`done` or `trashed`) moved here by `/wiki-archive` to reduc
 | ID | Title | Final Status | Archived |
 |----|-------|--------------|----------|
 | [[TASK-002]] | Add better-sqlite3 dependency, data/ gitignore entry, and DB_PATH setting | done | 2026-06-14 |
+| [[TASK-062]] | Branch badge — display branch name on agent card in dashboard | done | 2026-08-15 |
 | [[TASK-003]] | Create backend/db.ts — schema migrations and typed query helpers | done | 2026-06-14 |
 | [[TASK-004]] | Verify Phase 1 foundation — seed import correctness and restart idempotency | done | 2026-06-14 |
 | [[TASK-005]] | Rewrite agent and bg-process routes to be DB-backed with spawnAgentWindow helper | done | 2026-06-14 |
@@ -104,3 +105,13 @@ Terminal task files (`done` or `trashed`) moved here by `/wiki-archive` to reduc
 | [[TASK-073]] | Per-agent usage extraction — parse Claude Code transcript JSONL each poll (supersedes pane-tail regex) | done | 2026-07-06 |
 | [[TASK-107]] | Append terminal output to agent_terminal_log during SSE pane polling | done | 2026-07-06 |
 | [[TASK-108]] | GET /api/agents/:id/log endpoint — retrieve full persisted terminal-log history | done | 2026-07-06 |
+| [[TASK-063]] | Worktree teardown — git worktree remove --force on agent delete | done | 2026-08-15 |
+| [[TASK-075]] | Accumulate rolling token totals per agent in agent_usage — usage-store + pricing table + snapshot exposure | done | 2026-08-15 |
+| [[TASK-068]] | Pre-dispatch checkpoint — git stash push before each task dispatch + record in agent_checkpoints | done | 2026-08-15 |
+| [[TASK-070]] | Rollback endpoint — POST /api/agents/:agent/rollback | done | 2026-08-15 |
+| [[TASK-112]] | Role presets — presets.json config with a per-role CLAUDE.md fragment | done | 2026-08-15 |
+| [[TASK-111]] | Role column — add `role` enum to the agents SQLite table (schema v7) | done | 2026-08-15 |
+| [[TASK-113]] | Write role fragment into the agent's worktree CLAUDE.md on spawn | done | 2026-08-15 |
+| [[TASK-127]] | Add vitest + React Testing Library test harness to frontend/ | done | 2026-08-15 |
+| [[TASK-125]] | Soft-delete task pop — status flip to 'done'/completed_at instead of hard DELETE (schema v8) | done | 2026-08-15 |
+| [[TASK-131]] | AgentDetailModal terminal-first redesign — collapse Details/Queued Tasks, default Direct Input, double-click fullscreen | done | 2026-08-15 |

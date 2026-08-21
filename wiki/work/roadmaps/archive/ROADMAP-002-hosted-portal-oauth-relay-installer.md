@@ -1,5 +1,6 @@
 ---
 id: ROADMAP-002
+aliases: [ROADMAP-002]
 title: Hosted portal with Google OAuth, device relay, and installer
 status: abandoned
 created: 2026-06-12

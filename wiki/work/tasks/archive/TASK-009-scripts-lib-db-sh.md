@@ -1,5 +1,6 @@
 ---
 id: TASK-009
+aliases: [TASK-009]
 title: "Create scripts/lib/db.sh — sql wrapper, load_agents, load_bg, pop_task_sql"
 status: done
 created: 2026-06-12

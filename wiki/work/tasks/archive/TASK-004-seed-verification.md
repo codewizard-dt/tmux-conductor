@@ -1,5 +1,6 @@
 ---
 id: TASK-004
+aliases: [TASK-004]
 title: "Verify Phase 1 foundation — seed import correctness and restart idempotency"
 status: done
 created: 2026-06-12

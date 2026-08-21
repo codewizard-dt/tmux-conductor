@@ -1,5 +1,6 @@
 ---
 id: UAT-027
+aliases: [UAT-027]
 title: "UAT: Scaffold portal/ (Fastify, env validation, pg Pool, boot-time migrations) with /healthz"
 status: passed
 task: TASK-027

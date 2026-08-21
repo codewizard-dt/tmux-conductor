@@ -1,5 +1,6 @@
 ---
 id: ROADMAP-005
+aliases: [ROADMAP-005]
 title: Ngrok-Like Tunnel Daemon for Live Status
 status: done
 created: 2026-06-06

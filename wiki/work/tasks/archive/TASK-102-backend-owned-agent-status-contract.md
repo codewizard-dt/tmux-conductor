@@ -1,5 +1,6 @@
 ---
 id: TASK-102
+aliases: [TASK-102]
 title: "backend-owned agent status contract"
 status: done
 created: 2026-07-04

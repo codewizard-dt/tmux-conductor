@@ -1,5 +1,6 @@
 ---
 id: UAT-020
+aliases: [UAT-020]
 title: "UAT: Sync bin/conductor daemon install to the rendered-template + bootout/bootstrap flow"
 status: passed
 task: TASK-020

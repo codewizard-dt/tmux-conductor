@@ -1,5 +1,6 @@
 ---
 id: TASK-030
+aliases: [TASK-030]
 title: "Portal Google OIDC sign-in, JWT session cookie, email allowlist, /api/me"
 status: superseded
 created: 2026-06-12

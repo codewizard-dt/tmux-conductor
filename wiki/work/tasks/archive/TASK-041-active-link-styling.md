@@ -1,5 +1,6 @@
 ---
 id: TASK-041
+aliases: [TASK-041]
 title: "Verify and polish active-link styling on NavBar"
 status: done
 created: 2026-06-13

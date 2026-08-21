@@ -1,5 +1,6 @@
 ---
 id: UAT-032
+aliases: [UAT-032]
 title: "UAT: daemon/pair.ts + daemon/credentials.ts; conductor pair / conductor unpair CLI"
 status: passed
 task: TASK-032

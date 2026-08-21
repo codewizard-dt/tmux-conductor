@@ -1,5 +1,6 @@
 ---
 id: UAT-031
+aliases: [UAT-031]
 title: "UAT: app/api pairing-code creation API + rate-limited /pair/redeem (hashed, single-use, 10-min expiry)"
 status: passed
 task: TASK-031

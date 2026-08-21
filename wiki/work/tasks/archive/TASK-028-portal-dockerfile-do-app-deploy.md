@@ -1,5 +1,6 @@
 ---
 id: TASK-028
+aliases: [TASK-028]
 title: "Dockerfile.portal + deploy/do-app.yaml (DO App Platform spec); document the manual DO deploy + Google OAuth client setup"
 status: superseded
 created: 2026-06-12

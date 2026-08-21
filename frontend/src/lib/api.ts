@@ -41,13 +41,55 @@ export async function sendAgentKeys(agentId: number, payload: KeysPayload): Prom
 }
 
 
+// Best-effort background sync of the browser terminal's full-width probe size to the
+// shared tmux session's window geometry. Never throws — a failed sync should never
+// surface an error banner to the user, it just means the next probe (or resize) retries.
+export async function syncTerminalSize(cols: number, rows: number): Promise<void> {
+  try {
+    const res = await apiFetch(`${API_BASE}/terminal-size`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cols, rows }),
+    })
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({})) as { error?: string }
+      console.error('syncTerminalSize failed:', body.error ?? `HTTP ${res.status.toString()}`)
+    }
+  } catch (err) {
+    console.error('syncTerminalSize failed:', err)
+  }
+}
+
+
 export async function fetchAgentDiff(agentId: number): Promise<{ diff: string | null; base: string | null; truncated?: boolean }> {
-  const res = await apiFetch(`${API_BASE}/agents/${agentId}/diff`)
+  const res = await apiFetch(`${API_BASE}/agents/${agentId.toString()}/diff`)
   if (!res.ok) {
     const body = await res.json().catch(() => ({})) as { error?: string }
     throw new Error(body.error ?? `HTTP ${res.status.toString()}`)
   }
   return res.json() as Promise<{ diff: string | null; base: string | null; truncated?: boolean }>
+}
+
+export async function fetchAgentCheckpoints(agentId: number): Promise<{ checkpoints: AgentCheckpoint[] }> {
+  const res = await apiFetch(`${API_BASE}/agents/${agentId.toString()}/checkpoints`)
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({})) as { error?: string }
+    throw new Error(body.error ?? `HTTP ${res.status.toString()}`)
+  }
+  return res.json() as Promise<{ checkpoints: AgentCheckpoint[] }>
+}
+
+export async function rollbackAgent(agentId: number, checkpointId: number): Promise<{ ok: boolean; stash_ref: string }> {
+  const res = await apiFetch(`${API_BASE}/agents/${agentId.toString()}/rollback`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ checkpoint_id: checkpointId }),
+  })
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({})) as { error?: string }
+    throw new Error(body.error ?? `HTTP ${res.status.toString()}`)
+  }
+  return res.json() as Promise<{ ok: boolean; stash_ref: string }>
 }
 
 /** Upload a dropped/pasted image; the backend saves it and types its path into the agent's pane. Addressed by agent id. */
@@ -185,6 +227,14 @@ export interface ApiAgent {
   createdAt: string;
 }
 
+export interface AgentCheckpoint {
+  id: number;
+  agentId: number;
+  ts: number;
+  stashRef: string;
+  createdAt: number;
+}
+
 export type AgentRunState =
   | 'busy'
   | 'idle'
@@ -261,6 +311,8 @@ export async function spawnAgentInProject(
   projectId: number,
   name?: string,
   launchCmd?: string,
+  role?: string,
+  useWorktree?: boolean,
 ): Promise<unknown> {
   const res = await apiFetch(`${API_BASE}/projects/${projectId.toString()}/agents`, {
     method: 'POST',
@@ -268,6 +320,8 @@ export async function spawnAgentInProject(
     body: JSON.stringify({
       ...(name !== undefined ? { name } : {}),
       ...(launchCmd !== undefined ? { launchCmd } : {}),
+      ...(role !== undefined ? { role } : {}),
+      ...(useWorktree !== undefined ? { useWorktree } : {}),
     }),
   });
   if (!res.ok) {
@@ -275,6 +329,22 @@ export async function spawnAgentInProject(
     throw new Error(body.error ?? `HTTP ${res.status.toString()}`);
   }
   return res.json();
+}
+
+/**
+ * POST /api/agents/:id/worktree — opt-in worktree creation for an agent that
+ * was created without one (ROADMAP-007: worktrees are opt-in only). 400 when
+ * the agent's workdir isn't inside a git repo, 409 when it already has one.
+ */
+export async function createWorktreeForAgent(agentId: number): Promise<ApiAgent> {
+  const res = await apiFetch(`${API_BASE}/agents/${agentId.toString()}/worktree`, {
+    method: 'POST',
+  });
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(body.error ?? `HTTP ${res.status.toString()}`);
+  }
+  return (res.json() as Promise<{ agent: ApiAgent }>).then((b) => b.agent);
 }
 
 /** DELETE /api/projects/:id */

@@ -1,5 +1,6 @@
 ---
 id: TASK-100
+aliases: [TASK-100]
 title: "configurable live-update intervals and capture depths"
 status: done
 created: 2026-07-04

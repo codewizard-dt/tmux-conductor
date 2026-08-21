@@ -1,5 +1,6 @@
 ---
 id: TASK-059
+aliases: [TASK-059]
 title: "README install one-liner + docs updates (CLAUDE.md, scripts/README, .env.example)"
 status: done
 created: 2026-06-14

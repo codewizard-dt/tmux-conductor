@@ -1,5 +1,6 @@
 ---
 id: TASK-073
+aliases: [TASK-073]
 title: "capture current dashboard performance baseline"
 status: done
 created: 2026-06-28

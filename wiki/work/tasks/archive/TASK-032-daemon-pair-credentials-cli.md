@@ -1,5 +1,6 @@
 ---
 id: TASK-032
+aliases: [TASK-032]
 title: "daemon/pair.ts + daemon/credentials.ts; conductor pair / conductor unpair CLI"
 status: done
 created: 2026-06-13

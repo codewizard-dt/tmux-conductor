@@ -1,5 +1,6 @@
 ---
 id: TASK-050
+aliases: [TASK-050]
 title: "App Platform live deploy runbook for app/ (api + frontend), invite-gated signups from day one"
 status: todo
 created: 2026-06-14

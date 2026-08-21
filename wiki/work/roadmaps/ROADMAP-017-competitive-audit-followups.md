@@ -1,9 +1,10 @@
 ---
 id: ROADMAP-017
+aliases: [ROADMAP-017]
 title: Competitive-audit follow-ups — dispatch latency, perf-budget calibration, UI/UX & task history
 status: active
 created: 2026-07-06
-updated: 2026-07-06
+updated: 2026-08-15
 owner: David Taylor
 linked_requirements: []
 linked_decisions: []
@@ -18,23 +19,23 @@ Close the highest-value gaps identified by the 2026-07-06 competitive audit agai
 
 ## Phase 1: Dispatch Latency
 
-- [ ] Collapse `monitor.sh`'s 15s `POLL_INTERVAL` dispatch loop into the host-server's existing 2s status-poll loop, triggering dispatch on the idle transition instead of running a second independent poll
-- [ ] Reuse the existing `mark_busy` pre-dispatch marker pattern to prevent double-dispatch races between the collapsed loop and any remaining monitor.sh polling
-- [ ] Verify real task-start latency drops from ~15s worst-case to ~2s under a live agent session
+- [ ] [TASK-120](../tasks/TASK-120-collapse-dispatch-into-status-poll.md) Collapse `monitor.sh`'s 15s `POLL_INTERVAL` dispatch loop into the host-server's existing 2s status-poll loop, triggering dispatch on the idle transition instead of running a second independent poll
+- [ ] [TASK-121](../tasks/TASK-121-remove-redundant-monitor-dispatch.md) Reuse the existing `mark_busy` pre-dispatch marker pattern to prevent double-dispatch races between the collapsed loop and any remaining monitor.sh polling
+- [ ] [TASK-116](../tasks/TASK-116-verify-dispatch-latency.md) Verify real task-start latency drops from ~15s worst-case to ~2s under a live agent session
 
 ## Phase 2: Perf Budget Calibration
 
-- [ ] Capture a representative period of real production `liveUpdateMetrics` data from `/api/perf/live-updates`
-- [ ] Calibrate `host-server/perfBudgets.ts`'s regression thresholds from the captured data, replacing the current "intentionally conservative" placeholder values
-- [ ] Persist periodic `liveUpdateMetrics` snapshots to `observability.jsonl` so the metrics survive a host-server restart
+- [ ] [TASK-117](../tasks/TASK-117-capture-perf-baseline-data.md) Capture a representative period of real production `liveUpdateMetrics` data from `/api/perf/live-updates`
+- [ ] [TASK-118](../tasks/TASK-118-calibrate-perf-budgets.md) Calibrate `host-server/perfBudgets.ts`'s regression thresholds from the captured data, replacing the current "intentionally conservative" placeholder values
+- [ ] [TASK-119](../tasks/TASK-119-persist-metrics-snapshots.md) Persist periodic `liveUpdateMetrics` snapshots to `observability.jsonl` so the metrics survive a host-server restart
 
 ## Phase 3: UI/UX & Task History
 
-- [ ] Add dark mode to the dashboard using the existing centralized Tailwind tokens in `frontend/tailwind.config.js`
-- [ ] Replace `window.confirm()` destructive-action dialogs (remove/close agent) with the app's existing custom modal styling
-- [ ] Add a text filter to `AgentList` for scaling past small agent counts
-- [ ] Change task pop from hard-`DELETE` to a soft status flip (`status='done'`, `completed_at`) in the `tasks` table
-- [ ] Add a task history view in the dashboard reading completed tasks
+- [ ] [TASK-122](../tasks/TASK-122-dashboard-dark-mode.md) Add dark mode to the dashboard using the existing centralized Tailwind tokens in `frontend/tailwind.config.js`
+- [ ] [TASK-123](../tasks/TASK-123-replace-confirm-dialogs.md) Replace `window.confirm()` destructive-action dialogs (remove/close agent) with the app's existing custom modal styling
+- [ ] [TASK-124](../tasks/TASK-124-agentlist-text-filter.md) Add a text filter to `AgentList` for scaling past small agent counts
+- [x] [TASK-125](../tasks/TASK-125-soft-delete-task-pop.md) Change task pop from hard-`DELETE` to a soft status flip (`status='done'`, `completed_at`) in the `tasks` table
+- [ ] [TASK-126](../tasks/TASK-126-task-history-view.md) Add a task history view in the dashboard reading completed tasks
 
 ## Notes
 

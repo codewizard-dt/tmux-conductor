@@ -1,5 +1,6 @@
 ---
 id: UAT-088
+aliases: [UAT-088]
 title: "UAT: enable env-gated Fastify structured request logging"
 status: passed
 task: TASK-088

@@ -1,5 +1,6 @@
 ---
 id: UAT-033
+aliases: [UAT-033]
 title: "UAT: app/api Devices API: list with connected flag, rename, revoke"
 status: passed
 task: TASK-033

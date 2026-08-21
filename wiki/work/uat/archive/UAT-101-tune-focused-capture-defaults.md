@@ -1,5 +1,6 @@
 ---
 id: UAT-101
+aliases: [UAT-101]
 title: "UAT: tune focused capture defaults from measured data"
 status: passed
 task: TASK-101

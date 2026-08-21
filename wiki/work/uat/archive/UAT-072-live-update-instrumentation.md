@@ -1,5 +1,6 @@
 ---
 id: UAT-072
+aliases: [UAT-072]
 title: "UAT: live-update timing instrumentation and counters"
 status: passed
 task: TASK-072

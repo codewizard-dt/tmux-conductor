@@ -1,5 +1,6 @@
 ---
 id: UAT-067
+aliases: [UAT-067]
 title: "UAT: agent_checkpoints table — SQLite schema migration (agent_id, ts, stash_ref)"
 status: passed
 task: TASK-067

@@ -1,5 +1,6 @@
 ---
 id: TASK-064
+aliases: [TASK-064]
 title: "Diff endpoint — GET /api/agents/:agent/diff (git diff base-branch..HEAD)"
 status: done
 created: 2026-06-14

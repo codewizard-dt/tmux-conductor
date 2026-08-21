@@ -1,5 +1,6 @@
 ---
 id: TASK-003
+aliases: [TASK-003]
 title: "Create backend/db.ts — schema migrations and typed query helpers"
 status: done
 created: 2026-06-12

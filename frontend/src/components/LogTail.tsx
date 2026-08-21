@@ -1,8 +1,10 @@
-import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type FocusEvent, type KeyboardEvent } from 'react'
+import { Fragment, useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type FocusEvent, type KeyboardEvent } from 'react'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
 import { API_BASE, sendAgentKeys, uploadAgentImage, type KeysPayload } from '../lib/api'
+import { TERMINAL_FONT_OPTIONS } from '../lib/terminalTheme'
+import { maybeProbeOnFirstRender, registerResizeListener } from '../lib/terminalSizeProbe'
 import { connectTerminalWebSocket, type TerminalWebSocketClient } from '../lib/terminalWebSocket'
 import { useSSEEvent } from '../hooks/useSSE'
 
@@ -17,6 +19,18 @@ interface TailResponse {
   lines: number
   windowPresent: boolean
   text: string
+}
+
+interface HistoryLogEntry {
+  id: number
+  agentId: number
+  ts: string
+  chunk: string
+}
+
+interface HistoryLogResponse {
+  agent: string
+  log: HistoryLogEntry[]
 }
 
 /** Browser KeyboardEvent → /agents/:agent/keys payload, or null to let the browser handle it. */
@@ -41,6 +55,12 @@ function mapKey(e: KeyboardEvent<HTMLDivElement>): KeysPayload | null {
     default:
       return e.key.length === 1 ? { text: e.key } : null
   }
+}
+
+export function formatChunkTs(ts: string): string {
+  const d = new Date(ts)
+  if (Number.isNaN(d.getTime())) return ts
+  return d.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
 }
 
 const pendingDeletes = new Map<number, ReturnType<typeof setTimeout>>()
@@ -147,11 +167,18 @@ export default function LogTail({ agentId, agentName, maxHeightClass, focused, f
   const [dragOver, setDragOver] = useState(false)
   const [terminalWsConnected, setTerminalWsConnected] = useState(false)
   const [escHint, setEscHint] = useState(false)
+  const [viewMode, setViewMode] = useState<'live' | 'history'>('live')
+  const [historyLog, setHistoryLog] = useState<HistoryLogEntry[] | null>(null)
+  const [historyLoading, setHistoryLoading] = useState(false)
+  const [historyError, setHistoryError] = useState(false)
   // Serializes POSTs so keystroke order survives key repeat; .catch keeps the chain alive.
   const queueRef = useRef<Promise<void>>(Promise.resolve())
   const captureRef = useRef<HTMLDivElement>(null)
   const xtermContainerRef = useRef<HTMLDivElement>(null)
   const termRef = useRef<Terminal | null>(null)
+  // One-shot guard for the default-Direct-Input-on effect below: ensures it arms at most
+  // once per mount, even if loaded/windowPresent were to toggle again later (e.g. reconnect).
+  const defaultInteractArmedRef = useRef(false)
   const fitAddonRef = useRef<FitAddon | null>(null)
   const initialTextRef = useRef('')
   // Follow-mode: while the user is at the bottom we repaint live; once they scroll up we stop
@@ -222,15 +249,33 @@ export default function LogTail({ agentId, agentName, maxHeightClass, focused, f
     return () => { cancelled = true }
   }, [agentId])
 
+  // Fetch the persisted history log when History mode is selected.
+  useEffect(() => {
+    if (viewMode !== 'history') return
+    let cancelled = false
+    queueMicrotask(() => {
+      if (!cancelled) setHistoryLoading(true)
+    })
+    fetch(`${API_BASE}/agents/${agentId.toString()}/log`)
+      .then((r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status.toString()}`)
+        return r.json() as Promise<HistoryLogResponse>
+      })
+      .then((data) => {
+        if (!cancelled) setHistoryLog(data.log)
+      })
+      .catch(() => { if (!cancelled) setHistoryError(true) })
+      .finally(() => { if (!cancelled) setHistoryLoading(false) })
+    return () => { cancelled = true }
+  }, [viewMode, agentId])
+
   // Create the xterm.js terminal once the tail has loaded, the tmux window is
   // present, and the container div is in the DOM.
   useEffect(() => {
     if (!loaded || !windowPresent || !xtermContainerRef.current) return
     const term = new Terminal({
       theme: { background: '#0b0b0d', foreground: '#e7e8ea', cursor: '#e7e8ea', cursorAccent: '#0b0b0d' },
-      fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-      fontSize: 11,
-      lineHeight: 1.1,
+      ...TERMINAL_FONT_OPTIONS,
       scrollback: 1000,
       convertEol: true,
       disableStdin: true,
@@ -247,6 +292,11 @@ export default function LogTail({ agentId, agentName, maxHeightClass, focused, f
     fitAddon.fit()
     termRef.current = term
     fitAddonRef.current = fitAddon
+    // Global pane-size sync (unrelated to the local xterm fit below): probes the widest
+    // realistic panel width once per browser session and re-probes on window resize, so
+    // the shared tmux window size matches the browser instead of the tmux factory default.
+    maybeProbeOnFirstRender()
+    registerResizeListener()
     // The DOM renderer only paints the (inactive) cursor after the terminal has been focused
     // once, but this read-only mirror never holds focus. Focus+blur once, restoring the prior
     // focus, so the block cursor mirrors the pane's cursor position from the first frame.
@@ -405,6 +455,20 @@ export default function LogTail({ agentId, agentName, maxHeightClass, focused, f
     }
   }, [interactSignal])
 
+  // Default Direct Input to on once the terminal is actually ready to receive it: LogTail's
+  // sole consumer is AgentDetailModal, so arming interact mode makes the modal terminal-first
+  // without an extra gating prop. Gated the same way the terminal-creation effect above gates
+  // itself (loaded && windowPresent), so captureRef is guaranteed to be mounted, and guarded by
+  // a one-shot ref so it never re-arms after the first successful arm.
+  useEffect(() => {
+    if (!loaded || !windowPresent || defaultInteractArmedRef.current) return
+    defaultInteractArmedRef.current = true
+    setTimeout(() => {
+      setInteracting(true)
+      captureRef.current?.focus()
+    }, 0)
+  }, [loaded, windowPresent])
+
   useEffect(() => {
     onInteractChange?.(interacting)
     if (interacting) captureRef.current?.focus()
@@ -520,6 +584,29 @@ export default function LogTail({ agentId, agentName, maxHeightClass, focused, f
           Log output
           {uploading && <span className="ml-2 normal-case tracking-normal text-accent-blue">uploading image…</span>}
         </p>
+        <div className="inline-flex items-center gap-1">
+          {(['live', 'history'] as const).map((key) => {
+            const active = key === viewMode
+            const label = key === 'live' ? 'Live' : 'History'
+            return (
+              <button
+                key={key}
+                type="button"
+                onClick={() => {
+                  if (key === 'history') setHistoryError(false)
+                  if (key === 'live' && interacting) setInteracting(false)
+                  setViewMode(key)
+                }}
+                aria-pressed={active}
+                className={`inline-flex h-5 cursor-pointer items-center rounded-[5px] px-1.5 text-[11px] font-medium transition active:scale-[0.985] ${active
+                  ? 'bg-accent-blue text-white'
+                  : 'border border-line bg-white text-ink-2 hover:bg-canvas'}`}
+              >
+                {label}
+              </button>
+            )
+          })}
+        </div>
         {onToggleExpand && (
           <div className="ml-auto flex select-none items-center gap-1.5">
             <kbd className="inline-flex items-center gap-1 rounded-[5px] border border-line bg-canvas px-1.5 py-0.5 font-mono text-[11px] leading-none text-ink">
@@ -568,6 +655,7 @@ export default function LogTail({ agentId, agentName, maxHeightClass, focused, f
       ) : !windowPresent ? (
         <p className="text-[12px] italic text-muted-2">Window not present.</p>
       ) : (
+        <>
         <div
           ref={captureRef}
           tabIndex={interacting ? 0 : -1}
@@ -581,7 +669,7 @@ export default function LogTail({ agentId, agentName, maxHeightClass, focused, f
             ? 'overflow-hidden rounded-[10px] border-accent-blue outline-none ring-[3px] ring-accent-blue'
             : interacting
               ? 'overflow-hidden rounded-[10px] border-[#e0901a] outline-none ring-[3px] ring-[#e0901a]'
-              : 'rounded-[10px] border-line outline-none'}`}
+              : 'rounded-[10px] border-line outline-none'}${viewMode === 'history' ? ' hidden' : ''}`}
         >
           {interacting && (
             <div className="flex items-center gap-2 bg-[#e0901a] px-3 py-1 text-[10px] font-bold uppercase tracking-[0.06em] text-white">
@@ -598,6 +686,7 @@ export default function LogTail({ agentId, agentName, maxHeightClass, focused, f
             ref={xtermContainerRef}
             className={`overflow-hidden bg-[#0b0b0d] ${interacting ? '' : 'rounded-[10px]'} ${fillContainer ? 'flex-1 min-h-0' : (maxHeightClass ?? 'h-48')} ${!interacting && onInteractChange !== undefined ? 'cursor-text' : ''}`}
             onClick={!interacting && onInteractChange !== undefined ? () => { setInteracting(true); captureRef.current?.focus() } : undefined}
+            onDoubleClick={onToggleExpand}
           />
           {interacting && escHint && (
             <div
@@ -610,8 +699,29 @@ export default function LogTail({ agentId, agentName, maxHeightClass, focused, f
             </div>
           )}
         </div>
+        {viewMode === 'history' && (
+          historyLoading ? (
+            <p className="text-[12px] italic text-muted-2">Loading…</p>
+          ) : historyError ? (
+            <p className="text-[12px] italic text-muted-2">Could not load history.</p>
+          ) : historyLog !== null && historyLog.length === 0 ? (
+            <p className="text-[12px] italic text-muted-2">No persisted history yet.</p>
+          ) : (
+            <div className={`bg-[#0b0b0d] rounded-[10px] border border-line overflow-y-auto ${fillContainer ? 'flex-1 min-h-0' : (maxHeightClass ?? 'h-48')}`}>
+              {historyLog?.map((entry) => (
+                <Fragment key={entry.id}>
+                  <div className="px-2 pt-1 text-[10px] uppercase tracking-wide text-muted-2">
+                    {formatChunkTs(entry.ts)}
+                  </div>
+                  <pre className="whitespace-pre-wrap break-all font-mono text-[11px] text-[#e7e8ea] px-2 py-1">{entry.chunk}</pre>
+                </Fragment>
+              ))}
+            </div>
+          )
+        )}
+        </>
       )}
-      {windowPresent && (
+      {windowPresent && viewMode === 'live' && (
         <form
           onSubmit={(e) => { e.preventDefault(); handleSendSubmit() }}
           className="mt-1.5 flex items-end gap-1.5"

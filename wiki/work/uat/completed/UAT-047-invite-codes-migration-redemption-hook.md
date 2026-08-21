@@ -1,5 +1,6 @@
 ---
 id: UAT-047
+aliases: [UAT-047]
 title: "UAT: Invite codes Postgres migration + better-auth redemption hook (replace email allowlist gate)"
 status: passed
 task: TASK-047

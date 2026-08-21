@@ -1,5 +1,6 @@
 ---
 id: UAT-098
+aliases: [UAT-098]
 title: "UAT: Vite dev proxy WebSocket support"
 status: passed
 task: TASK-098

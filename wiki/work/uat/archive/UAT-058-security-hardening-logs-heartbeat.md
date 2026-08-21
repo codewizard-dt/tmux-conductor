@@ -1,5 +1,6 @@
 ---
 id: UAT-058
+aliases: [UAT-058]
 title: "UAT: Security checklist pass + structured logs + device last-seen heartbeat"
 status: passed
 task: TASK-058

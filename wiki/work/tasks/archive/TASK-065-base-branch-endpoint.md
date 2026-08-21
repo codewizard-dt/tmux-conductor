@@ -1,5 +1,6 @@
 ---
 id: TASK-065
+aliases: [TASK-065]
 title: "Base-branch endpoint — GET /api/agents/:agent/base-branch auto-detects default branch"
 status: done
 created: 2026-06-14

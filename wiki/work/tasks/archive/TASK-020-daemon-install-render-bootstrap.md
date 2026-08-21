@@ -1,5 +1,6 @@
 ---
 id: TASK-020
+aliases: [TASK-020]
 title: "Sync bin/conductor daemon install to the rendered-template + bootout/bootstrap flow"
 status: done
 created: 2026-06-12

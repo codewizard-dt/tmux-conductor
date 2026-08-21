@@ -1,5 +1,6 @@
 ---
 id: UAT-069
+aliases: [UAT-069]
 title: "UAT: Checkpoints list endpoint — GET /api/agents/:id/checkpoints"
 status: passed
 task: TASK-069

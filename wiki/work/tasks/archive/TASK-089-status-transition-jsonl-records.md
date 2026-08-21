@@ -1,5 +1,6 @@
 ---
 id: TASK-089
+aliases: [TASK-089]
 title: "add status-transition JSONL records"
 status: done
 created: 2026-07-04

@@ -1,5 +1,6 @@
 ---
 id: TASK-014
+aliases: [TASK-014]
 title: "Rewrite add-task.sh to insert directly via sqlite3"
 status: done
 created: 2026-06-12

@@ -1,5 +1,6 @@
 ---
 id: UAT-105
+aliases: [UAT-105]
 title: "UAT: focused input echo-latency regression checks"
 status: passed
 task: TASK-105

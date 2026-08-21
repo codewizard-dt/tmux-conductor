@@ -1,5 +1,6 @@
 ---
 id: TASK-047
+aliases: [TASK-047]
 title: "Invite codes Postgres migration + better-auth redemption hook (replace email allowlist gate)"
 status: done
 created: 2026-06-14

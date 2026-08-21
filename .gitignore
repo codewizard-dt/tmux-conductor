@@ -219,6 +219,9 @@ logs/state/
 *.bak
 tmp/
 data/
+# Legacy nested agent worktrees (pre-sibling-directory strategy, ROADMAP-007).
+# New worktrees are created as a sibling of the repo root, outside this tree.
+/worktrees/
 
 .devcontainer
 devcontainer-compose.yml

@@ -1,5 +1,6 @@
 ---
 id: UAT-014
+aliases: [UAT-014]
 title: "UAT: Rewrite add-task.sh to insert directly via sqlite3"
 status: passed
 task: TASK-014

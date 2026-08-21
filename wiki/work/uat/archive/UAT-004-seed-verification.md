@@ -1,5 +1,6 @@
 ---
 id: UAT-004
+aliases: [UAT-004]
 title: "UAT: Phase 1 foundation — SQLite startup, seed import, and idempotency"
 status: passed
 task: TASK-004

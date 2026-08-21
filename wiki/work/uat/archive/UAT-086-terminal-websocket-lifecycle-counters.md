@@ -1,5 +1,6 @@
 ---
 id: UAT-086
+aliases: [UAT-086]
 title: "UAT: add terminal WebSocket lifecycle counters"
 status: passed
 task: TASK-086

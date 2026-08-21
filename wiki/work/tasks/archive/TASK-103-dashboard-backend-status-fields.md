@@ -1,5 +1,6 @@
 ---
 id: TASK-103
+aliases: [TASK-103]
 title: "dashboard status display uses backend status fields"
 status: done
 created: 2026-07-04

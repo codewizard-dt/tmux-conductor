@@ -1,5 +1,6 @@
 ---
 id: TASK-018
+aliases: [TASK-018]
 title: "Group AgentList by project and react to the new ID-based task SSE events"
 status: done
 created: 2026-06-12

@@ -1,5 +1,6 @@
 ---
 id: ROADMAP-011
+aliases: [ROADMAP-011]
 title: Multi-user team accounts — organisations, memberships, and RBAC
 status: abandoned
 created: 2026-06-13

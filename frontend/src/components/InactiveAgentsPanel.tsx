@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { API_BASE as API_URL } from '../lib/api';
 import { useAgents } from '../lib/useAgents';
-import { deriveStatus, ProjectBadge, type Agent, type AgentStatus } from './AgentList';
+import { AgentDetailModal, deriveStatus, ProjectBadge, type Agent, type AgentStatus } from './AgentList';
+import ConfirmDialog from './ConfirmDialog';
 
 const INACTIVE_STATUSES: AgentStatus[] = ['no-window', 'exited', 'error', 'unknown'];
 
@@ -13,9 +14,22 @@ export default function InactiveAgentsPanel() {
   const [collapsed, setCollapsed] = useState(true);
   const [rowBusy, setRowBusy] = useState<number | null>(null);
   const [rowError, setRowError] = useState<string | null>(null);
+  const [pendingRemove, setPendingRemove] = useState<Agent | null>(null);
+  const [expandedId, setExpandedId] = useState<number | null>(null);
   const { agents } = useAgents();
 
   const inactiveAgents = agents.filter((a) => INACTIVE_STATUSES.includes(deriveStatus(a)));
+  const expandedAgent = expandedId !== null ? inactiveAgents.find((a) => a.id === expandedId) ?? null : null;
+
+  function navigateExpanded(dir: 'prev' | 'next') {
+    if (expandedId === null) return;
+    const idx = inactiveAgents.findIndex((a) => a.id === expandedId);
+    if (idx === -1) return;
+    const nextIdx = dir === 'next' ? idx + 1 : idx - 1;
+    const nextAgent = inactiveAgents[nextIdx];
+    if (!nextAgent) return;
+    setExpandedId(nextAgent.id);
+  }
 
   async function handleWake(a: Agent) {
     setRowBusy(a.id);
@@ -40,11 +54,8 @@ export default function InactiveAgentsPanel() {
     }
   }
 
-  async function handleRemoveInactive(a: Agent) {
-    const confirmed = window.confirm(
-      `Remove agent "${a.name}"? This deletes it from conductor.conf and drops its queued tasks.`,
-    );
-    if (!confirmed) return;
+  async function doRemoveInactive(a: Agent) {
+    setPendingRemove(null);
     setRowBusy(a.id);
     setRowError(null);
     try {
@@ -87,7 +98,11 @@ export default function InactiveAgentsPanel() {
                   const status = deriveStatus(a);
                   const busy = rowBusy === a.id;
                   return (
-                    <li key={a.id} className="flex items-center gap-3 rounded-[8px] border border-line bg-canvas px-3 py-2">
+                    <li
+                      key={a.id}
+                      className="flex cursor-pointer items-center gap-3 rounded-[8px] border border-line bg-canvas px-3 py-2"
+                      onClick={() => { setExpandedId(a.id); }}
+                    >
                       <span className="min-w-0 flex-1">
                         <span className="mb-0.5 flex items-center gap-1.5">
                           <ProjectBadge name={a.projectName ?? null} />
@@ -100,7 +115,7 @@ export default function InactiveAgentsPanel() {
                       </span>
                       <button
                         type="button"
-                        onClick={() => { void handleWake(a); }}
+                        onClick={(e) => { e.stopPropagation(); void handleWake(a); }}
                         disabled={busy}
                         className="inline-flex h-7 flex-shrink-0 cursor-pointer items-center rounded-[7px] bg-accent-blue px-3 text-[12px] font-medium text-white transition hover:opacity-85 active:scale-[0.985] disabled:pointer-events-none disabled:opacity-40"
                       >
@@ -108,7 +123,7 @@ export default function InactiveAgentsPanel() {
                       </button>
                       <button
                         type="button"
-                        onClick={() => { void handleRemoveInactive(a); }}
+                        onClick={(e) => { e.stopPropagation(); setPendingRemove(a); }}
                         disabled={busy}
                         className="inline-flex h-7 flex-shrink-0 cursor-pointer items-center rounded-[7px] border border-line bg-white px-3 text-[12px] font-medium text-accent-red transition hover:border-accent-red/30 hover:bg-accent-red/5 active:scale-[0.985] disabled:pointer-events-none disabled:opacity-40"
                       >
@@ -121,6 +136,31 @@ export default function InactiveAgentsPanel() {
               {rowError && <p className="mt-1.5 text-[12px] text-accent-red">{rowError}</p>}
             </>
           )}
+        </div>
+      )}
+      <ConfirmDialog
+        open={pendingRemove !== null}
+        message={pendingRemove ? `Remove agent "${pendingRemove.name}"? This deletes it from conductor.conf and drops its queued tasks.` : ''}
+        confirmLabel="Remove"
+        onConfirm={() => { if (pendingRemove) void doRemoveInactive(pendingRemove); }}
+        onCancel={() => { setPendingRemove(null); }}
+      />
+      {expandedAgent && (
+        // AgentDetailModal renders via createPortal to document.body, so its DOM
+        // nodes sit outside this panel — but React's synthetic events still bubble
+        // through the *component* tree, not the DOM tree. Without this stopPropagation
+        // wrapper, clicks inside the modal would bubble up to the panel's own
+        // onClick and toggle the "Inactive Agents" collapse state.
+        <div onClick={(e) => { e.stopPropagation(); }}>
+          <AgentDetailModal
+            agent={expandedAgent}
+            project={expandedAgent.projectName ?? null}
+            projectId={expandedAgent.projectId}
+            status={deriveStatus(expandedAgent)}
+            onClose={() => { setExpandedId(null); }}
+            agentCount={inactiveAgents.length}
+            onNavigate={navigateExpanded}
+          />
         </div>
       )}
     </div>

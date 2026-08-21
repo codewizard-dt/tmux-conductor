@@ -33,7 +33,7 @@ function cleanup(dir: string): void {
   fs.rmSync(dir, { recursive: true, force: true });
 }
 
-test('isGitRepo returns true for a git worktree and false for a non-worktree directory', () => {
+void test('isGitRepo returns true for a git worktree and false for a non-worktree directory', () => {
   // Note: any dir under ./tmp is inside the tmux-conductor repo's work tree, so
   // the negative case uses the fixture's .git dir — inside a git dir, but
   // deterministically NOT inside a work tree (rev-parse prints 'false').
@@ -46,7 +46,7 @@ test('isGitRepo returns true for a git worktree and false for a non-worktree dir
   }
 });
 
-test('detectBaseBranch prefers origin/HEAD when it resolves to a local branch', () => {
+void test('detectBaseBranch prefers origin/HEAD when it resolves to a local branch', () => {
   // Default branch is a non-common name so only origin/HEAD can produce it.
   const repo = makeRepo('originhead', 'trunk');
   try {
@@ -58,7 +58,7 @@ test('detectBaseBranch prefers origin/HEAD when it resolves to a local branch', 
   }
 });
 
-test('detectBaseBranch skips origin/HEAD pointing at a branch that does not exist locally', () => {
+void test('detectBaseBranch skips origin/HEAD pointing at a branch that does not exist locally', () => {
   const repo = makeRepo('ghosthead', 'master');
   try {
     git(repo, 'symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/ghost');
@@ -68,7 +68,7 @@ test('detectBaseBranch skips origin/HEAD pointing at a branch that does not exis
   }
 });
 
-test('detectBaseBranch prefers main over master when both exist', () => {
+void test('detectBaseBranch prefers main over master when both exist', () => {
   const repo = makeRepo('mainfirst', 'master');
   try {
     git(repo, 'branch', 'main');
@@ -78,7 +78,7 @@ test('detectBaseBranch prefers main over master when both exist', () => {
   }
 });
 
-test('detectBaseBranch falls back to master when main is absent', () => {
+void test('detectBaseBranch falls back to master when main is absent', () => {
   const repo = makeRepo('master', 'master');
   try {
     assert.equal(detectBaseBranch(repo), 'master');
@@ -87,7 +87,7 @@ test('detectBaseBranch falls back to master when main is absent', () => {
   }
 });
 
-test('detectBaseBranch falls back to develop when main and master are absent', () => {
+void test('detectBaseBranch falls back to develop when main and master are absent', () => {
   const repo = makeRepo('develop', 'develop');
   try {
     assert.equal(detectBaseBranch(repo), 'develop');
@@ -96,7 +96,7 @@ test('detectBaseBranch falls back to develop when main and master are absent', (
   }
 });
 
-test("detectBaseBranch returns 'main' when nothing resolves", () => {
+void test("detectBaseBranch returns 'main' when nothing resolves", () => {
   // Only an uncommon local branch, no origin/HEAD.
   const repo = makeRepo('fallback', 'trunk');
   try {
@@ -106,19 +106,21 @@ test("detectBaseBranch returns 'main' when nothing resolves", () => {
   }
 });
 
-test('getGitRoot returns the work tree top-level for a directory inside a git repo', () => {
+void test('getGitRoot returns the work tree top-level for a directory inside a git repo', () => {
   const repo = makeRepo('gitroot', 'main');
   try {
     // fs.mkdtempSync + git init can leave a resolved-symlink mismatch on macOS
     // (/tmp vs /private/tmp equivalents don't apply here since fixtures live
     // under the repo's own ./tmp, but realpath both sides defensively).
-    assert.equal(fs.realpathSync(getGitRoot(repo)!), fs.realpathSync(repo));
+    const root = getGitRoot(repo);
+    assert.ok(root);
+    assert.equal(fs.realpathSync(root), fs.realpathSync(repo));
   } finally {
     cleanup(repo);
   }
 });
 
-test('getGitRoot returns null for a directory that is not inside a git work tree', () => {
+void test('getGitRoot returns null for a directory that is not inside a git work tree', () => {
   const repo = makeRepo('gitroot-neg', 'main');
   try {
     assert.equal(getGitRoot(path.join(repo, '.git')), null);
@@ -127,7 +129,7 @@ test('getGitRoot returns null for a directory that is not inside a git work tree
   }
 });
 
-test('createWorktree adds a new worktree and branch off the detected base branch', () => {
+void test('createWorktree adds a new worktree and branch off the detected base branch', () => {
   const repo = makeRepo('worktree', 'main');
   const worktreePath = path.join(tmpDir, `uat061-wt-${Math.random().toString(36).slice(2, 10)}`);
   try {
@@ -150,7 +152,7 @@ test('createWorktree adds a new worktree and branch off the detected base branch
   }
 });
 
-test('createWorktree returns false when the branch already exists', () => {
+void test('createWorktree returns false when the branch already exists', () => {
   const repo = makeRepo('worktree-fail', 'main');
   const worktreePath = path.join(tmpDir, `uat061-wt-fail-${Math.random().toString(36).slice(2, 10)}`);
   try {
@@ -164,7 +166,7 @@ test('createWorktree returns false when the branch already exists', () => {
   }
 });
 
-test('removeWorktree removes a registered worktree and its directory', () => {
+void test('removeWorktree removes a registered worktree and its directory', () => {
   const repo = makeRepo('removewt', 'main');
   const worktreePath = path.join(tmpDir, `uat063-rm-${Math.random().toString(36).slice(2, 10)}`);
   try {
@@ -181,7 +183,7 @@ test('removeWorktree removes a registered worktree and its directory', () => {
   }
 });
 
-test('removeWorktree returns false (without throwing) and leaves the directory when the worktree is locked', () => {
+void test('removeWorktree returns false (without throwing) and leaves the directory when the worktree is locked', () => {
   // TASK-063: the handler uses a single `--force`, which git does not treat as
   // sufficient to override a lock (it requires `-f -f`). This is the realistic
   // "git error during cleanup" case the DELETE /agents/:id route must survive.
@@ -202,7 +204,7 @@ test('removeWorktree returns false (without throwing) and leaves the directory w
   }
 });
 
-test('deleteBranch deletes an existing, non-checked-out branch', () => {
+void test('deleteBranch deletes an existing, non-checked-out branch', () => {
   const repo = makeRepo('delbranch', 'main');
   try {
     git(repo, 'branch', 'conductor/del-me');
@@ -216,7 +218,7 @@ test('deleteBranch deletes an existing, non-checked-out branch', () => {
   }
 });
 
-test('deleteBranch returns false (without throwing) for a nonexistent branch', () => {
+void test('deleteBranch returns false (without throwing) for a nonexistent branch', () => {
   const repo = makeRepo('delbranch-missing', 'main');
   try {
     const ok = deleteBranch(repo, 'does-not-exist');
@@ -236,7 +238,7 @@ function commitTrackedFile(repo: string, name: string, content: string): void {
   git(repo, '-c', 'user.email=uat@test.local', '-c', 'user.name=UAT', 'commit', '-m', `add ${name}`);
 }
 
-test('stashCheckpoint stashes a dirty worktree and returns the resolved stash SHA', () => {
+void test('stashCheckpoint stashes a dirty worktree and returns the resolved stash SHA', () => {
   const repo = makeRepo('stash-dirty', 'main');
   try {
     commitTrackedFile(repo, 'tracked.txt', 'v1\n');
@@ -255,7 +257,7 @@ test('stashCheckpoint stashes a dirty worktree and returns the resolved stash SH
   }
 });
 
-test('stashCheckpoint returns null for a clean worktree (nothing to stash)', () => {
+void test('stashCheckpoint returns null for a clean worktree (nothing to stash)', () => {
   const repo = makeRepo('stash-clean', 'main');
   try {
     const ref = stashCheckpoint(repo, 1730000000001);
@@ -268,7 +270,7 @@ test('stashCheckpoint returns null for a clean worktree (nothing to stash)', () 
   }
 });
 
-test('stashCheckpoint returns null for a path that is not a git work tree', () => {
+void test('stashCheckpoint returns null for a path that is not a git work tree', () => {
   // The fixture's .git dir is inside a git dir but deterministically NOT a work
   // tree, so `git stash` fails without touching the surrounding conductor repo.
   const repo = makeRepo('stash-nongit', 'main');
@@ -283,7 +285,7 @@ test('stashCheckpoint returns null for a path that is not a git work tree', () =
 // TASK-070: rollback — applyStash re-applies a recorded checkpoint stash into
 // the worktree (the counterpart to stashCheckpoint) and reports git failures.
 
-test('applyStash re-applies a checkpoint stash and restores the stashed changes', () => {
+void test('applyStash re-applies a checkpoint stash and restores the stashed changes', () => {
   const repo = makeRepo('apply-restore', 'main');
   try {
     commitTrackedFile(repo, 'tracked.txt', 'v1\n');
@@ -292,10 +294,11 @@ test('applyStash re-applies a checkpoint stash and restores the stashed changes'
     // stashCheckpoint stashes the dirty change and leaves the worktree clean,
     // mirroring the pre-dispatch checkpoint the rollback endpoint rolls back to.
     const ref = stashCheckpoint(repo, 1730000000010);
-    assert.match(ref ?? '', /^[0-9a-f]{40}$/);
+    assert.ok(ref);
+    assert.match(ref, /^[0-9a-f]{40}$/);
     assert.equal(fs.readFileSync(path.join(repo, 'tracked.txt'), 'utf8'), 'v1\n');
 
-    const res = applyStash(repo, ref!);
+    const res = applyStash(repo, ref);
     assert.equal(res.ok, true, res.detail);
     assert.equal(
       fs.readFileSync(path.join(repo, 'tracked.txt'), 'utf8'),
@@ -307,7 +310,7 @@ test('applyStash re-applies a checkpoint stash and restores the stashed changes'
   }
 });
 
-test('applyStash returns ok:false with a detail message for a nonexistent stash ref', () => {
+void test('applyStash returns ok:false with a detail message for a nonexistent stash ref', () => {
   const repo = makeRepo('apply-miss', 'main');
   try {
     const res = applyStash(repo, 'stash@{99}');

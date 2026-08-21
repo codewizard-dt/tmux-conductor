@@ -1,5 +1,6 @@
 ---
 id: UAT-084
+aliases: [UAT-084]
 title: "UAT: add event-loop delay and utilization metrics"
 status: passed
 task: TASK-084

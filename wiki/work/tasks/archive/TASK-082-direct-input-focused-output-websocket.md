@@ -1,5 +1,6 @@
 ---
 id: TASK-082
+aliases: [TASK-082]
 title: "move direct input and focused output onto WebSocket path"
 status: done
 created: 2026-06-28

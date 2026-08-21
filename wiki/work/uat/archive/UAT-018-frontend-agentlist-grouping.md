@@ -1,5 +1,6 @@
 ---
 id: UAT-018
+aliases: [UAT-018]
 title: "UAT: Group AgentList by project and react to the new ID-based task SSE events"
 status: passed
 task: TASK-018

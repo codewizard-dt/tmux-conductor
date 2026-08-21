@@ -1,5 +1,6 @@
 ---
 id: TASK-031
+aliases: [TASK-031]
 title: "app/api pairing-code creation API + rate-limited /pair/redeem (hashed, single-use, 10-min expiry)"
 status: done
 created: 2026-06-13

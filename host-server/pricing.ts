@@ -13,6 +13,11 @@
 //
 // claude-sonnet-5 uses the introductory rate ($2/$10) in effect through
 // 2026-08-31; standard pricing from 2026-09-01 is $3 in / $15 out.
+//
+// 2026-08-15: added claude-opus-5 (the current Opus model, rates sourced from
+// the claude-api skill reference — $5 in / $25 out). It was missing entirely,
+// which silently priced every claude-opus-5 agent's usage at cost 0 (the
+// unknown-model fallback in usage-store.ts) despite recording real tokens.
 
 export interface ModelPricing {
   inputPerMTok: number;
@@ -24,6 +29,7 @@ export interface ModelPricing {
 export const MODEL_PRICING: Record<string, ModelPricing> = {
   'claude-fable-5':   { inputPerMTok: 10,   outputPerMTok: 50, cacheWritePerMTok: 12.5,  cacheReadPerMTok: 1 },
   'claude-mythos-5':  { inputPerMTok: 10,   outputPerMTok: 50, cacheWritePerMTok: 12.5,  cacheReadPerMTok: 1 },
+  'claude-opus-5':    { inputPerMTok: 5,    outputPerMTok: 25, cacheWritePerMTok: 6.25,  cacheReadPerMTok: 0.5 },
   'claude-opus-4-8':  { inputPerMTok: 5,    outputPerMTok: 25, cacheWritePerMTok: 6.25,  cacheReadPerMTok: 0.5 },
   'claude-opus-4-7':  { inputPerMTok: 5,    outputPerMTok: 25, cacheWritePerMTok: 6.25,  cacheReadPerMTok: 0.5 },
   'claude-opus-4-6':  { inputPerMTok: 5,    outputPerMTok: 25, cacheWritePerMTok: 6.25,  cacheReadPerMTok: 0.5 },

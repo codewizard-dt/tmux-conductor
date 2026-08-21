@@ -1,5 +1,6 @@
 ---
 id: TASK-079
+aliases: [TASK-079]
 title: "frontend live-update performance checks"
 status: done
 created: 2026-06-28

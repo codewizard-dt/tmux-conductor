@@ -1,5 +1,6 @@
 ---
 id: UAT-048
+aliases: [UAT-048]
 title: "UAT: Invite codes Fastify routes — public validate + admin CRUD"
 status: passed
 task: TASK-048

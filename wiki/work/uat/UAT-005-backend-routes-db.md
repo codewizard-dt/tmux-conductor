@@ -1,5 +1,6 @@
 ---
 id: UAT-005
+aliases: [UAT-005]
 title: "UAT: DB-backed agent and bg-process routes with spawnAgentWindow helper"
 status: pending
 task: TASK-005

@@ -1,5 +1,6 @@
 ---
 id: UAT-096
+aliases: [UAT-096]
 title: "UAT: focused transport ownership acceptance criteria"
 status: passed
 task: TASK-096

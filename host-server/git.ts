@@ -4,6 +4,7 @@
 // with a bounded timeout, mirroring the spawnSync style in index.ts.
 
 import { spawnSync } from 'child_process';
+import * as path from 'path';
 
 export const SHELL_SYNC_TIMEOUT_MS = Number(process.env['SHELL_SYNC_TIMEOUT_MS'] ?? '2000');
 
@@ -63,6 +64,18 @@ export function detectBaseBranch(worktreePath: string): string {
     if (refExists(worktreePath, name)) return name;
   }
   return 'main';
+}
+
+/**
+ * Path for a new agent worktree, as a SIBLING of `gitRoot` rather than a
+ * subdirectory nested inside it. A nested `<gitRoot>/worktrees/<id>` reads to
+ * git (and to tools that walk the tree, like Serena) as untracked/embedded-repo
+ * content inside the source repo's own working tree; a sibling directory keeps
+ * the source repo clean. Result:
+ * `<parent-of-gitRoot>/<gitRoot-basename>-worktrees/<agentId>`.
+ */
+export function siblingWorktreePath(gitRoot: string, agentId: number): string {
+  return path.join(path.dirname(gitRoot), `${path.basename(gitRoot)}-worktrees`, String(agentId));
 }
 
 /**
@@ -166,6 +179,6 @@ export function applyStash(gitDir: string, stashRef: string): { ok: boolean; det
   if (res.error) {
     return { ok: false, detail: res.error.message };
   }
-  const detail = `${res.stderr ?? ''}${res.stdout ?? ''}`.trim();
+  const detail = `${res.stderr}${res.stdout}`.trim();
   return { ok: res.status === 0, detail };
 }

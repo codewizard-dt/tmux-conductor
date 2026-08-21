@@ -1,5 +1,6 @@
 ---
 id: UAT-022
+aliases: [UAT-022]
 title: "UAT: Verify install.sh end-to-end into a scratch CONDUCTOR_HOME on macOS"
 status: passed
 task: TASK-022

@@ -1,5 +1,6 @@
 ---
 id: UAT-012
+aliases: [UAT-012]
 title: "UAT: Replace tail polling with SSE push for terminal output"
 status: pending
 task: TASK-012

@@ -1,0 +1,34 @@
+// tsconfig.node.jsonc
+// Use for: Compiling vite.config.ts (and similar Node-context config files)
+// This is ONE of THREE files in the Vite three-file split (root / app / node).
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.node.tsbuildinfo",
+
+    // --- Language ---
+    "target": "ES2023",
+    "lib": ["ES2023"],                        // No DOM — vite.config.ts runs in Node
+
+    // --- Modules ---
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "moduleDetection": "force",
+
+    // --- Emit ---
+    "noEmit": true,
+    "types": ["node"],                        // Node.js globals (process, __dirname, etc.)
+
+    // --- Strict ---
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+
+    "skipLibCheck": true
+  },
+  "include": ["vite.config.ts"]              // Cover ONLY the vite config; nothing else
+}

@@ -1,5 +1,6 @@
 ---
 id: TASK-008
+aliases: [TASK-008]
 title: "Add /api/schedules CRUD and the scheduler tick loop"
 status: done
 created: 2026-06-12

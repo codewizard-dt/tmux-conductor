@@ -1,5 +1,6 @@
 ---
 id: UAT-100
+aliases: [UAT-100]
 title: "UAT: configurable live-update intervals and capture depths"
 status: passed
 task: TASK-100

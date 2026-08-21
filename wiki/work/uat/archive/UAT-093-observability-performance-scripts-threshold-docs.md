@@ -1,5 +1,6 @@
 ---
 id: UAT-093
+aliases: [UAT-093]
 title: "UAT: extend performance scripts and metric threshold docs"
 status: passed
 task: TASK-093

@@ -1,5 +1,6 @@
 ---
 id: TASK-098
+aliases: [TASK-098]
 title: "Vite dev proxy WebSocket support"
 status: done
 created: 2026-07-04

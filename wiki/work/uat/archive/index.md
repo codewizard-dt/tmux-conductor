@@ -5,6 +5,7 @@ Terminal UAT files (`passed`, `skipped`, or `trashed`) moved here by `/wiki-arch
 | ID | Title | Final Status | Archived |
 |----|-------|--------------|----------|
 | [[UAT-004]] | UAT: Phase 1 foundation — SQLite startup, seed import, and idempotency | passed | 2026-06-14 |
+| [[UAT-062]] | UAT: Branch badge — display branch name on agent card in dashboard | passed | 2026-08-15 |
 | [[UAT-009]] | UAT: Create scripts/lib/db.sh — sql wrapper, load_agents, load_bg, pop_task_sql | passed | 2026-06-14 |
 | [[UAT-010]] | UAT: Rewrite monitor.sh pop_task as atomic SQL pop and move_to_backlog as status flip | passed | 2026-06-14 |
 | [[UAT-013]] | UAT: Migrate conductor.sh, spawn.sh, teardown.sh, broadcast.sh to DB-loaded agent lists | passed | 2026-06-14 |
@@ -84,3 +85,13 @@ Terminal UAT files (`passed`, `skipped`, or `trashed`) moved here by `/wiki-arch
 | [[UAT-073]] | UAT: Per-agent usage extraction — parse Claude Code transcript JSONL each poll | passed | 2026-07-06 |
 | [[UAT-107]] | UAT: Append terminal output to agent_terminal_log during SSE pane polling | passed | 2026-07-06 |
 | [[UAT-108]] | UAT: GET /api/agents/:id/log endpoint — retrieve full persisted terminal-log history | passed | 2026-07-06 |
+| [[UAT-063]] | UAT: Worktree teardown — git worktree remove --force on agent delete | passed | 2026-08-15 |
+| [[UAT-075]] | UAT: Accumulate rolling token totals per agent in agent_usage — usage-store + pricing table + snapshot exposure | passed | 2026-08-15 |
+| [[UAT-068]] | UAT: Pre-dispatch checkpoint — git stash push before each task dispatch + record in agent_checkpoints | passed | 2026-08-15 |
+| [[UAT-070]] | UAT: Rollback endpoint — POST /api/agents/:agent/rollback | passed | 2026-08-15 |
+| [[UAT-112]] | UAT: Role presets — presets.json config with a per-role CLAUDE.md fragment | passed | 2026-08-15 |
+| [[UAT-111]] | UAT: Role column — add `role` enum to the agents SQLite table (schema v7) | passed | 2026-08-15 |
+| [[UAT-113]] | UAT: Write role fragment into the agent's worktree CLAUDE.md on spawn | passed | 2026-08-15 |
+| [[UAT-127]] | UAT: Add vitest + React Testing Library test harness to frontend/ | passed | 2026-08-15 |
+| [[UAT-125]] | UAT: Soft-delete task pop — status flip to 'done'/completed_at instead of hard DELETE (schema v8) | passed | 2026-08-15 |
+| [[UAT-131]] | UAT: AgentDetailModal terminal-first redesign | passed | 2026-08-15 |

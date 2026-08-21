@@ -1,5 +1,6 @@
 ---
 id: TASK-017
+aliases: [TASK-017]
 title: "Frontend Schedules UI — ScheduleList + ScheduleForm with live schedule-fired updates"
 status: done
 created: 2026-06-12

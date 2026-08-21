@@ -1,5 +1,6 @@
 ---
 id: TASK-078
+aliases: [TASK-078]
 title: "host-server performance regression tests"
 status: done
 created: 2026-06-28

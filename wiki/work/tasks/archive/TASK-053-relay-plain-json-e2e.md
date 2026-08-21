@@ -1,5 +1,6 @@
 ---
 id: TASK-053
+aliases: [TASK-053]
 title: "Relay validation milestone: plain JSON request/response working end-to-end (browser → app/api → WSS → daemon → host-server)"
 status: done
 created: 2026-06-14

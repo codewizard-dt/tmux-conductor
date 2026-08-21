@@ -1,5 +1,6 @@
 ---
 id: UAT-039
+aliases: [UAT-039]
 title: "UAT: Create NavBar component with NavLink items for Agents and Projects"
 status: passed
 task: TASK-039

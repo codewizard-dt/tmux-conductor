@@ -1,5 +1,6 @@
 ---
 id: TASK-066
+aliases: [TASK-066]
 title: "Diff panel UI — unified diff in AgentDetailModal (colour-coded additions/deletions)"
 status: pending-uat
 created: 2026-06-14

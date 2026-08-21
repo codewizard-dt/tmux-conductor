@@ -1,5 +1,6 @@
 ---
 id: ROADMAP-016
+aliases: [ROADMAP-016]
 title: Observability improvements — event-loop, tmux, WebSocket, and debug traces
 status: done
 created: 2026-07-04

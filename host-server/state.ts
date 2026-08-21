@@ -150,6 +150,71 @@ export function readTmuxWindowInventory(sessionName: string): TmuxWindowInventor
 }
 
 /**
+ * Resize every window in the tmux session to the given cols/rows, and set the
+ * session default so future windows spawn at the same size.
+ *
+ * The headless conductor session is never attached by a real terminal, so
+ * tmux leaves every window at its factory default (80x24) unless something
+ * explicitly sizes it. This applies a browser-probed size globally:
+ *   1. `set-option -g window-size manual` — stop tmux from auto-sizing
+ *      windows to the smallest attached client.
+ *   2. `set-option -g default-size <cols>x<rows>` — size for windows created
+ *      after this call.
+ *   3. `list-windows` to enumerate every current window.
+ *   4. `resize-window` each one — covers agents already spawned before the
+ *      dashboard was ever opened.
+ *
+ * Never throws: if the session doesn't exist yet (dashboard opened before any
+ * agent session exists), this is a soft no-op reported via `ok: false`.
+ */
+export function applyGlobalPaneSize(
+  sessionName: string,
+  cols: number,
+  rows: number,
+): { ok: boolean; resizedWindows: number; error?: string } {
+  const size = `${String(cols)}x${String(rows)}`;
+
+  const setManual = spawnSync('tmux', ['set-option', '-g', 'window-size', 'manual'], {
+    encoding: 'utf8',
+    timeout: TMUX_SYNC_TIMEOUT_MS,
+  });
+  if (setManual.status !== 0) {
+    return { ok: false, resizedWindows: 0, error: 'tmux set-option window-size manual failed (session not up?)' };
+  }
+
+  spawnSync('tmux', ['set-option', '-g', 'default-size', size], {
+    encoding: 'utf8',
+    timeout: TMUX_SYNC_TIMEOUT_MS,
+  });
+
+  const listWindows = spawnSync(
+    'tmux',
+    ['list-windows', '-t', sessionName, '-F', '#{window_name}'],
+    { encoding: 'utf8', timeout: TMUX_SYNC_TIMEOUT_MS },
+  );
+  if (listWindows.status !== 0 || typeof listWindows.stdout !== 'string') {
+    return { ok: false, resizedWindows: 0, error: `tmux list-windows failed for session '${sessionName}'` };
+  }
+
+  const windowNames = listWindows.stdout
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((name) => name !== '');
+
+  let resizedWindows = 0;
+  for (const windowName of windowNames) {
+    const resize = spawnSync(
+      'tmux',
+      ['resize-window', '-t', `${sessionName}:${windowName}`, '-x', String(cols), '-y', String(rows)],
+      { encoding: 'utf8', timeout: TMUX_SYNC_TIMEOUT_MS },
+    );
+    if (resize.status === 0) resizedWindows += 1;
+  }
+
+  return { ok: true, resizedWindows };
+}
+
+/**
  * True when `pattern` (a POSIX ERE, e.g. using [[:space:]]) matches `text`.
  * Matched via `grep -qE` exactly like monitor.sh — JavaScript's RegExp does
  * not understand POSIX character classes.

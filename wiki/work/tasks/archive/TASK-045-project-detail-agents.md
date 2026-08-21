@@ -1,5 +1,6 @@
 ---
 id: TASK-045
+aliases: [TASK-045]
 title: "Show agents scoped to this project with a Spawn Agent button on the detail page"
 status: done
 created: 2026-06-13

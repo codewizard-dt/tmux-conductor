@@ -1,5 +1,6 @@
 ---
 id: UAT-108
+aliases: [UAT-108]
 title: "UAT: GET /api/agents/:id/log endpoint — retrieve full persisted terminal-log history"
 status: passed
 task: TASK-108

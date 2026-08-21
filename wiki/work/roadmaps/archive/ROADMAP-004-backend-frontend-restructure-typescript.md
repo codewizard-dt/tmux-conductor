@@ -1,5 +1,6 @@
 ---
 id: ROADMAP-004
+aliases: [ROADMAP-004]
 title: Backend/Frontend Restructure to TypeScript
 status: done
 created: 2026-06-06

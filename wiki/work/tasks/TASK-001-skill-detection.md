@@ -1,5 +1,6 @@
 ---
 id: TASK-001
+aliases: [TASK-001]
 title: "Skill detection — backend scanner + dashboard surfacing"
 status: in-progress
 created: 2026-06-12

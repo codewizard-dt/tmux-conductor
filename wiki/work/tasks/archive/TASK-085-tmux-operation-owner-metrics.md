@@ -1,5 +1,6 @@
 ---
 id: TASK-085
+aliases: [TASK-085]
 title: "add tmux operation metrics with owner labels"
 status: done
 created: 2026-07-04

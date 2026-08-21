@@ -1,5 +1,6 @@
 ---
 id: TASK-048
+aliases: [TASK-048]
 title: "Invite codes Fastify routes — public validate + admin CRUD (port jarvis Express routes)"
 status: done
 created: 2026-06-14

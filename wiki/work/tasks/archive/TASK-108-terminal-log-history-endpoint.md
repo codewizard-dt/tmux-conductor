@@ -1,5 +1,6 @@
 ---
 id: TASK-108
+aliases: [TASK-108]
 title: "GET /api/agents/:id/log endpoint — retrieve full persisted terminal-log history"
 status: done
 created: 2026-07-06

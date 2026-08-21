@@ -2,7 +2,8 @@ import Database from 'better-sqlite3';
 import * as fs from 'fs';
 import * as path from 'path';
 import { readConductorConf, DEFAULT_CONF_PATH, type ConductorConf } from './config.ts';
-import { getGitRoot, createWorktree } from './git.ts';
+import { getGitRoot, createWorktree, siblingWorktreePath } from './git.ts';
+import { applyRoleFragmentToWorktree } from './rolePresets.ts';
 
 // ─── Row interfaces ───────────────────────────────────────────────────────────
 
@@ -23,6 +24,7 @@ export interface Agent {
   projectName: string | null;
   worktreePath: string | null;
   branch: string | null;
+  role: string;
   createdAt: string;
 }
 
@@ -126,6 +128,7 @@ interface AgentRow {
   project_id: number | null;
   worktree_path?: string | null;
   branch?: string | null;
+  role: string;
   created_at: string;
 }
 
@@ -203,7 +206,7 @@ function mapProject(r: ProjectRow): Project {
 
 function mapAgent(r: AgentRow | AgentWithProjectRow): Agent {
   const projectName = 'project_name' in r ? r.project_name : null;
-  return { id: r.id, name: r.name, workdir: r.workdir, launchCmd: r.launch_cmd, projectId: r.project_id, projectName, worktreePath: r.worktree_path ?? null, branch: r.branch ?? null, createdAt: r.created_at };
+  return { id: r.id, name: r.name, workdir: r.workdir, launchCmd: r.launch_cmd, projectId: r.project_id, projectName, worktreePath: r.worktree_path ?? null, branch: r.branch ?? null, role: r.role, createdAt: r.created_at };
 }
 
 function mapBgProcess(r: BgProcessRow): BgProcess {
@@ -399,6 +402,45 @@ function runMigrations(db: Database.Database): void {
     `);
     db.prepare(`INSERT OR REPLACE INTO meta VALUES ('schema_version', '6')`).run();
   }
+  if (version < 7) {
+    db.exec(`ALTER TABLE agents ADD COLUMN role TEXT NOT NULL DEFAULT 'generic' CHECK (role IN ('generic','frontend','backend','qa','devops','security','architect'))`);
+    db.prepare(`INSERT OR REPLACE INTO meta VALUES ('schema_version', '7')`).run();
+  }
+  if (version < 8) {
+    // TASK-125: task pop moves from a hard DELETE to a soft status flip
+    // (status='done' + completed_at set) so completed tasks remain queryable
+    // for a history view instead of vanishing on dispatch. SQLite cannot
+    // ALTER a CHECK constraint in place, so widening tasks.status's allowed
+    // values to include 'done' requires the same table-rebuild pattern used
+    // for the v2 agents migration above: create the new-shape table, copy
+    // every row across explicitly (never SELECT *, so column order/defaults
+    // can't silently mismatch), drop the old table, rename, recreate the index.
+    db.pragma('foreign_keys = OFF');
+    db.transaction(() => {
+      db.exec(`
+        CREATE TABLE tasks_v8 (
+          id INTEGER PRIMARY KEY,
+          command TEXT NOT NULL,
+          agent_id INTEGER REFERENCES agents(id) ON DELETE CASCADE,
+          project_id INTEGER REFERENCES projects(id) ON DELETE CASCADE,
+          position REAL NOT NULL,
+          status TEXT NOT NULL DEFAULT 'queued' CHECK (status IN ('queued','backlog','done')),
+          source TEXT NOT NULL DEFAULT 'manual' CHECK (source IN ('manual','schedule')),
+          schedule_id INTEGER REFERENCES schedules(id) ON DELETE SET NULL,
+          created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+          completed_at TEXT,
+          CHECK (agent_id IS NULL OR project_id IS NULL)
+        );
+        INSERT INTO tasks_v8 (id, command, agent_id, project_id, position, status, source, schedule_id, created_at)
+          SELECT id, command, agent_id, project_id, position, status, source, schedule_id, created_at FROM tasks;
+        DROP TABLE tasks;
+        ALTER TABLE tasks_v8 RENAME TO tasks;
+        CREATE INDEX IF NOT EXISTS idx_tasks_pick ON tasks(status, position);
+      `);
+    })();
+    db.pragma('foreign_keys = ON');
+    db.prepare(`INSERT OR REPLACE INTO meta VALUES ('schema_version', '8')`).run();
+  }
 }
 
 function seedFromLegacy(db: Database.Database): void {
@@ -508,7 +550,7 @@ export function getAgentById(db: Database.Database, id: number): Agent | undefin
   return row ? mapAgent(row) : undefined;
 }
 
-export function createAgent(db: Database.Database, data: { name: string; workdir: string; launchCmd: string; projectId?: number }): Agent {
+export function createAgent(db: Database.Database, data: { name: string; workdir: string; launchCmd: string; projectId?: number; role?: string; useWorktree?: boolean }): Agent {
   // Guard against two agents resolving to the same tmux window name. The DB's
   // per-project name uniqueness doesn't catch cross-scope collisions on the
   // computed `${project}-${name}` window name, and a duplicate window name is
@@ -522,29 +564,78 @@ export function createAgent(db: Database.Database, data: { name: string; workdir
     throw new Error(`an agent with tmux window name '${newWindowName}' already exists`);
   }
   const row = db.prepare(
-    `INSERT INTO agents (name, workdir, launch_cmd, project_id) VALUES (?, ?, ?, ?) RETURNING id`
-  ).get(data.name, data.workdir, data.launchCmd, data.projectId ?? null) as { id: number };
+    `INSERT INTO agents (name, workdir, launch_cmd, project_id, role) VALUES (?, ?, ?, ?, ?) RETURNING id`
+  ).get(data.name, data.workdir, data.launchCmd, data.projectId ?? null, data.role ?? 'generic') as { id: number };
 
-  // TASK-061 step 2: detect whether workdir sits inside a git repo. `gitRoot`
-  // is `null` when it doesn't (or git is unavailable/times out) — in that
-  // case we proceed without a worktree, same as today.
-  // TASK-061 step 3: when `gitRoot` is non-null, create a worktree + branch
-  // for this agent and persist them. Worktree creation is best-effort: a
-  // failure is logged as a warning and the columns are left NULL, but it
-  // never aborts agent creation.
-  const gitRoot = getGitRoot(data.workdir);
-  if (gitRoot) {
-    const worktreePath = path.join(gitRoot, 'worktrees', String(row.id));
-    const branch = `conductor/${row.id}`;
-    const created = createWorktree(gitRoot, worktreePath, branch);
-    if (created) {
-      db.prepare(`UPDATE agents SET worktree_path = ?, branch = ? WHERE id = ?`).run(worktreePath, branch, row.id);
-    } else {
-      console.warn(`[conductor] createAgent: failed to create worktree at ${worktreePath} for branch ${branch} (agent ${row.id}); continuing without a worktree`);
+  // ROADMAP-007: worktree creation is opt-in only (data.useWorktree), never
+  // automatic — it used to run for every agent whose workdir sat inside a
+  // git repo, which silently created a worktree the caller never asked for.
+  // `gitRoot` is `null` when workdir isn't a git repo (or git is
+  // unavailable/times out); in that case we proceed without a worktree.
+  // Worktree creation itself is still best-effort: a failure is logged as a
+  // warning and the columns are left NULL, but it never aborts agent creation.
+  if (data.useWorktree) {
+    const gitRoot = getGitRoot(data.workdir);
+    if (gitRoot) {
+      const worktreePath = siblingWorktreePath(gitRoot, row.id);
+      const branch = `conductor/${String(row.id)}`;
+      const created = createWorktree(gitRoot, worktreePath, branch);
+      if (created) {
+        db.prepare(`UPDATE agents SET worktree_path = ?, branch = ? WHERE id = ?`).run(worktreePath, branch, row.id);
+        applyRoleFragmentToWorktree(worktreePath, data.role ?? 'generic');
+      } else {
+        console.warn(`[conductor] createAgent: failed to create worktree at ${worktreePath} for branch ${branch} (agent ${String(row.id)}); continuing without a worktree`);
+      }
     }
   }
 
   return findAgentById(db, row.id);
+}
+
+/**
+ * Opt-in worktree creation for an EXISTING agent (the AgentDetailModal "Create
+ * worktree" action) — the retroactive counterpart to createAgent's
+ * `useWorktree` flag. Throws a plain `Error` with a caller-facing message on
+ * any precondition failure so the route can map it to the right HTTP status;
+ * this is a deliberate user-initiated action, not a best-effort side effect,
+ * so (unlike createAgent) failures are not swallowed.
+ */
+export function addWorktreeToAgent(db: Database.Database, agentId: number): Agent {
+  const agent = getAgentById(db, agentId);
+  if (!agent) {
+    throw new Error(`agent ${String(agentId)} not found`);
+  }
+  if (agent.worktreePath) {
+    throw new Error(`agent ${String(agentId)} already has a worktree`);
+  }
+  const gitRoot = getGitRoot(agent.workdir);
+  if (!gitRoot) {
+    throw new Error(`agent ${String(agentId)} workdir is not inside a git repository`);
+  }
+  const worktreePath = siblingWorktreePath(gitRoot, agentId);
+  const branch = `conductor/${String(agentId)}`;
+  if (!createWorktree(gitRoot, worktreePath, branch)) {
+    throw new Error(`failed to create git worktree at ${worktreePath}`);
+  }
+  db.prepare(`UPDATE agents SET worktree_path = ?, branch = ? WHERE id = ?`).run(worktreePath, branch, agentId);
+  applyRoleFragmentToWorktree(worktreePath, agent.role);
+  return findAgentById(db, agentId);
+}
+
+
+/**
+ * Lazily heals a stale worktree reference: if the worktree directory behind
+ * an agent's `worktree_path`/`branch` columns was removed outside the app's
+ * own delete-agent flow (e.g. the user ran `git worktree remove` by hand
+ * instead of going through the dashboard, which runs `git worktree remove
+ * --force` itself), the DB row still points at a directory that no longer
+ * exists. Callers detect that on read (via `fs.existsSync` at serialization
+ * time) and call this once to clear the columns so subsequent reads don't
+ * need to re-check. Never invoked by a background sweep — "live check on
+ * read" only.
+ */
+export function clearAgentWorktree(db: Database.Database, agentId: number): void {
+  db.prepare(`UPDATE agents SET worktree_path = NULL, branch = NULL WHERE id = ?`).run(agentId);
 }
 
 export function deleteAgent(db: Database.Database, id: number): void {
@@ -665,8 +756,13 @@ export function jumpTaskToHead(db: Database.Database, id: number): void {
 }
 
 export function popTask(db: Database.Database, agentName: string): { id: number; command: string; kind: 'scoped' | 'project' | 'global' } | null {
+  // TASK-125: soft flip instead of DELETE — the popped row's status becomes
+  // 'done' with completed_at set, so it remains queryable for task history
+  // instead of vanishing. The candidate-selection subquery is unchanged: it
+  // still only matches status='queued' rows, so a popped row can never be
+  // picked again once its status flips.
   const row = db.prepare(`
-    DELETE FROM tasks WHERE id = (
+    UPDATE tasks SET status='done', completed_at=strftime('%Y-%m-%dT%H:%M:%SZ','now') WHERE id = (
       SELECT t.id FROM tasks t
       WHERE t.status = 'queued' AND (
            (t.agent_id IS NOT NULL AND t.agent_id = (SELECT id FROM agents WHERE name=?))

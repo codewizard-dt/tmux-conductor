@@ -1,5 +1,6 @@
 ---
 id: TASK-067
+aliases: [TASK-067]
 title: "agent_checkpoints table — SQLite schema migration (agent_id, ts, stash_ref)"
 status: done
 created: 2026-06-14

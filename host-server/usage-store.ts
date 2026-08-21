@@ -84,7 +84,8 @@ export function recordUsageDeltas(
 
     let lastTouched: string | null = null;
     for (const sessionKey of touched) {
-      const totals = sessions.get(sessionKey)!;
+      const totals = sessions.get(sessionKey);
+      if (!totals) continue;
       upsertAgentUsage(db, {
         agentId: agent.id,
         sessionStart: sessionKey,

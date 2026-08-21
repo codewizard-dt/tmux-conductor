@@ -206,7 +206,10 @@ cd host-server && npm run db:migrate && cd ..
 # 4. Install Claude Code hooks (for Claude agents)
 ./install-hooks.sh
 
-# 5. Start the conductor session (launches agents + bg processes from SQLite)
+# 5. Point git at the tracked pre-commit hook (runs lint + typecheck before each commit)
+make hooks-install
+
+# 6. Start the conductor session (launches agents + bg processes from SQLite)
 ./scripts/conductor.sh
 ```
 

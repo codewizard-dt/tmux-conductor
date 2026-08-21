@@ -1,5 +1,6 @@
 ---
 id: ROADMAP-014
+aliases: [ROADMAP-014]
 title: Dashboard performance — instrumentation, capture optimization, WebSocket terminal
 status: done
 created: 2026-06-28

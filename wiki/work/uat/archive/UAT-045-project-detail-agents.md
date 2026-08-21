@@ -1,5 +1,6 @@
 ---
 id: UAT-045
+aliases: [UAT-045]
 title: "UAT: Show agents scoped to this project with a Spawn Agent button on the detail page"
 status: passed
 task: TASK-045

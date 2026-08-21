@@ -35,7 +35,7 @@ BACKEND_PID=""
 
 start_backend() {
   echo "[backend] Starting..."
-  cd "$REPO/backend"
+  cd "$REPO/host-server"
   CONDUCTOR_DB="$CONDUCTOR_DB" node --import tsx/esm index.ts &>"$VERIFY_DIR/backend.log" &
   BACKEND_PID=$!
   # Wait up to 15s for the backend to be ready

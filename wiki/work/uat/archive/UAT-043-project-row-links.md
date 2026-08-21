@@ -1,5 +1,6 @@
 ---
 id: UAT-043
+aliases: [UAT-043]
 title: "UAT: Make each project row in ProjectList a clickable link to /projects/:id"
 status: passed
 task: TASK-043

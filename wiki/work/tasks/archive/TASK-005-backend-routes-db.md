@@ -1,5 +1,6 @@
 ---
 id: TASK-005
+aliases: [TASK-005]
 title: "Rewrite agent and bg-process routes to be DB-backed with spawnAgentWindow helper"
 status: done
 created: 2026-06-12

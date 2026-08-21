@@ -1,5 +1,6 @@
 ---
 id: TASK-039
+aliases: [TASK-039]
 title: "Create NavBar component with NavLink items for Agents and Projects"
 status: done
 created: 2026-06-13

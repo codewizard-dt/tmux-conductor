@@ -24,7 +24,7 @@ function writeTempConf(name: string, contents: string): string {
 // this pattern) is caught: an omitted variable name there makes bash's
 // `declare -p` never emit it, so parseDeclare returns null and the value
 // silently falls back to the default regardless of what the conf sets.
-test('TERMINAL_LOG_MAX_ROWS_PER_AGENT defaults to 500 when absent from conductor.conf', () => {
+void test('TERMINAL_LOG_MAX_ROWS_PER_AGENT defaults to 500 when absent from conductor.conf', () => {
   const confPath = writeTempConf(
     'config-test-terminal-log-default.conf',
     'SESSION_NAME="task107-default"\n',
@@ -34,7 +34,7 @@ test('TERMINAL_LOG_MAX_ROWS_PER_AGENT defaults to 500 when absent from conductor
   assert.equal(conf.terminalLogMaxRowsPerAgent, 500);
 });
 
-test('TERMINAL_LOG_MAX_ROWS_PER_AGENT honors an explicit positive value from conductor.conf', () => {
+void test('TERMINAL_LOG_MAX_ROWS_PER_AGENT honors an explicit positive value from conductor.conf', () => {
   const confPath = writeTempConf(
     'config-test-terminal-log-custom.conf',
     'SESSION_NAME="task107-custom"\nTERMINAL_LOG_MAX_ROWS_PER_AGENT=42\n',
@@ -44,7 +44,7 @@ test('TERMINAL_LOG_MAX_ROWS_PER_AGENT honors an explicit positive value from con
   assert.equal(conf.terminalLogMaxRowsPerAgent, 42);
 });
 
-test('TERMINAL_LOG_MAX_ROWS_PER_AGENT falls back to the default for a non-positive value', () => {
+void test('TERMINAL_LOG_MAX_ROWS_PER_AGENT falls back to the default for a non-positive value', () => {
   const confPath = writeTempConf(
     'config-test-terminal-log-invalid.conf',
     'SESSION_NAME="task107-invalid"\nTERMINAL_LOG_MAX_ROWS_PER_AGENT=0\n',
@@ -52,4 +52,41 @@ test('TERMINAL_LOG_MAX_ROWS_PER_AGENT falls back to the default for a non-positi
   clearConfCache();
   const conf = readConductorConf(confPath);
   assert.equal(conf.terminalLogMaxRowsPerAgent, 500);
+});
+
+// TASK-119: METRICS_SNAPSHOT_INTERVAL_MS follows the identical three-part
+// pattern (declare -p list, parsePositiveIntSetting call, ConductorConf
+// interface + cache field) — same regression this file already guards
+// against for TERMINAL_LOG_MAX_ROWS_PER_AGENT: an omitted variable name in
+// the declare -p list silently falls back to the default even when the conf
+// sets it, so these tests exercise readConductorConf end-to-end rather than
+// inspecting source.
+void test('METRICS_SNAPSHOT_INTERVAL_MS defaults to 60000 when absent from conductor.conf', () => {
+  const confPath = writeTempConf(
+    'config-test-metrics-snapshot-default.conf',
+    'SESSION_NAME="task119-default"\n',
+  );
+  clearConfCache();
+  const conf = readConductorConf(confPath);
+  assert.equal(conf.metricsSnapshotIntervalMs, 60000);
+});
+
+void test('METRICS_SNAPSHOT_INTERVAL_MS honors an explicit positive value from conductor.conf', () => {
+  const confPath = writeTempConf(
+    'config-test-metrics-snapshot-custom.conf',
+    'SESSION_NAME="task119-custom"\nMETRICS_SNAPSHOT_INTERVAL_MS=5000\n',
+  );
+  clearConfCache();
+  const conf = readConductorConf(confPath);
+  assert.equal(conf.metricsSnapshotIntervalMs, 5000);
+});
+
+void test('METRICS_SNAPSHOT_INTERVAL_MS falls back to the default for a non-positive value', () => {
+  const confPath = writeTempConf(
+    'config-test-metrics-snapshot-invalid.conf',
+    'SESSION_NAME="task119-invalid"\nMETRICS_SNAPSHOT_INTERVAL_MS=0\n',
+  );
+  clearConfCache();
+  const conf = readConductorConf(confPath);
+  assert.equal(conf.metricsSnapshotIntervalMs, 60000);
 });

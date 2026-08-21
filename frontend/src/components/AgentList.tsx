@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { API_BASE, addTask, renameAgent, type AgentDisplayStatus, type AgentRunState, type AgentStatusContract, type Task } from '../lib/api'
+import { API_BASE, addTask, createWorktreeForAgent, renameAgent, type AgentDisplayStatus, type AgentRunState, type AgentStatusContract, type Task } from '../lib/api'
 import AddTaskForm from './AddTaskForm'
+import CheckpointList from './CheckpointList'
+import ConfirmDialog from './ConfirmDialog'
 import DiffPanel from './DiffPanel'
 import ErrorBoundary from './ErrorBoundary'
 import LogTail from './LogTail'
@@ -30,6 +32,8 @@ export interface Agent {
   launchCmd: string
   workdir: string
   branch?: string | null
+  worktreePath?: string | null
+  role?: string | null
   linkedBg: string | null
   activeTask: string | null
   label?: string | null
@@ -160,6 +164,50 @@ function AgentTypeBadge({ agent }: { agent: Agent }) {
   )
 }
 
+
+export const ROLE_CONFIG: Record<string, { className: string; dot: string }> = {
+  frontend: { className: 'bg-pink-100 text-pink-700', dot: '#ec4899' },
+  backend: { className: 'bg-orange-100 text-orange-700', dot: '#f97316' },
+  qa: { className: 'bg-cyan-100 text-cyan-700', dot: '#06b6d4' },
+  devops: { className: 'bg-indigo-100 text-indigo-700', dot: '#6366f1' },
+  security: { className: 'bg-lime-100 text-lime-700', dot: '#84cc16' },
+  architect: { className: 'bg-stone-100 text-stone-700', dot: '#78716c' },
+}
+
+// TASK-115: enumerable, testable role-list derivation — never hand-type the
+// role list a second time. 'generic' is deliberately excluded from
+// ROLE_CONFIG (resolveRoleBadge treats it as "no badge"), so it's prepended
+// here to get the full 7-value set the backend's ROLE_VALUES
+// (host-server/rolePresets.ts) validates against.
+export const ROLE_VALUES = ['generic', ...Object.keys(ROLE_CONFIG)] as const
+
+export function isValidAgentRole(role: string): role is (typeof ROLE_VALUES)[number] {
+  return (ROLE_VALUES as readonly string[]).includes(role)
+}
+
+export function resolveRoleBadge(
+  role: string | null | undefined
+): { role: string; className: string; dot: string } | null {
+  if (role == null || role === 'generic') return null
+  const cfg = ROLE_CONFIG[role]
+  if (!cfg) return null
+  return { role, className: cfg.className, dot: cfg.dot }
+}
+
+function RoleBadge({ role }: { role: string | null | undefined }) {
+  const resolved = resolveRoleBadge(role)
+  if (!resolved) return null
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded-pill px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.06em] ${resolved.className}`}
+      title={`Role: ${resolved.role}`}
+    >
+      <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full" style={{ background: resolved.dot }} />
+      {resolved.role}
+    </span>
+  )
+}
+
 /** Deterministic hue (0–359) from a project name so each project keeps a stable badge color. */
 function projectHue(name: string): number {
   let h = 0
@@ -199,21 +247,37 @@ function contextColor(pct: number): string {
 }
 
 /** Compact token count, e.g. 55336 → "55k". */
-function formatTokens(n: number): string {
+export function formatTokens(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`
   if (n >= 1000) return `${String(Math.round(n / 1000))}k`
   return String(n)
 }
 
-function formatCost(usd: number): string {
+export function formatCost(usd: number): string {
   if (usd >= 0.01) return `$${usd.toFixed(2)}`
   if (usd > 0) return '<$0.01'
   return ''
 }
 
+// Filter matches against name, projectName, role, and branch — deliberately NOT
+// workdir (most agents share a long common path prefix, making it low-signal)
+// or label/agentType (label is ephemeral pane-derived text; agentType is an
+// internal detection value nearly every agent in this project shares).
+// Case-insensitive substring match, consistent with the existing name-sort's
+// .toLowerCase() convention. Empty/whitespace-only filterText matches everything.
+export function agentMatchesFilter(agent: Agent, filterText: string): boolean {
+  const needle = filterText.trim().toLowerCase()
+  if (needle === '') return true
+  const haystack = [agent.name, agent.projectName, agent.role, agent.branch]
+    .filter((v): v is string => typeof v === 'string')
+    .join(' ')
+    .toLowerCase()
+  return haystack.includes(needle)
+}
+
 // session_start is normally the session's first-record ISO timestamp, but falls
 // back to the session UUID (TASK-075) — never render those as "Invalid Date".
-function formatSessionStart(s: string): string {
+export function formatSessionStart(s: string): string {
   const d = new Date(s)
   if (!Number.isNaN(d.getTime())) {
     return d.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
@@ -277,7 +341,7 @@ function ContextMeter({ agent, detailed = false }: { agent: Agent; detailed?: bo
   )
 }
 
-function UsageBadge({ agent }: { agent: Agent }) {
+export function UsageBadge({ agent }: { agent: Agent }) {
   const u = agent.usage
   if (!u) return null
   const totalTokens = u.inputTokens + u.outputTokens + u.cacheCreationInputTokens + u.cacheReadInputTokens
@@ -350,7 +414,7 @@ function UsageBreakdown({ agentId }: { agentId: number }) {
                   <td className={numTd} title={String(s.cacheCreationInputTokens)}>{formatTokens(s.cacheCreationInputTokens)}</td>
                   <td className={numTd} title={String(s.cacheReadInputTokens)}>{formatTokens(s.cacheReadInputTokens)}</td>
                   <td className={numTd} title={String(totalOf(s))}>{formatTokens(totalOf(s))}</td>
-                  <td className={numTd} title={String(s.costUsd)}>{formatCost(s.costUsd)}</td>
+                  <td className={numTd} title={String(s.costUsd)}>{formatCost(s.costUsd) || '—'}</td>
                 </tr>
               )
             })}
@@ -363,7 +427,7 @@ function UsageBreakdown({ agentId }: { agentId: number }) {
               <td className={numTd} title={String(sum((s) => s.cacheCreationInputTokens))}>{formatTokens(sum((s) => s.cacheCreationInputTokens))}</td>
               <td className={numTd} title={String(sum((s) => s.cacheReadInputTokens))}>{formatTokens(sum((s) => s.cacheReadInputTokens))}</td>
               <td className={numTd} title={String(sum(totalOf))}>{formatTokens(sum(totalOf))}</td>
-              <td className={numTd} title={String(sum((s) => s.costUsd))}>{formatCost(sum((s) => s.costUsd))}</td>
+              <td className={numTd} title={String(sum((s) => s.costUsd))}>{formatCost(sum((s) => s.costUsd)) || '—'}</td>
             </tr>
           </tfoot>
         </table>
@@ -448,7 +512,7 @@ function SkillRow({ skill, agentId, onQueued }: { skill: Skill; agentId: number;
   )
 }
 
-function AgentDetailModal({ agent, project, projectId, status, onClose, armInteract, agentCount, onNavigate, onRenamed }: {
+export function AgentDetailModal({ agent, project, projectId, status, onClose, armInteract, agentCount, onNavigate, onRenamed }: {
   agent: Agent
   project: string | null
   projectId: number | null
@@ -463,10 +527,15 @@ function AgentDetailModal({ agent, project, projectId, status, onClose, armInter
   const [tasks, setTasks] = useState<Task[]>([])
   const [windowError, setWindowError] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
+  const [worktreeOverride, setWorktreeOverride] = useState<{ worktreePath: string; branch: string } | null>(null)
+  const [creatingWorktree, setCreatingWorktree] = useState(false)
+  const [worktreeError, setWorktreeError] = useState<string | null>(null)
   const [removing, setRemoving] = useState(false)
   const [removeError, setRemoveError] = useState<string | null>(null)
   const [closing, setClosing] = useState(false)
   const [closeError, setCloseError] = useState<string | null>(null)
+  const [confirmingRemove, setConfirmingRemove] = useState(false)
+  const [confirmingClose, setConfirmingClose] = useState(false)
   const [renaming, setRenaming] = useState(false)
   const [renameInput, setRenameInput] = useState('')
   const [showRenameInput, setShowRenameInput] = useState(false)
@@ -534,11 +603,27 @@ function AgentDetailModal({ agent, project, projectId, status, onClose, armInter
     }
   }
 
-  async function handleRemove() {
-    const confirmed = window.confirm(
-      `Remove agent "${agent.name}"? This kills its tmux window, deletes it from conductor.conf, and drops its queued tasks.`,
-    )
-    if (!confirmed) return
+  // ROADMAP-007: worktrees are opt-in — this lets an agent that was created
+  // without one get one retroactively. No SSE broadcast backs this (see the
+  // route comment in host-server/index.ts), so the result is held in local
+  // override state until the next full status poll folds it into `agent`.
+  async function handleCreateWorktree() {
+    setCreatingWorktree(true)
+    setWorktreeError(null)
+    try {
+      const updated = await createWorktreeForAgent(agent.id)
+      if (updated.worktreePath && updated.branch) {
+        setWorktreeOverride({ worktreePath: updated.worktreePath, branch: updated.branch })
+      }
+    } catch (err: unknown) {
+      setWorktreeError(err instanceof Error ? err.message : 'Failed to create worktree')
+    } finally {
+      setCreatingWorktree(false)
+    }
+  }
+
+  async function doRemove() {
+    setConfirmingRemove(false)
     setRemoving(true)
     setRemoveError(null)
     try {
@@ -554,11 +639,8 @@ function AgentDetailModal({ agent, project, projectId, status, onClose, armInter
     }
   }
 
-  async function handleCloseWindow() {
-    const confirmed = window.confirm(
-      `Close agent "${agent.name}"'s window? The agent stays registered and can be relaunched with "Create window".`,
-    )
-    if (!confirmed) return
+  async function doCloseWindow() {
+    setConfirmingClose(false)
     setClosing(true)
     setCloseError(null)
     try {
@@ -590,6 +672,9 @@ function AgentDetailModal({ agent, project, projectId, status, onClose, armInter
     }
   }
 
+  const effectiveWorktreePath = agent.worktreePath ?? worktreeOverride?.worktreePath ?? null
+  const effectiveBranch = agent.branch ?? worktreeOverride?.branch ?? null
+
   return createPortal(
     <ErrorBoundary>
       <div className="fixed inset-0 z-50" role="dialog" aria-modal="true" aria-label={`${agent.name} detail`}>
@@ -609,6 +694,7 @@ function AgentDetailModal({ agent, project, projectId, status, onClose, armInter
             <ProjectBadge name={project} />
             <StatusBadge status={status} />
             <AgentTypeBadge agent={agent} />
+            <RoleBadge role={agent.role} />
             <ContextMeter agent={agent} detailed />
             {needsAttention(status) && (
               <span className="animate-flash text-[14px] font-bold leading-none" style={{ color: status === 'stalled' ? '#e5484d' : '#e0901a' }} aria-label="Needs attention">!</span>
@@ -659,7 +745,7 @@ function AgentDetailModal({ agent, project, projectId, status, onClose, armInter
               {agent.windowPresent && (
                 <button
                   type="button"
-                  onClick={() => { void handleCloseWindow() }}
+                  onClick={() => { setConfirmingClose(true) }}
                   disabled={closing}
                   className="inline-flex h-7 cursor-pointer items-center rounded-[7px] border border-[#e0901a]/40 bg-[#e0901a]/5 px-3 text-[12px] font-medium text-[#c07a10] transition hover:bg-[#e0901a]/10 active:scale-[0.985] disabled:pointer-events-none disabled:opacity-40"
                   title="Kill the tmux window but keep the agent registered"
@@ -669,7 +755,7 @@ function AgentDetailModal({ agent, project, projectId, status, onClose, armInter
               )}
               <button
                 type="button"
-                onClick={() => { void handleRemove() }}
+                onClick={() => { setConfirmingRemove(true) }}
                 disabled={removing}
                 className="inline-flex h-7 cursor-pointer items-center rounded-[7px] bg-accent-red px-3 text-[12px] font-medium text-white transition hover:opacity-85 active:scale-[0.985] disabled:pointer-events-none disabled:opacity-40"
                 title="Unregister the agent and remove it"
@@ -704,9 +790,11 @@ function AgentDetailModal({ agent, project, projectId, status, onClose, armInter
           )}
 
           <div className="flex flex-col flex-1 overflow-hidden p-5">
-            <div className={`grid grid-cols-1 gap-5 md:grid-cols-[1fr_1.5fr] flex-shrink-0${logExpanded ? ' hidden' : ''}`}>
-              <div>
-                <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-2">Details</p>
+            <details className={`flex-shrink-0${logExpanded ? ' hidden' : ''}`} open={!agent.windowPresent}>
+              <summary className="cursor-pointer text-[11px] font-semibold uppercase tracking-[0.08em] text-muted select-none">
+                Details
+              </summary>
+              <div className="mt-2">
                 <dl className="mb-4 grid grid-cols-[max-content_1fr] gap-x-3 gap-y-1 text-[11px]">
                   <dt className="self-start pt-px text-[10px] font-semibold uppercase tracking-[0.06em] text-muted-2">Command</dt>
                   <dd className="m-0 min-w-0"><code className="break-all font-mono text-[11px] text-ink">{agent.launchCmd || '—'}</code></dd>
@@ -714,6 +802,25 @@ function AgentDetailModal({ agent, project, projectId, status, onClose, armInter
                   <dd className="m-0 min-w-0"><code className="break-all font-mono text-[11px] text-ink">{agent.workdir || '—'}</code></dd>
                   <dt className="self-center text-[10px] font-semibold uppercase tracking-[0.06em] text-muted-2">Window</dt>
                   <dd className="m-0 text-ink-2">{agent.windowPresent ? 'present' : 'missing'}</dd>
+                  <dt className="self-center text-[10px] font-semibold uppercase tracking-[0.06em] text-muted-2">Worktree</dt>
+                  <dd className="m-0 flex items-center gap-2 text-ink-2">
+                    {effectiveBranch ? (
+                      <span className="font-mono text-[11px]">⎇ {effectiveBranch}</span>
+                    ) : (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => { void handleCreateWorktree() }}
+                          disabled={creatingWorktree}
+                          className="inline-flex h-6 cursor-pointer items-center rounded-[6px] border border-line bg-canvas px-2 text-[11px] font-medium text-muted transition hover:text-ink hover:border-ink/30 disabled:pointer-events-none disabled:opacity-40"
+                          title="Opt in to an isolated git worktree + branch for this agent"
+                        >
+                          {creatingWorktree ? 'Creating…' : 'Create worktree'}
+                        </button>
+                        {worktreeError && <span className="text-[11px] text-accent-red">{worktreeError}</span>}
+                      </>
+                    )}
+                  </dd>
                 </dl>
 
                 <ModeSwitcher agentId={agent.id} mode={agent.mode} windowPresent={agent.windowPresent} />
@@ -732,15 +839,17 @@ function AgentDetailModal({ agent, project, projectId, status, onClose, armInter
                   </div>
                 )}
               </div>
+            </details>
 
-              <div>
-                <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-2">
-                  Queued tasks ({agent.queuedTasks})
-                </p>
+            <details className={`mt-3 flex-shrink-0${logExpanded ? ' hidden' : ''}`} open={agent.queuedTasks > 0}>
+              <summary className="cursor-pointer text-[11px] font-semibold uppercase tracking-[0.08em] text-muted select-none">
+                Queued tasks ({agent.queuedTasks})
+              </summary>
+              <div className="mt-2">
                 <TaskList agentName={agent.name} tasks={tasks} onReorder={setTasks} />
                 <AddTaskForm agentId={agent.id} onAdded={(task) => { setTasks((prev) => [...prev, task]) }} projectId={projectId} projectName={project} />
               </div>
-            </div>
+            </details>
 
             <div className={`flex flex-col flex-1 min-h-0${logExpanded ? '' : ' mt-5 border-t border-line pt-4'}`}>
               <ErrorBoundary>
@@ -783,7 +892,24 @@ function AgentDetailModal({ agent, project, projectId, status, onClose, armInter
 
             {/* Per-session usage breakdown */}
             {!logExpanded && <UsageBreakdown agentId={agent.id} />}
+
+            {!logExpanded && effectiveWorktreePath && <CheckpointList agentId={agent.id} />}
           </div>
+
+          <ConfirmDialog
+            open={confirmingRemove}
+            message={`Remove agent "${agent.name}"? This kills its tmux window, deletes it from conductor.conf, and drops its queued tasks.`}
+            confirmLabel="Remove"
+            onConfirm={() => { void doRemove() }}
+            onCancel={() => { setConfirmingRemove(false) }}
+          />
+          <ConfirmDialog
+            open={confirmingClose}
+            message={`Close agent "${agent.name}"'s window? The agent stays registered and can be relaunched with "Create window".`}
+            confirmLabel="Close"
+            onConfirm={() => { void doCloseWindow() }}
+            onCancel={() => { setConfirmingClose(false) }}
+          />
         </div>
       </div>
     </ErrorBoundary>,
@@ -815,6 +941,7 @@ function AgentItem({ agent, project, onExpand }: {
         <span className="min-w-0 flex-1 truncate text-[13px] font-semibold tracking-tight text-ink">{agent.name}</span>
         <UsageBadge agent={agent} />
         <AgentTypeBadge agent={agent} />
+        <RoleBadge role={agent.role} />
         <StatusBadge status={status} />
       </div>
 
@@ -960,6 +1087,8 @@ function SessionBanner({ sessionExists }: { sessionExists: boolean }) {
 function BgProcessRow({ bg }: { bg: BgProcess }) {
   const [acting, setActing] = useState<'open' | 'close' | 'remove' | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
+  const [confirmingRemove, setConfirmingRemove] = useState(false)
+  const [confirmingClose, setConfirmingClose] = useState(false)
 
   async function callApi(path: string, method: string, kind: 'open' | 'close' | 'remove') {
     setActing(kind)
@@ -977,19 +1106,13 @@ function BgProcessRow({ bg }: { bg: BgProcess }) {
     }
   }
 
-  function handleRemove() {
-    const confirmed = window.confirm(
-      `Remove background process "${bg.name}"? This kills its tmux window (if any) and removes it from the conductor registry.`,
-    )
-    if (!confirmed) return
+  function doRemove() {
+    setConfirmingRemove(false)
     void callApi(`/bg-processes/${encodeURIComponent(bg.name)}`, 'DELETE', 'remove')
   }
 
-  function handleCloseWindow() {
-    const confirmed = window.confirm(
-      `Close "${bg.name}"'s window? The process stays registered and can be relaunched with "Open window".`,
-    )
-    if (!confirmed) return
+  function doCloseWindow() {
+    setConfirmingClose(false)
     void callApi(`/bg-processes/${encodeURIComponent(bg.name)}/window`, 'DELETE', 'close')
   }
 
@@ -1010,7 +1133,7 @@ function BgProcessRow({ bg }: { bg: BgProcess }) {
         {bg.windowPresent ? (
           <button
             type="button"
-            onClick={handleCloseWindow}
+            onClick={() => { setConfirmingClose(true) }}
             disabled={acting !== null}
             className="inline-flex h-7 cursor-pointer items-center rounded-[7px] border border-line bg-white px-3 text-[12px] font-medium text-ink-2 transition hover:bg-canvas active:scale-[0.985] disabled:pointer-events-none disabled:opacity-40"
           >
@@ -1028,7 +1151,7 @@ function BgProcessRow({ bg }: { bg: BgProcess }) {
         )}
         <button
           type="button"
-          onClick={handleRemove}
+          onClick={() => { setConfirmingRemove(true) }}
           disabled={acting !== null}
           className="inline-flex h-7 cursor-pointer items-center rounded-[7px] border border-line bg-white px-3 text-[12px] font-medium text-accent-red transition hover:border-accent-red/30 hover:bg-accent-red/5 active:scale-[0.985] disabled:pointer-events-none disabled:opacity-40"
         >
@@ -1036,6 +1159,20 @@ function BgProcessRow({ bg }: { bg: BgProcess }) {
         </button>
       </div>
       {actionError && <span className="w-full text-[12px]" style={{ color: '#e5484d' }}>{actionError}</span>}
+      <ConfirmDialog
+        open={confirmingRemove}
+        message={`Remove background process "${bg.name}"? This kills its tmux window (if any) and removes it from the conductor registry.`}
+        confirmLabel="Remove"
+        onConfirm={doRemove}
+        onCancel={() => { setConfirmingRemove(false) }}
+      />
+      <ConfirmDialog
+        open={confirmingClose}
+        message={`Close "${bg.name}"'s window? The process stays registered and can be relaunched with "Open window".`}
+        confirmLabel="Close"
+        onConfirm={doCloseWindow}
+        onCancel={() => { setConfirmingClose(false) }}
+      />
     </div>
   )
 }
@@ -1116,7 +1253,16 @@ export default function AgentList() {
   const [sessionAlive, setSessionAlive] = useState<boolean>(true)
   const [sessionExists, setSessionExists] = useState<boolean>(true)
   const [loading, setLoading] = useState<boolean>(true)
+  const [filterText, setFilterText] = useState('')
   const [error, setError] = useState<string | null>(null)
+  // Lives with the other top-level hooks (not after the loading/error/session-dead
+  // early returns below) so this component never calls a different number of hooks
+  // across renders — violating that would trip React's Rules of Hooks the moment
+  // `loading` flips from true to false.
+  const filteredAgents = useMemo(
+    () => agents.filter((a) => agentMatchesFilter(a, filterText)),
+    [agents, filterText],
+  )
   // Project membership rides on every runtime agent payload (projectId/projectName
   // from GET /status and SSE agent-update), so grouping reads straight off the
   // agent — no separate name-keyed membership map (names are only unique per
@@ -1125,6 +1271,11 @@ export default function AgentList() {
   // between board columns — a status change remounts AgentItem but not us.
   // Keyed by the globally-unique agent id, not name.
   const [expandedAgent, setExpandedAgent] = useState<{ id: number; armInteract: boolean } | null>(null)
+  // Stays on the unfiltered `agents` list (not filteredAgents) deliberately: if a user
+  // has an agent's detail modal open and then types a filter that would exclude that
+  // agent from the visible grid, prev/next navigation should not suddenly change
+  // behavior or strand — keeping full-list navigation independent of the grid filter
+  // is the least surprising choice.
   const orderedAgentIds = useMemo(
     () => [...agents].sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase())).map((a) => a.id),
     [agents],
@@ -1326,7 +1477,7 @@ export default function AgentList() {
   // Partition agents into the three kanban columns (inactive agents are handled
   // by AddAgentForm at the top of the page), then sort each by project.
   const columnAgents: Record<Column['key'], Agent[]> = { attention: [], busy: [], ready: [] }
-  for (const agent of agents) {
+  for (const agent of filteredAgents) {
     const col = columnFor(deriveStatus(agent))
     if (col !== null) columnAgents[col].push(agent)
   }
@@ -1360,8 +1511,20 @@ export default function AgentList() {
     <div className="animate-riseIn">
       <h1 className={sectionLabelCls}>tmux Conductor — Agents</h1>
       {!sessionAlive && <SessionBanner sessionExists={sessionExists} />}
+      {agents.length > 0 && (
+        <input
+          type="text"
+          value={filterText}
+          onChange={(e) => { setFilterText(e.target.value) }}
+          placeholder="Filter agents by name, project, role, or branch…"
+          aria-label="Filter agents"
+          className="mb-4 max-w-xs rounded-[8px] border border-line bg-white px-3 py-1.5 font-mono text-[12px] text-ink placeholder:text-muted-2 outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/10 disabled:opacity-40"
+        />
+      )}
       {agents.length === 0 ? (
         <p className="text-[13px] italic text-muted-2">No agents registered.</p>
+      ) : filteredAgents.length === 0 ? (
+        <p className="text-[13px] italic text-muted-2">No agents match your filter.</p>
       ) : (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
           {COLUMNS.map((col) => {

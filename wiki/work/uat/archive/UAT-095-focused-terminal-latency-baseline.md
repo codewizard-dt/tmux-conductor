@@ -1,5 +1,6 @@
 ---
 id: UAT-095
+aliases: [UAT-095]
 title: "UAT: focused terminal latency baseline"
 status: passed
 task: TASK-095

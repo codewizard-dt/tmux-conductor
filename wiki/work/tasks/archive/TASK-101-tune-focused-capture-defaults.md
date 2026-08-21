@@ -1,5 +1,6 @@
 ---
 id: TASK-101
+aliases: [TASK-101]
 title: "tune focused capture defaults from measured data"
 status: done
 created: 2026-07-04

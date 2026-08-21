@@ -1,5 +1,6 @@
 ---
 id: UAT-026
+aliases: [UAT-026]
 title: "UAT: End-to-end SQLite migration verification suite"
 status: passed
 task: TASK-026

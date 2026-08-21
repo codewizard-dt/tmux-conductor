@@ -1,5 +1,6 @@
 ---
 id: UAT-041
+aliases: [UAT-041]
 title: "UAT: Verify and polish active-link styling on NavBar"
 status: passed
 task: TASK-041

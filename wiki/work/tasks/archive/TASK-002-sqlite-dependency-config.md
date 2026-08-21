@@ -1,5 +1,6 @@
 ---
 id: TASK-002
+aliases: [TASK-002]
 title: "Add better-sqlite3 dependency, data/ gitignore entry, and DB_PATH setting"
 status: done
 created: 2026-06-12

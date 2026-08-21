@@ -1,9 +1,10 @@
 ---
 id: TASK-062
+aliases: [TASK-062]
 title: "Branch badge — display branch name on agent card in dashboard"
-status: pending-uat
+status: done
 created: 2026-06-14
-updated: 2026-06-14
+updated: 2026-08-15
 depends_on: [TASK-061]
 blocks: []
 parallel_safe_with: [TASK-063, TASK-064, TASK-065, TASK-066, TASK-067]

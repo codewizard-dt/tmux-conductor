@@ -1,5 +1,6 @@
 ---
 id: ROADMAP-001
+aliases: [ROADMAP-001]
 title: SQLite data layer, Projects, and recurring schedules
 status: done
 created: 2026-06-12

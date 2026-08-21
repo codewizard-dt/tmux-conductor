@@ -1,5 +1,6 @@
 ---
 id: TASK-090
+aliases: [TASK-090]
 title: "add slow-loop and tmux-timeout JSONL records"
 status: done
 created: 2026-07-04

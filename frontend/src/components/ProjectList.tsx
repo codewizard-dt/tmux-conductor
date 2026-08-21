@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { listProjects, spawnAgentInProject, deleteProject, type Project } from '../lib/api';
+import { ROLE_VALUES } from './AgentList';
 
 import { Link } from 'react-router-dom';
 
@@ -12,6 +13,9 @@ export default function ProjectList() {
   const [rowErrorMsg, setRowErrorMsg] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null);
   const [deleteBusy, setDeleteBusy] = useState<number | null>(null);
+  // TASK-115: per-project spawn-role selection, keyed by project id — each
+  // row's dropdown is independent. Missing entries default to 'generic'.
+  const [roleByProject, setRoleByProject] = useState<Record<number, string>>({});
 
   async function refetch() {
     try {
@@ -35,7 +39,7 @@ export default function ProjectList() {
     setRowError(null);
     setRowErrorMsg(null);
     try {
-      await spawnAgentInProject(project.id);
+      await spawnAgentInProject(project.id, undefined, undefined, roleByProject[project.id] ?? 'generic');
       // No project-* SSE event exists, so refetch after the mutation.
       // The spawned agent surfaces in AgentList via the monitor SSE loop.
       await refetch();
@@ -100,6 +104,20 @@ export default function ProjectList() {
                     <span className="block truncate text-[10px] text-muted-2">{project.workdir}</span>
                     <span className="block truncate text-[10px] text-muted-2">{project.defaultLaunchCmd}</span>
                   </span>
+                  <select
+                    aria-label={`Role for next agent spawned in ${project.name}`}
+                    value={roleByProject[project.id] ?? 'generic'}
+                    onChange={(e) => {
+                      const next = e.target.value;
+                      setRoleByProject((prev) => ({ ...prev, [project.id]: next }));
+                    }}
+                    disabled={busy || deleting}
+                    className="h-7 flex-shrink-0 rounded-[7px] border border-line bg-canvas px-1.5 text-[12px] text-ink disabled:opacity-40"
+                  >
+                    {ROLE_VALUES.map((r) => (
+                      <option key={r} value={r}>{r === 'generic' ? 'Generic' : `${r.charAt(0).toUpperCase()}${r.slice(1)}`}</option>
+                    ))}
+                  </select>
                   <button
                     type="button"
                     onClick={() => { void handleSpawn(project); }}

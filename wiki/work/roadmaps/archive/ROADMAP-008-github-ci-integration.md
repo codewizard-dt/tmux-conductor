@@ -1,5 +1,6 @@
 ---
 id: ROADMAP-008
+aliases: [ROADMAP-008]
 title: GitHub & CI integration — PR creation and autonomous CI fix loop
 status: abandoned
 created: 2026-06-13

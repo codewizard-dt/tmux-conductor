@@ -1,5 +1,6 @@
 ---
 id: TASK-027
+aliases: [TASK-027]
 title: "Scaffold portal/ (Fastify, env validation, pg Pool, boot-time migrations) with /healthz"
 status: done
 created: 2026-06-12

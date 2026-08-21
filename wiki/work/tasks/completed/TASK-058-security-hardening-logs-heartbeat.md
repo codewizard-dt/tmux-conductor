@@ -1,5 +1,6 @@
 ---
 id: TASK-058
+aliases: [TASK-058]
 title: "Security checklist pass + structured logs + device last-seen heartbeat"
 status: done
 created: 2026-06-14

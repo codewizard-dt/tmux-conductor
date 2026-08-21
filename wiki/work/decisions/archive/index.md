@@ -4,3 +4,4 @@ Decision group files where all decisions are `accepted` or `superseded`, moved h
 
 | ID | Title | Final Status | Archived |
 |----|-------|--------------|----------|
+| [[DEC-0001]] | Conductor Usage-Check Hardening | accepted | 2026-08-15 |

@@ -1,5 +1,6 @@
 ---
 id: UAT-077
+aliases: [UAT-077]
 title: "UAT: remove avoidable duplicate tmux capture work"
 status: passed
 task: TASK-077

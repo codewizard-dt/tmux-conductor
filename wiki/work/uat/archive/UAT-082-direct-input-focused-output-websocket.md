@@ -1,5 +1,6 @@
 ---
 id: UAT-082
+aliases: [UAT-082]
 title: "UAT: move direct input and focused output onto WebSocket path"
 status: passed
 task: TASK-082

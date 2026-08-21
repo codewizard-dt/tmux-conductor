@@ -33,7 +33,7 @@ function delta(overrides: Partial<UsageDelta>): UsageDelta {
   };
 }
 
-test('accumulates deltas across polls into one absolute session row', () => {
+void test('accumulates deltas across polls into one absolute session row', () => {
   resetUsageStore();
   const db = freshDb('accum');
   const agent = createAgent(db, { name: 'a1', workdir: '/w', launchCmd: 'claude' });
@@ -43,12 +43,14 @@ test('accumulates deltas across polls into one absolute session row', () => {
 
   const rows = listAgentUsage(db, agent.id);
   assert.equal(rows.length, 1);
-  assert.equal(rows[0]!.inputTokens, 15);
-  assert.equal(rows[0]!.outputTokens, 150);
-  assert.equal(rows[0]!.cacheReadInputTokens, 1000);
+  const row = rows[0];
+  assert.ok(row);
+  assert.equal(row.inputTokens, 15);
+  assert.equal(row.outputTokens, 150);
+  assert.equal(row.cacheReadInputTokens, 1000);
 });
 
-test('restart idempotency — full-file replay after reset leaves values unchanged', () => {
+void test('restart idempotency — full-file replay after reset leaves values unchanged', () => {
   resetUsageStore();
   const db = freshDb('restart');
   const agent = createAgent(db, { name: 'a1', workdir: '/w', launchCmd: 'claude' });
@@ -64,11 +66,15 @@ test('restart idempotency — full-file replay after reset leaves values unchang
 
   const after = listAgentUsage(db, agent.id);
   assert.equal(after.length, 1);
-  assert.equal(after[0]!.outputTokens, before[0]!.outputTokens);
-  assert.equal(after[0]!.costUsd, before[0]!.costUsd);
+  const afterRow = after[0];
+  const beforeRow = before[0];
+  assert.ok(afterRow);
+  assert.ok(beforeRow);
+  assert.equal(afterRow.outputTokens, beforeRow.outputTokens);
+  assert.equal(afterRow.costUsd, beforeRow.costUsd);
 });
 
-test('multi-model session — tokens summed, cost is per-model rate math', () => {
+void test('multi-model session — tokens summed, cost is per-model rate math', () => {
   resetUsageStore();
   const db = freshDb('multimodel');
   const agent = createAgent(db, { name: 'a1', workdir: '/w', launchCmd: 'claude' });
@@ -80,12 +86,18 @@ test('multi-model session — tokens summed, cost is per-model rate math', () =>
 
   const rows = listAgentUsage(db, agent.id);
   assert.equal(rows.length, 1);
-  assert.equal(rows[0]!.outputTokens, 2_000_000);
-  const expected = MODEL_PRICING['claude-fable-5']!.outputPerMTok + MODEL_PRICING['claude-haiku-4-5']!.outputPerMTok;
-  assert.ok(Math.abs(rows[0]!.costUsd - expected) < 1e-9);
+  const row = rows[0];
+  assert.ok(row);
+  assert.equal(row.outputTokens, 2_000_000);
+  const fablePricing = MODEL_PRICING['claude-fable-5'];
+  const haikuPricing = MODEL_PRICING['claude-haiku-4-5'];
+  assert.ok(fablePricing);
+  assert.ok(haikuPricing);
+  const expected = fablePricing.outputPerMTok + haikuPricing.outputPerMTok;
+  assert.ok(Math.abs(row.costUsd - expected) < 1e-9);
 });
 
-test('costUSD passthrough wins over the pricing table', () => {
+void test('costUSD passthrough wins over the pricing table', () => {
   resetUsageStore();
   const db = freshDb('passthrough');
   const agent = createAgent(db, { name: 'a1', workdir: '/w', launchCmd: 'claude' });
@@ -93,10 +105,12 @@ test('costUSD passthrough wins over the pricing table', () => {
   recordUsageDeltas(db, agent, [delta({ outputTokens: 1_000_000, costUSD: 0.5 })]);
 
   const rows = listAgentUsage(db, agent.id);
-  assert.equal(rows[0]!.costUsd, 0.5); // not the table's $50/MTok
+  const row = rows[0];
+  assert.ok(row);
+  assert.equal(row.costUsd, 0.5); // not the table's $50/MTok
 });
 
-test('unknown model — tokens recorded, cost contribution 0, no throw', () => {
+void test('unknown model — tokens recorded, cost contribution 0, no throw', () => {
   resetUsageStore();
   const db = freshDb('unknown');
   const agent = createAgent(db, { name: 'a1', workdir: '/w', launchCmd: 'claude' });
@@ -105,11 +119,13 @@ test('unknown model — tokens recorded, cost contribution 0, no throw', () => {
 
   const rows = listAgentUsage(db, agent.id);
   assert.equal(rows.length, 1);
-  assert.equal(rows[0]!.outputTokens, 123);
-  assert.equal(rows[0]!.costUsd, 0);
+  const row = rows[0];
+  assert.ok(row);
+  assert.equal(row.outputTokens, 123);
+  assert.equal(row.costUsd, 0);
 });
 
-test('session change — second row, first untouched, accumulator pruned to current session', () => {
+void test('session change — second row, first untouched, accumulator pruned to current session', () => {
   resetUsageStore();
   const db = freshDb('sessions');
   const agent = createAgent(db, { name: 'a1', workdir: '/w', launchCmd: 'claude' });
@@ -131,7 +147,7 @@ test('session change — second row, first untouched, accumulator pruned to curr
   assert.equal(rows.find((r) => r.sessionStart === 'session-1')?.outputTokens, 100);
 });
 
-test('empty deltas — zero DB work', () => {
+void test('empty deltas — zero DB work', () => {
   resetUsageStore();
   const db = freshDb('empty');
   const agent = createAgent(db, { name: 'a1', workdir: '/w', launchCmd: 'claude' });
@@ -140,7 +156,7 @@ test('empty deltas — zero DB work', () => {
   assert.equal(listAgentUsage(db, agent.id).length, 0);
 });
 
-test('pricing — longest-prefix resolution and unknown models', () => {
+void test('pricing — longest-prefix resolution and unknown models', () => {
   // Versioned/dated id resolves through the prefix.
   assert.equal(resolvePricing('claude-haiku-4-5-20251001'), MODEL_PRICING['claude-haiku-4-5']);
   // claude-sonnet-4-6 must hit the sonnet-4 family entry, not sonnet-5.
@@ -152,6 +168,19 @@ test('pricing — longest-prefix resolution and unknown models', () => {
   const cost = computeCostUsd('claude-fable-5', {
     inputTokens: 1_000_000, outputTokens: 1_000_000, cacheCreationTokens: 1_000_000, cacheReadTokens: 1_000_000,
   });
-  const p = MODEL_PRICING['claude-fable-5']!;
+  const p = MODEL_PRICING['claude-fable-5'];
+  assert.ok(p);
   assert.ok(Math.abs((cost ?? 0) - (p.inputPerMTok + p.outputPerMTok + p.cacheWritePerMTok + p.cacheReadPerMTok)) < 1e-9);
+
+  // claude-opus-5 (TASK-075 pricing-gap fix, 2026-08-15): must resolve to its own
+  // entry — not fall through to the claude-opus-4-x family (none of those keys
+  // are a prefix of "claude-opus-5") — and must price a real bundle non-zero.
+  assert.equal(resolvePricing('claude-opus-5'), MODEL_PRICING['claude-opus-5']);
+  const opus5Cost = computeCostUsd('claude-opus-5', {
+    inputTokens: 1_000_000, outputTokens: 500_000, cacheCreationTokens: 0, cacheReadTokens: 0,
+  });
+  const opus5 = MODEL_PRICING['claude-opus-5'];
+  assert.ok(opus5);
+  assert.ok(opus5Cost !== null && opus5Cost > 0);
+  assert.ok(Math.abs(opus5Cost - (opus5.inputPerMTok + 0.5 * opus5.outputPerMTok)) < 1e-9);
 });

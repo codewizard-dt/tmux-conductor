@@ -1,5 +1,6 @@
 ---
 id: UAT-081
+aliases: [UAT-081]
 title: "UAT: focused terminal WebSocket transport"
 status: passed
 task: TASK-081

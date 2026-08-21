@@ -1,5 +1,6 @@
 ---
 id: TASK-021
+aliases: [TASK-021]
 title: "Write install.sh — bash-3.2-safe, idempotent curl|bash installer"
 status: done
 created: 2026-06-12

@@ -1,5 +1,6 @@
 ---
 id: UAT-097
+aliases: [UAT-097]
 title: "UAT: focused terminal WebSocket exclusive output and input path"
 status: passed
 task: TASK-097

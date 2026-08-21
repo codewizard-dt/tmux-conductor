@@ -1,5 +1,6 @@
 ---
 id: UAT-013
+aliases: [UAT-013]
 title: "UAT: Migrate conductor.sh, spawn.sh, teardown.sh, broadcast.sh to DB-loaded agent lists"
 status: passed
 task: TASK-013

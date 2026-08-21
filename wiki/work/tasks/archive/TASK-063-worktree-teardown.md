@@ -1,9 +1,10 @@
 ---
 id: TASK-063
+aliases: [TASK-063]
 title: "Worktree teardown — git worktree remove --force on agent delete"
-status: pending-uat
+status: done
 created: 2026-06-14
-updated: 2026-06-14
+updated: 2026-08-15
 depends_on: [TASK-060]
 blocks: []
 parallel_safe_with: [TASK-061, TASK-062, TASK-064, TASK-065, TASK-067]

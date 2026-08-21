@@ -1,5 +1,6 @@
 ---
 id: TASK-081
+aliases: [TASK-081]
 title: "focused terminal WebSocket transport"
 status: done
 created: 2026-06-28

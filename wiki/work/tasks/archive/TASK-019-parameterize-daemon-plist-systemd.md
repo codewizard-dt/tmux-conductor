@@ -1,5 +1,6 @@
 ---
 id: TASK-019
+aliases: [TASK-019]
 title: "Parameterize daemon launchd plist (log path, node path) and add a systemd user-unit template"
 status: done
 created: 2026-06-12

@@ -10,12 +10,13 @@ import fastifyStatic from '@fastify/static';
 import fastifyWebsocket from '@fastify/websocket';
 import type { WebSocket } from 'ws';
 import { readConductorConf, DEFAULT_CONF_PATH, appendBgProcessToConf, removeBgProcessFromConf, removeBgLink, addBgLink, clearConfCache } from './config.ts';
-import { openDb, getDbPath, listAgents, getAgentById, createAgent, deleteAgent, updateAgentName, agentWindowName, addTask, deleteTask, reorderTasks, jumpTaskToHead, listTasksForAgentId, listTasksByProject, listProjects, createProject, updateProject, deleteProject, nextAgentName, listSchedules, createSchedule, updateSchedule, deleteSchedule, dueSchedules, fireSchedule, getAllAgentUsageTotals, listAgentUsage, listCheckpoints, insertCheckpoint, getCheckpoint, listTerminalLog, appendTerminalLogChunk, type AgentUsageTotals } from './db.ts';
-import { detectAgentStatus, detectAgentMode, detectAgentType, readTmuxWindowInventory, isTmuxWindowPresent, windowState, getActiveTask, capturePaneTail as capturePaneTailUninstrumented, capturePaneTailRaw as capturePaneTailRawUninstrumented, sendTextToPane, extractPaneLabel, type AgentMode, type AgentRunState, type AgentType } from './state.ts';
+import { openDb, getDbPath, listAgents, getAgentById, createAgent, addWorktreeToAgent, clearAgentWorktree, deleteAgent, updateAgentName, agentWindowName, addTask, deleteTask, reorderTasks, jumpTaskToHead, listTasksForAgentId, listTasksByProject, listProjects, createProject, updateProject, deleteProject, nextAgentName, listSchedules, createSchedule, updateSchedule, deleteSchedule, dueSchedules, fireSchedule, getAllAgentUsageTotals, listAgentUsage, listCheckpoints, insertCheckpoint, getCheckpoint, listTerminalLog, appendTerminalLogChunk, type AgentUsageTotals, type Agent } from './db.ts';
+import { detectAgentStatus, detectAgentMode, detectAgentType, readTmuxWindowInventory, isTmuxWindowPresent, windowState, getActiveTask, capturePaneTail as capturePaneTailUninstrumented, capturePaneTailRaw as capturePaneTailRawUninstrumented, sendTextToPane, extractPaneLabel, applyGlobalPaneSize, type AgentMode, type AgentRunState, type AgentType } from './state.ts';
 import { getAgentContext, getCodexAgentContext, type AgentContext } from './context.ts';
 import dotenv from 'dotenv';
 import { getUserSkills, getPluginSkills, getProjectSkills } from './skills.ts';
 import { isGitRepo, detectBaseBranch, getGitRoot, removeWorktree, deleteBranch, stashCheckpoint, applyStash } from './git.ts';
+import { ROLE_VALUES } from './rolePresets.ts';
 import { extractUsageDeltas, resetUsageMemo } from './usage.ts';
 import { recordUsageDeltas, resetUsageStore } from './usage-store.ts';
 
@@ -713,8 +714,7 @@ await fastify.register((api) => {
         queuedTasks: listTasksForAgentId(db, agent.id, agent.projectId).length,
         launchCmd: agent.launchCmd,
         workdir: agent.workdir,
-        worktreePath: agent.worktreePath,
-        branch: agent.branch,
+        ...resolveAgentWorktree(agent),
         activeTask: null,
         label: null,
         ...emptyAgentContext(conf),
@@ -911,11 +911,13 @@ await fastify.register((api) => {
 
   // ── Agent Management ──────────────────────────────────────────────────────
 
-  api.post<{ Body: { name?: string; workdir?: string; launchCmd?: string } }>('/agents', async (req, reply) => {
+  api.post<{ Body: { name?: string; workdir?: string; launchCmd?: string; role?: string; useWorktree?: boolean } }>('/agents', async (req, reply) => {
     const {
       name,
       workdir,
       launchCmd = 'claude --dangerously-skip-permissions',
+      role,
+      useWorktree,
     } = req.body;
 
     if (!name || typeof name !== 'string' || !/^[a-zA-Z0-9_-]+$/.test(name)) {
@@ -927,6 +929,15 @@ await fastify.register((api) => {
     if (!workdir || typeof workdir !== 'string' || !workdir.startsWith('/')) {
       return reply.status(400).send({
         error: 'workdir is required and must be an absolute path (starts with /)',
+      });
+    }
+
+    // TASK-115: reuse rolePresets.ts's ROLE_VALUES (the same constant
+    // POST /projects/:id/agents now validates against) instead of this
+    // route keeping its own hand-typed copy of the enum.
+    if (role !== undefined && (typeof role !== 'string' || !ROLE_VALUES.includes(role))) {
+      return reply.status(400).send({
+        error: `role must be one of: ${ROLE_VALUES.join(', ')}`,
       });
     }
 
@@ -945,7 +956,7 @@ await fastify.register((api) => {
       return reply.status(409).send({ error: 'window already exists' });
     }
 
-    const newAgent = createAgent(db, { name, workdir, launchCmd });
+    const newAgent = createAgent(db, { name, workdir, launchCmd, ...(role !== undefined ? { role } : {}), useWorktree: useWorktree === true });
     const winName = agentWindowName(newAgent);
     spawnAgentWindow(newAgent, conf);
 
@@ -1035,6 +1046,31 @@ await fastify.register((api) => {
       action,
       agent: { name, workdir: entry.workdir, launchCmd: entry.launchCmd },
     });
+  });
+
+  // ROADMAP-007: opt-in worktree creation for an agent that was created
+  // without one (the AgentDetailModal "Create worktree" action) — the
+  // retroactive counterpart to POST /agents' `useWorktree` flag.
+  api.post<{ Params: { id: string } }>('/agents/:id/worktree', (req, reply) => {
+    const agentId = parseInt(req.params.id, 10);
+    if (isNaN(agentId)) return reply.status(400).send({ error: 'invalid agent id' });
+    try {
+      // No SSE broadcast here: every other 'agent-update' payload is a
+      // full status-shaped record (state/mode/agentType/...) that
+      // AgentList's own SSE handler reads directly — a partial payload with
+      // just worktreePath/branch would be misread as a status change. The
+      // route response updates the modal directly; the next status poll
+      // picks up worktreePath/branch for everyone else.
+      const agent = addWorktreeToAgent(db, agentId);
+      return reply.status(201).send({ ok: true, agent });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'failed to create worktree';
+      const status = /not found$/.test(message) ? 404
+        : /already has a worktree$/.test(message) ? 409
+        : /not inside a git repository$/.test(message) ? 400
+        : 500;
+      return reply.status(status).send({ error: message });
+    }
   });
 
   // Switch the agent's Claude Code permission mode by pressing shift+tab
@@ -1637,7 +1673,8 @@ await fastify.register((api) => {
 
   // List all agents from the database.
   api.get('/agents', (_req, reply) => {
-    return reply.send(listAgents(db));
+    const agents = listAgents(db).map((agent) => ({ ...agent, ...resolveAgentWorktree(agent) }));
+    return reply.send(agents);
   });
 
   // ── Background Process Management ────────────────────────────────────────
@@ -1788,6 +1825,29 @@ await fastify.register((api) => {
     });
   });
 
+  // Apply a browser-probed terminal size to every window in the shared tmux
+  // session (TASK-130). The headless conductor session is never attached by
+  // a real terminal, so windows otherwise sit at tmux's factory default
+  // (80x24), causing capture-pane output to wrap far short of the dashboard
+  // panel's real width. 503 (not 400) when the session isn't up yet — that's
+  // not a client error, the dashboard can legitimately be opened before any
+  // agent session exists.
+  api.post<{ Body: { cols?: unknown; rows?: unknown } }>('/terminal-size', (req, reply) => {
+    const { cols, rows } = req.body;
+    if (typeof cols !== 'number' || !Number.isInteger(cols) || cols < 20 || cols > 500) {
+      return reply.status(400).send({ error: 'cols must be an integer between 20 and 500' });
+    }
+    if (typeof rows !== 'number' || !Number.isInteger(rows) || rows < 10 || rows > 200) {
+      return reply.status(400).send({ error: 'rows must be an integer between 10 and 200' });
+    }
+    const conf = readConductorConf();
+    const result = applyGlobalPaneSize(conf.sessionName, cols, rows);
+    if (!result.ok) {
+      return reply.status(503).send({ error: result.error ?? 'failed to apply terminal size' });
+    }
+    return reply.send({ cols, rows, resizedWindows: result.resizedWindows });
+  });
+
   // Browse local filesystem directories. Used by the frontend folder picker.
   api.get<{ Querystring: { path?: string } }>('/browse', (req, reply) => {
     const rawPath = req.query.path ?? os.homedir();
@@ -1891,7 +1951,7 @@ await fastify.register((api) => {
     }
   });
 
-  api.post<{ Params: { id: string }; Body: { name?: unknown; launchCmd?: unknown } }>('/projects/:id/agents', async (req, reply) => {
+  api.post<{ Params: { id: string }; Body: { name?: unknown; launchCmd?: unknown; role?: unknown; useWorktree?: unknown } }>('/projects/:id/agents', async (req, reply) => {
     const id = parseInt(req.params.id, 10);
     if (isNaN(id)) {
       return reply.status(400).send({ error: 'invalid project id' });
@@ -1902,12 +1962,18 @@ await fastify.register((api) => {
       return reply.status(404).send({ error: `project ${String(id)} not found` });
     }
 
-    const { name: nameOverride, launchCmd: launchCmdOverride } = req.body;
+    const { name: nameOverride, launchCmd: launchCmdOverride, role, useWorktree } = req.body;
     if (nameOverride !== undefined && (typeof nameOverride !== 'string' || !/^[A-Za-z0-9_-]+$/.test(nameOverride))) {
       return reply.status(400).send({ error: 'name must match ^[A-Za-z0-9_-]+$' });
     }
     if (launchCmdOverride !== undefined && (typeof launchCmdOverride !== 'string' || launchCmdOverride.trim() === '')) {
       return reply.status(400).send({ error: 'launchCmd must be a non-empty string' });
+    }
+    // TASK-115: reuse rolePresets.ts's ROLE_VALUES (already the canonical
+    // enum for POST /agents' own role validation) rather than declaring a
+    // third copy of this list here.
+    if (role !== undefined && (typeof role !== 'string' || !ROLE_VALUES.includes(role))) {
+      return reply.status(400).send({ error: `role must be one of: ${ROLE_VALUES.join(', ')}` });
     }
 
     const agentName = typeof nameOverride === 'string' ? nameOverride : nextAgentName(db, id);
@@ -1917,6 +1983,8 @@ await fastify.register((api) => {
       workdir: project.workdir,
       launchCmd,
       projectId: id,
+      ...(typeof role === 'string' ? { role } : {}),
+      useWorktree: useWorktree === true,
     });
 
     const conf = readConductorConf();
@@ -2112,6 +2180,25 @@ function removeFocusedWebSocketOwner(agentId: number): void {
   prevTailMapFocus.delete(agentId);
 }
 
+// Live check on read: an agent's worktree_path/branch columns are set once
+// when a worktree is created (opt-in worktree spawn) and normally cleared by
+// the delete-agent flow's `git worktree remove --force`. If the user removes
+// the worktree directory some other way, the columns go stale and the
+// dashboard would keep showing a branch badge for an agent that's actually
+// back on the primary branch. Checked once per agent per response body
+// (not on a background sweep) so a stale reference self-heals the moment it's
+// observed, without adding a poll loop.
+function resolveAgentWorktree(agent: Agent): { worktreePath: string | null; branch: string | null } {
+  if (!agent.worktreePath) {
+    return { worktreePath: null, branch: agent.branch };
+  }
+  if (existsSync(agent.worktreePath)) {
+    return { worktreePath: agent.worktreePath, branch: agent.branch };
+  }
+  clearAgentWorktree(db, agent.id);
+  return { worktreePath: null, branch: null };
+}
+
 function buildSnapshot(): Snapshot {
   const conf = readConductorConf();
   const { sessionName } = conf;
@@ -2164,8 +2251,8 @@ function buildSnapshot(): Snapshot {
       queuedTasks: queuedTaskCounts.get(agent.id) ?? 0,
       launchCmd: agent.launchCmd,
       workdir: agent.workdir,
-      worktreePath: agent.worktreePath,
-      branch: agent.branch,
+      ...resolveAgentWorktree(agent),
+      role: agent.role,
       activeTask,
       label,
       linkedBg: conf.agentBgLinks[agent.name] ?? null,
@@ -2476,6 +2563,15 @@ startManagedLoop('context refresh', CONTEXT_REFRESH_MS, () => { refreshAgentCont
 startManagedLoop('status poll', () => readConductorConf().statusPollMs, () => { timeSync('statusTicks', pollAndDiff); }, { warnAfterMs: 1500, backoffMs: 5000 });
 startManagedLoop('tail poll', () => readConductorConf().terminalPollMs, () => { timeSync('terminalTicks', tailPollLoop); }, { warnAfterMs: 1500, backoffMs: 5000 });
 startManagedLoop('focused tail poll', () => readConductorConf().focusedTerminalPollMs, () => { timeSync('focusedTerminalTicks', tailPollLoopFocus); }, { warnAfterMs: 150, backoffMs: 1000 });
+// TASK-119: liveUpdateMetrics resets to zero on every host-server restart —
+// periodically snapshot the full object (plus event-loop metrics) to
+// observability.jsonl so historical metrics survive a restart. Each line's
+// top-level `ts` (added by appendObservabilityLog) plus the embedded
+// `liveUpdateMetrics.startedAt` together let a consumer compute deltas
+// between consecutive same-process snapshots and detect a restart (a
+// `startedAt` change resets the cumulative counters and breaks the delta
+// baseline) — see TASK-117/118, which calibrate perfBudgets.ts from this data.
+startManagedLoop('metrics snapshot', () => readConductorConf().metricsSnapshotIntervalMs, () => { appendObservabilityLog('metrics_snapshot', { liveUpdateMetrics, eventLoop: readEventLoopMetrics() }); }, { warnAfterMs: 1000, backoffMs: 5000 });
 startManagedLoop(
   'schedule poll',
   5000,

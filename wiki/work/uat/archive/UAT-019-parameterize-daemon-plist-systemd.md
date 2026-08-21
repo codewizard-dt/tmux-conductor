@@ -1,5 +1,6 @@
 ---
 id: UAT-019
+aliases: [UAT-019]
 title: "UAT: Parameterize daemon launchd plist (log path, node path) and add a systemd user-unit template"
 status: passed
 task: TASK-019

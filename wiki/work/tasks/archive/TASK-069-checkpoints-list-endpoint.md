@@ -1,5 +1,6 @@
 ---
 id: TASK-069
+aliases: [TASK-069]
 title: "Checkpoints list endpoint — GET /api/agents/:agent/checkpoints"
 status: done
 created: 2026-06-14

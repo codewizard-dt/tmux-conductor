@@ -1,0 +1,40 @@
+// tsconfig.node-esm.jsonc
+// Use for: Node.js services, CLIs, MCP servers using native ESM
+// Key: NodeNext is the ONLY correct module/moduleResolution pair for native Node.js ESM.
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "compilerOptions": {
+    // --- Output ---
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "sourceMap": true,
+
+    // --- Language ---
+    "target": "ES2023",               // Match your actual minimum Node version
+    "lib": ["ES2023"],                // No DOM — this is a Node-only project
+
+    // --- Modules ---
+    // NodeNext is the only correct pair for native ESM in Node.
+    // "node" resolution doesn't understand package.json `exports` field or .js extensions.
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "resolveJsonModule": true,
+    "verbatimModuleSyntax": true,     // TS 5.0+: enforces `import type` where needed; prevents runtime import bugs
+
+    // --- Strict type checking ---
+    "strict": true,
+    "noUncheckedIndexedAccess": true, // Highest-value strict add-on: array[i] returns T|undefined, not T
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitOverride": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+
+    // --- Interop ---
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true              // Avoid noise from third-party .d.ts files
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist"]
+}

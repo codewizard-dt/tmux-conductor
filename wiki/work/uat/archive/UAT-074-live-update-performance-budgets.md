@@ -1,5 +1,6 @@
 ---
 id: UAT-074
+aliases: [UAT-074]
 title: "UAT: identify performance budgets for live updates"
 status: passed
 task: TASK-074

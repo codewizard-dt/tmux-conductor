@@ -6,7 +6,8 @@ FRONTEND_PORT ?= 4321
 
 .PHONY: usage dev start ports \
 	typecheck typecheck-host typecheck-frontend \
-	lint lint-host lint-frontend
+	lint lint-host lint-frontend \
+	hooks-install
 
 ## usage — show available make targets
 usage:
@@ -48,3 +49,7 @@ lint-frontend:
 ## lint — run ESLint across host-server and frontend
 lint:
 	npm run lint
+
+## hooks-install — point git at the tracked .githooks/ dir (run once per clone)
+hooks-install:
+	git config core.hooksPath .githooks

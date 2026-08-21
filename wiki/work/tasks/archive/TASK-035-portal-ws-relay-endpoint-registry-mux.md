@@ -1,5 +1,6 @@
 ---
 id: TASK-035
+aliases: [TASK-035]
 title: "app/api WS relay endpoint, user-first connection registry, and mux (request lifecycle, fail-all-pending on drop, in-flight caps, timeouts)"
 status: done
 created: 2026-06-13

@@ -1,5 +1,6 @@
 ---
 id: TASK-051
+aliases: [TASK-051]
 title: "Reground ROADMAP-002 portal tasks to app/api paths and better-auth user() FK"
 status: done
 created: 2026-06-14

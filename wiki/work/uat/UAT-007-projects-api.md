@@ -1,5 +1,6 @@
 ---
 id: UAT-007
+aliases: [UAT-007]
 title: "UAT: /api/projects CRUD and spawn-agent-for-project"
 status: pending
 task: TASK-007

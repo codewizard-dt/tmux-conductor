@@ -1,5 +1,6 @@
 ---
 id: TASK-042
+aliases: [TASK-042]
 title: "Create /projects route page wrapping ProjectList and AddProjectForm"
 status: done
 created: 2026-06-13

@@ -1,5 +1,6 @@
 ---
 id: TASK-074
+aliases: [TASK-074]
 title: "identify performance budgets for live updates"
 status: done
 created: 2026-06-28

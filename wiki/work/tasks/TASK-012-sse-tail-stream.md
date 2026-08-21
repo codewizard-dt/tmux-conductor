@@ -1,5 +1,6 @@
 ---
 id: TASK-012
+aliases: [TASK-012]
 title: "Replace tail polling with SSE push for terminal output"
 status: in-progress
 created: 2026-06-12

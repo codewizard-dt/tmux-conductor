@@ -1,5 +1,6 @@
 ---
 id: TASK-037
+aliases: [TASK-037]
 title: "Define route tree (/, /projects, /projects/:id) in App.tsx and create page stubs"
 status: done
 created: 2026-06-13

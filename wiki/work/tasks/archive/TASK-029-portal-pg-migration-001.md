@@ -1,5 +1,6 @@
 ---
 id: TASK-029
+aliases: [TASK-029]
 title: "Postgres migration 001 — users, devices (hashed tokens), pairing_codes"
 status: superseded
 created: 2026-06-12

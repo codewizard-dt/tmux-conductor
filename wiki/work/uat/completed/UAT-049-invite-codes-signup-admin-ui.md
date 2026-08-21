@@ -1,5 +1,6 @@
 ---
 id: UAT-049
+aliases: [UAT-049]
 title: "UAT: Invite codes frontend — two-step signup + admin list/create UI"
 status: passed
 task: TASK-049

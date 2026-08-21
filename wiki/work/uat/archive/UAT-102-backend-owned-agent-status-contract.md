@@ -1,5 +1,6 @@
 ---
 id: UAT-102
+aliases: [UAT-102]
 title: "UAT: backend-owned agent status contract"
 status: passed
 task: TASK-102

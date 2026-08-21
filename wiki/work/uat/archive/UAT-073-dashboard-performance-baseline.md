@@ -1,5 +1,6 @@
 ---
 id: UAT-073
+aliases: [UAT-073]
 title: "UAT: capture current dashboard performance baseline"
 status: passed
 task: TASK-073

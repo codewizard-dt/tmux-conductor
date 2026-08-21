@@ -1,5 +1,6 @@
 ---
 id: UAT-037
+aliases: [UAT-037]
 title: "UAT: Define route tree (/, /projects, /projects/:id) in App.tsx and create page stubs"
 status: passed
 task: "../tasks/TASK-037-define-route-tree.md"

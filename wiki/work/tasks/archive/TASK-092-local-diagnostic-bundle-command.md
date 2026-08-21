@@ -1,5 +1,6 @@
 ---
 id: TASK-092
+aliases: [TASK-092]
 title: "add local diagnostic bundle command"
 status: done
 created: 2026-07-04

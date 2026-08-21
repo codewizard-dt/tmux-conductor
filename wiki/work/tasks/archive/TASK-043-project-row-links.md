@@ -1,5 +1,6 @@
 ---
 id: TASK-043
+aliases: [TASK-043]
 title: "Make each project row in ProjectList a clickable link to /projects/:id"
 status: done
 created: 2026-06-13

@@ -1,5 +1,6 @@
 ---
 id: UAT-044
+aliases: [UAT-044]
 title: "UAT: Create /projects/:id route page with project header"
 status: passed
 task: TASK-044

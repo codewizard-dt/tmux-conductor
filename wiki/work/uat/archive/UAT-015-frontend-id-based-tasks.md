@@ -1,5 +1,6 @@
 ---
 id: UAT-015
+aliases: [UAT-015]
 title: "UAT: Frontend ID-based tasks — lib/api helpers, TaskList per-row delete + jump-to-head, AddTaskForm/AgentList wiring"
 status: passed
 task: TASK-015

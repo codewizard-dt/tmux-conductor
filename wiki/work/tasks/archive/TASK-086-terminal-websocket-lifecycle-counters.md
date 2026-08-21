@@ -1,5 +1,6 @@
 ---
 id: TASK-086
+aliases: [TASK-086]
 title: "add terminal WebSocket lifecycle counters"
 status: done
 created: 2026-07-04

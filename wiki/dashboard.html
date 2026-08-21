@@ -1,0 +1,1733 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Wiki Dashboard</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%20100%20100'%3E%3Ctext%20y='0.9em'%20font-size='90'%3E%F0%9F%93%8B%3C/text%3E%3C/svg%3E">
+  <style>
+    /* ---- Design tokens (light theme defaults) ---- */
+    :root {
+      --bg: #f6f7f9;
+      --panel-bg: #ffffff;
+      --panel-border: #e2e5ea;
+      --panel-shadow: 0 1px 2px rgba(16, 24, 40, 0.06), 0 1px 3px rgba(16, 24, 40, 0.04);
+      --header-bg: #ffffff;
+      --header-border: #e2e5ea;
+      --text: #1a1f29;
+      --text-muted: #667085;
+      --text-faint: #98a2b3;
+      --accent: #2f6feb;
+      --accent-contrast: #ffffff;
+      --count-bg: #eef2f8;
+      --count-text: #344256;
+      --archive-bg: #fafbfc;
+      --archive-border: #eceef1;
+      --btn-bg: #ffffff;
+      --btn-border: #d0d5dd;
+      --btn-hover-bg: #f2f4f7;
+      --divider: #eceef1;
+      --badge-neutral-bg: #eef2f8;
+      --badge-neutral-text: #475467;
+      --badge-accent-bg: #e7efff;
+      --badge-accent-text: #2258c9;
+      --badge-good-bg: #e4f5ea;
+      --badge-good-text: #197a43;
+      --badge-bad-bg: #fdebea;
+      --badge-bad-text: #b42318;
+      --badge-muted-bg: #f2f4f7;
+      --badge-muted-text: #98a2b3;
+      --code-bg: #f2f4f7;
+      --mono: ui-monospace, "SF Mono", "SFMono-Regular", "Menlo", "Consolas", monospace;
+      --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    }
+
+    /* ---- Dark theme (passive OS fallback) ---- */
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0e1117;
+        --panel-bg: #161b22;
+        --panel-border: #262c36;
+        --panel-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+        --header-bg: #161b22;
+        --header-border: #262c36;
+        --text: #e6edf3;
+        --text-muted: #9aa7b4;
+        --text-faint: #6e7a89;
+        --accent: #4f8bff;
+        --accent-contrast: #0e1117;
+        --count-bg: #21262d;
+        --count-text: #c2cdd8;
+        --archive-bg: #12161d;
+        --archive-border: #21262d;
+        --btn-bg: #21262d;
+        --btn-border: #30363d;
+        --btn-hover-bg: #2a313a;
+        --divider: #21262d;
+        --badge-neutral-bg: #21262d;
+        --badge-neutral-text: #aeb9c5;
+        --badge-accent-bg: #17263f;
+        --badge-accent-text: #6ea1ff;
+        --badge-good-bg: #12291c;
+        --badge-good-text: #4cc078;
+        --badge-bad-bg: #34181a;
+        --badge-bad-text: #f0857c;
+        --badge-muted-bg: #1b2027;
+        --badge-muted-text: #6e7a89;
+        --code-bg: #1b2027;
+      }
+    }
+
+    /* ---- Explicit theme overrides (localStorage choice wins over OS) ---- */
+    :root[data-theme="light"] {
+      --bg: #f6f7f9;
+      --panel-bg: #ffffff;
+      --panel-border: #e2e5ea;
+      --panel-shadow: 0 1px 2px rgba(16, 24, 40, 0.06), 0 1px 3px rgba(16, 24, 40, 0.04);
+      --header-bg: #ffffff;
+      --header-border: #e2e5ea;
+      --text: #1a1f29;
+      --text-muted: #667085;
+      --text-faint: #98a2b3;
+      --accent: #2f6feb;
+      --accent-contrast: #ffffff;
+      --count-bg: #eef2f8;
+      --count-text: #344256;
+      --archive-bg: #fafbfc;
+      --archive-border: #eceef1;
+      --btn-bg: #ffffff;
+      --btn-border: #d0d5dd;
+      --btn-hover-bg: #f2f4f7;
+      --divider: #eceef1;
+      --badge-neutral-bg: #eef2f8;
+      --badge-neutral-text: #475467;
+      --badge-accent-bg: #e7efff;
+      --badge-accent-text: #2258c9;
+      --badge-good-bg: #e4f5ea;
+      --badge-good-text: #197a43;
+      --badge-bad-bg: #fdebea;
+      --badge-bad-text: #b42318;
+      --badge-muted-bg: #f2f4f7;
+      --badge-muted-text: #98a2b3;
+      --code-bg: #f2f4f7;
+      color-scheme: light;
+    }
+
+    :root[data-theme="dark"] {
+      --bg: #0e1117;
+      --panel-bg: #161b22;
+      --panel-border: #262c36;
+      --panel-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+      --header-bg: #161b22;
+      --header-border: #262c36;
+      --text: #e6edf3;
+      --text-muted: #9aa7b4;
+      --text-faint: #6e7a89;
+      --accent: #4f8bff;
+      --accent-contrast: #0e1117;
+      --count-bg: #21262d;
+      --count-text: #c2cdd8;
+      --archive-bg: #12161d;
+      --archive-border: #21262d;
+      --btn-bg: #21262d;
+      --btn-border: #30363d;
+      --btn-hover-bg: #2a313a;
+      --divider: #21262d;
+      --badge-neutral-bg: #21262d;
+      --badge-neutral-text: #aeb9c5;
+      --badge-accent-bg: #17263f;
+      --badge-accent-text: #6ea1ff;
+      --badge-good-bg: #12291c;
+      --badge-good-text: #4cc078;
+      --badge-bad-bg: #34181a;
+      --badge-bad-text: #f0857c;
+      --badge-muted-bg: #1b2027;
+      --badge-muted-text: #6e7a89;
+      --code-bg: #1b2027;
+      color-scheme: dark;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      font-size: 14px;
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    @media (prefers-reduced-motion: no-preference) {
+      body,
+      .panel,
+      .family-card,
+      .app-header,
+      .refresh-btn,
+      .theme-btn {
+        transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+      }
+    }
+
+    a { color: var(--accent); }
+
+    /* ---- Header ---- */
+    .app-header {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      flex-wrap: wrap;
+      padding: 14px 24px;
+      background: var(--header-bg);
+      border-bottom: 1px solid var(--header-border);
+    }
+
+    .crumbs {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      flex-wrap: wrap;
+      font-size: 15px;
+      font-weight: 600;
+      letter-spacing: 0.01em;
+      min-width: 0;
+    }
+
+    .crumbs a {
+      color: var(--text);
+      text-decoration: none;
+    }
+
+    .crumbs a:hover { color: var(--accent); }
+
+    .crumbs .crumb-sep {
+      color: var(--text-faint);
+      font-weight: 400;
+    }
+
+    .crumbs .crumb-current {
+      color: var(--text-muted);
+      font-weight: 500;
+    }
+
+    .header-meta {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      flex-wrap: wrap;
+    }
+
+    .last-updated {
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--text-muted);
+      white-space: nowrap;
+    }
+
+    .last-updated strong {
+      color: var(--text);
+      font-weight: 600;
+    }
+
+    .refresh-btn,
+    .theme-btn {
+      appearance: none;
+      cursor: pointer;
+      font: inherit;
+      font-size: 13px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 14px;
+      border-radius: 7px;
+      border: 1px solid var(--btn-border);
+      background: var(--btn-bg);
+      color: var(--text);
+    }
+
+    .theme-btn { padding: 6px 10px; }
+
+    .refresh-btn:hover,
+    .theme-btn:hover { background: var(--btn-hover-bg); }
+    .refresh-btn:active,
+    .theme-btn:active { transform: translateY(0.5px); }
+    .refresh-btn[data-loading="true"] { opacity: 0.6; pointer-events: none; }
+    .refresh-btn:focus-visible,
+    .theme-btn:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
+    }
+
+    /* ---- View container ---- */
+    .view {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+
+    /* ---- Global empty / error banner ---- */
+    .banner {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    .banner-msg {
+      margin: 8px 0 0;
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-size: 13px;
+      background: var(--count-bg);
+      color: var(--text-muted);
+      border: 1px solid var(--panel-border);
+    }
+
+    .banner-msg[hidden] { display: none; }
+
+    /* ---- Overview: summary cards ---- */
+    .card-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+      gap: 18px;
+    }
+
+    .family-card {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      padding: 16px;
+      background: var(--panel-bg);
+      border: 1px solid var(--panel-border);
+      border-radius: 10px;
+      box-shadow: var(--panel-shadow);
+      color: inherit;
+      text-decoration: none;
+    }
+
+    .family-card:hover {
+      border-color: var(--accent);
+    }
+
+    .family-card:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
+    }
+
+    .family-card .card-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .family-card h2 {
+      margin: 0;
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+    }
+
+    .card-breakdown {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      min-height: 22px;
+      align-items: center;
+    }
+
+    .card-breakdown .empty-note { margin: 0; }
+
+    .card-archived {
+      font-size: 12px;
+      color: var(--text-faint);
+      border-top: 1px solid var(--divider);
+      padding-top: 8px;
+      margin-top: auto;
+    }
+
+    .panel-count {
+      font-family: var(--mono);
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--count-text);
+      background: var(--count-bg);
+      padding: 2px 9px;
+      border-radius: 999px;
+      min-width: 24px;
+      text-align: center;
+    }
+
+    /* ---- Status badges ---- */
+    .badge {
+      display: inline-block;
+      font-family: var(--mono);
+      font-size: 10.5px;
+      font-weight: 600;
+      padding: 1px 8px;
+      border-radius: 999px;
+      white-space: nowrap;
+    }
+
+    .badge-neutral { background: var(--badge-neutral-bg); color: var(--badge-neutral-text); }
+    .badge-accent  { background: var(--badge-accent-bg);  color: var(--badge-accent-text); }
+    .badge-good    { background: var(--badge-good-bg);    color: var(--badge-good-text); }
+    .badge-bad     { background: var(--badge-bad-bg);     color: var(--badge-bad-text); }
+    .badge-muted   { background: var(--badge-muted-bg);   color: var(--badge-muted-text); }
+
+    /* ---- Family page panel ---- */
+    .panel {
+      display: flex;
+      flex-direction: column;
+      background: var(--panel-bg);
+      border: 1px solid var(--panel-border);
+      border-radius: 10px;
+      box-shadow: var(--panel-shadow);
+    }
+
+    .panel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--divider);
+    }
+
+    .panel-title {
+      margin: 0;
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+    }
+
+    .panel-body {
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+      padding: 12px 16px 16px;
+      gap: 12px;
+    }
+
+    .panel-active {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      min-height: 24px;
+    }
+
+    .empty-note {
+      color: var(--text-faint);
+      font-size: 12px;
+      font-style: italic;
+    }
+
+    /* ---- Item rows (two-line layout) ---- */
+    .wiki-item {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      min-width: 0;
+    }
+
+    .wiki-item .item-line1 {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      min-width: 0;
+    }
+
+    .wiki-item .item-id {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--text-faint);
+      flex-shrink: 0;
+    }
+
+    .wiki-item .item-label {
+      font-size: 13px;
+      min-width: 0;
+      overflow-wrap: anywhere;
+    }
+
+    .wiki-item a.item-label { text-decoration: none; }
+    .wiki-item a.item-label:hover { text-decoration: underline; }
+
+    .wiki-item .item-line2 {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 12px;
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .wiki-item .item-summary {
+      min-width: 0;
+      overflow-wrap: anywhere;
+    }
+
+    .wiki-item .item-status-extra {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--text-muted);
+      flex-shrink: 0;
+    }
+
+    .wiki-item .item-meta {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      flex-shrink: 0;
+      margin-left: auto;
+    }
+
+    /* ---- Archived items ---- */
+    .panel-archive {
+      border-top: 1px solid var(--divider);
+      padding-top: 10px;
+      margin-top: auto;
+    }
+
+    .panel-archive > summary {
+      cursor: pointer;
+      list-style: none;
+      font-size: 12px;
+      color: var(--text-muted);
+      user-select: none;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .panel-archive > summary::-webkit-details-marker { display: none; }
+
+    .panel-archive > summary::before {
+      content: "▸";
+      font-size: 10px;
+      color: var(--text-faint);
+      transition: transform 0.12s ease;
+    }
+
+    .panel-archive[open] > summary::before {
+      transform: rotate(90deg);
+    }
+
+    .panel-archive .archive-count {
+      font-family: var(--mono);
+      color: var(--text-faint);
+    }
+
+    .panel-archive-list {
+      background: var(--archive-bg);
+      border: 1px solid var(--archive-border);
+      border-radius: 7px;
+      margin-top: 8px;
+      padding: 10px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .archive-item {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .archive-item .item-id {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--text-faint);
+      flex-shrink: 0;
+    }
+
+    .archive-item .item-label {
+      min-width: 0;
+      overflow-wrap: anywhere;
+    }
+
+    .archive-item .item-date {
+      font-family: var(--mono);
+      font-size: 10.5px;
+      color: var(--text-faint);
+      margin-left: auto;
+      flex-shrink: 0;
+    }
+
+    /* ---- Item page ---- */
+    .back-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+      text-decoration: none;
+      margin-bottom: 14px;
+    }
+
+    .back-link:hover { text-decoration: underline; }
+
+    .item-page {
+      background: var(--panel-bg);
+      border: 1px solid var(--panel-border);
+      border-radius: 10px;
+      box-shadow: var(--panel-shadow);
+      padding: 24px 28px 28px;
+    }
+
+    .fm-grid {
+      display: grid;
+      grid-template-columns: max-content 1fr;
+      gap: 4px 18px;
+      font-size: 12.5px;
+      padding: 12px 14px;
+      margin-bottom: 20px;
+      background: var(--archive-bg);
+      border: 1px solid var(--archive-border);
+      border-radius: 8px;
+    }
+
+    .fm-grid .fm-key {
+      font-family: var(--mono);
+      font-size: 11.5px;
+      color: var(--text-faint);
+    }
+
+    .fm-grid .fm-value {
+      color: var(--text-muted);
+      overflow-wrap: anywhere;
+    }
+
+    /* ---- Rendered markdown ---- */
+    .md { font-size: 14px; }
+    .md > :first-child { margin-top: 0; }
+
+    .md h1, .md h2, .md h3, .md h4, .md h5, .md h6 {
+      line-height: 1.3;
+      margin: 1.6em 0 0.5em;
+    }
+
+    .md h1 { font-size: 20px; }
+    .md h2 { font-size: 16px; border-bottom: 1px solid var(--divider); padding-bottom: 6px; }
+    .md h3 { font-size: 14.5px; }
+    .md h4, .md h5, .md h6 { font-size: 13.5px; }
+
+    .md p { margin: 0.7em 0; }
+
+    .md ul, .md ol {
+      margin: 0.6em 0;
+      padding-left: 24px;
+    }
+
+    .md li { margin: 3px 0; }
+
+    .md li.task-li {
+      list-style: none;
+      margin-left: -20px;
+    }
+
+    .md li.task-li input {
+      margin-right: 7px;
+      vertical-align: -1.5px;
+    }
+
+    .md code {
+      font-family: var(--mono);
+      font-size: 12px;
+      background: var(--code-bg);
+      padding: 1.5px 5px;
+      border-radius: 4px;
+    }
+
+    .md pre {
+      background: var(--code-bg);
+      border: 1px solid var(--divider);
+      border-radius: 8px;
+      padding: 12px 14px;
+      overflow-x: auto;
+      margin: 0.8em 0;
+    }
+
+    .md pre code {
+      background: none;
+      padding: 0;
+      font-size: 12px;
+      line-height: 1.55;
+    }
+
+    .md blockquote {
+      margin: 0.8em 0;
+      padding: 6px 14px;
+      border-left: 3px solid var(--panel-border);
+      color: var(--text-muted);
+    }
+
+    .md hr {
+      border: none;
+      border-top: 1px solid var(--divider);
+      margin: 1.4em 0;
+    }
+
+    .md table {
+      border-collapse: collapse;
+      margin: 0.8em 0;
+      font-size: 13px;
+      display: block;
+      overflow-x: auto;
+      max-width: 100%;
+    }
+
+    .md th, .md td {
+      border: 1px solid var(--panel-border);
+      padding: 5px 10px;
+      text-align: left;
+    }
+
+    .md th {
+      background: var(--count-bg);
+      font-weight: 600;
+    }
+
+    .not-found {
+      color: var(--text-muted);
+      font-style: italic;
+    }
+
+    @media (max-width: 480px) {
+      .view { padding: 16px; }
+      .banner { padding: 0 16px; }
+      .app-header { padding: 12px 16px; }
+      .item-page { padding: 18px 16px 20px; }
+    }
+  </style>
+</head>
+<body>
+  <script>
+    // Applied before first paint: explicit localStorage choice > OS preference.
+    (function () {
+      try {
+        var saved = localStorage.getItem('dashboard-theme');
+        if (saved === 'light' || saved === 'dark') {
+          document.documentElement.setAttribute('data-theme', saved);
+        }
+      } catch (e) { /* storage blocked -> OS media query governs */ }
+    })();
+  </script>
+
+  <header class="app-header">
+    <nav class="crumbs" id="crumbs" aria-label="Breadcrumb">
+      <a href="#/">Wiki Dashboard</a>
+    </nav>
+    <div class="header-meta">
+      <span class="last-updated" id="last-updated">Last updated: <strong>never</strong></span>
+      <button type="button" class="refresh-btn" id="refresh-btn" title="Reload wiki data">
+        <span aria-hidden="true">↻</span> Refresh
+      </button>
+      <button type="button" class="theme-btn" id="theme-btn" aria-label="Switch color theme" title="Switch color theme">
+        <span aria-hidden="true" id="theme-btn-icon">◐</span>
+      </button>
+    </div>
+  </header>
+
+  <div class="banner">
+    <p class="banner-msg" id="status-banner" hidden></p>
+  </div>
+
+  <main class="view" id="view"></main>
+
+  <script>
+    // ============================================================
+    // Wiki Dashboard — client logic
+    //
+    // Hash-routed single page:
+    //   #/                     -> overview (one summary card per family)
+    //   #/<family>             -> family page (active list + archived)
+    //   #/<family>/<file>.md   -> item page (rendered markdown)
+    //
+    // All fetched text is rendered via textContent / DOM builders,
+    // never innerHTML, so wiki markdown can never inject markup.
+    // ============================================================
+
+    'use strict';
+
+    // The six families, in display order. Matches the wiki/work/ schema.
+    const FAMILIES = ['requirements', 'decisions', 'roadmaps', 'tasks', 'uat', 'bugs'];
+
+    const FAMILY_LABELS = {
+      requirements: 'Requirements',
+      decisions: 'Decisions',
+      roadmaps: 'Roadmaps',
+      tasks: 'Tasks',
+      uat: 'UAT',
+      bugs: 'Bugs',
+    };
+
+    // How often (ms) the poll loop re-fetches the family indexes.
+    const POLL_INTERVAL_MS = 5000;
+
+    // Known lifecycle status keywords (across all six lifecycle.md specs)
+    // and the badge tone each maps to.
+    const STATUS_TONES = {
+      'todo': 'neutral',
+      'open': 'neutral',
+      'draft': 'neutral',
+      'proposed': 'neutral',
+      'pending': 'neutral',
+      'in-progress': 'accent',
+      'triaged': 'accent',
+      'active': 'accent',
+      'done': 'good',
+      'passed': 'good',
+      'accepted': 'good',
+      'approved': 'good',
+      'closed': 'good',
+      'failed': 'bad',
+      'trashed': 'muted',
+      'skipped': 'muted',
+      'retired': 'muted',
+      'superseded': 'muted',
+      'wontfix': 'muted',
+      'duplicate': 'muted',
+      'cannot-reproduce': 'muted',
+    };
+
+    const STATUS_KEYWORDS = Object.keys(STATUS_TONES);
+
+    // --- Extract the first known status keyword from a status string ---
+    // "in-progress · P2" -> "in-progress"; "11/12 items checked" -> null.
+    // Requires word boundaries so e.g. "abandoned" never matches "done".
+    function statusKeyword(statusText) {
+      if (!statusText) return null;
+      const lower = statusText.toLowerCase();
+      let best = null;
+      for (const kw of STATUS_KEYWORDS) {
+        const idx = lower.indexOf(kw);
+        if (idx === -1) continue;
+        const before = idx === 0 ? '' : lower[idx - 1];
+        const after = lower[idx + kw.length] || '';
+        if (/[a-z0-9-]/.test(before) || /[a-z0-9-]/.test(after)) continue;
+        if (best === null || idx < best.idx) best = { kw: kw, idx: idx };
+      }
+      return best ? best.kw : null;
+    }
+
+    // --- Build a status badge node for a keyword (tone-mapped pill) ---
+    function buildBadge(keyword) {
+      const el = document.createElement('span');
+      el.className = 'badge badge-' + (STATUS_TONES[keyword] || 'neutral');
+      el.textContent = keyword;
+      return el;
+    }
+
+    // --- Split a markdown table row into cells ---
+    // Splits on unescaped pipes only and unescapes \| -> | inside cells, so
+    // rows like "| [[TASK-009]] | ... extracted\|inferred ... |" stay intact.
+    // Returns the cell array, or null if the line is not a table row.
+    function parseTableCells(line) {
+      const t = line.trim();
+      if (t.length < 2 || t[0] !== '|' || t[t.length - 1] !== '|') return null;
+      const inner = t.slice(1, -1);
+      return inner
+        .split(/(?<!\\)\|/)
+        .map(function (c) { return c.replace(/\\\|/g, '|').trim(); });
+    }
+
+    // --- Parse a family index.md into an array of item objects ---
+    // Each item: { title, path, summary, status, archivedDate }
+    //
+    // Two supported source formats:
+    //
+    // 1. Active-index bullet lines (all sub-parts optional):
+    //      - [TASK-NNN — Title](TASK-NNN-slug.md) — summary · status
+    //    Separators matched literally: em dash — (U+2014) between title and
+    //    summary; middle dot · (U+00B7) before status suffix(es).
+    //
+    // 2. Archive-index table rows:
+    //      | [[TASK-NNN]] | Title | Final Status | Archived |
+    //    A data row is identified by its first cell being a [[...]] wiki-link
+    //    (the header and |----| separator rows fail that gate). Escaped
+    //    pipes (\|) inside cells are handled. Archive rows have no markdown
+    //    link, so path is null (slugs cannot be reliably derived from IDs).
+    //
+    // Non-bullet prose and the `_(none yet)_` placeholder yield no items.
+    function parseIndexMarkdown(text) {
+      if (!text) return [];
+      const items = [];
+      // Bullet + [text](target); optional " — rest-of-line" tail.
+      const lineRe = /^\s*[-*]\s+\[([^\]]+)\]\(([^)]+)\)(?:\s+—\s+(.*))?\s*$/;
+      const lines = text.split(/\r?\n/);
+      for (const line of lines) {
+        const m = line.match(lineRe);
+        if (m) {
+          const title = m[1].trim();
+          const path = m[2].trim();
+          let summary = null;
+          let status = null;
+          if (m[3] != null) {
+            // The tail is "summary · statusA · statusB". Split on the first
+            // middle-dot separator; everything before is the summary, the
+            // remaining dot-separated segments join back as the status string.
+            const parts = m[3].split(/\s+·\s+/);
+            summary = parts.shift().trim() || null;
+            if (parts.length) status = parts.join(' · ').trim() || null;
+          }
+          items.push({ title: title, path: path, summary: summary, status: status, archivedDate: null });
+          continue;
+        }
+
+        // Archive table row branch (additive; bullet regex takes precedence).
+        const cells = parseTableCells(line);
+        if (cells && cells.length >= 3) {
+          const idMatch = cells[0].match(/^\[\[([^\]]+)\]\]$/);
+          if (idMatch) {
+            items.push({
+              title: idMatch[1] + ' — ' + cells[1],
+              path: null,
+              summary: null,
+              status: cells[2] || null,
+              archivedDate: cells[3] || null,
+            });
+          }
+        }
+      }
+      return items;
+    }
+
+    // --- Fetch one file, returning parsed items ([] on any failure/404) ---
+    async function fetchIndexFile(url) {
+      try {
+        const resp = await fetch(url, { cache: 'no-store' });
+        if (!resp.ok) return []; // 404 (no archive/empty family) etc. -> zero items
+        const text = await resp.text();
+        return parseIndexMarkdown(text);
+      } catch (_err) {
+        return [];
+      }
+    }
+
+    // --- Fetch one family's active + archived items ---
+    async function fetchFamily(familyName) {
+      const [active, archived] = await Promise.all([
+        fetchIndexFile('/wiki/work/' + familyName + '/index.md'),
+        fetchIndexFile('/wiki/work/' + familyName + '/archive/index.md'),
+      ]);
+      return { active: active, archived: archived };
+    }
+
+    // --- Fetch + parse the wiki data for all six families ---
+    // Never rejects — per-family failures degrade to empty lists.
+    async function fetchWikiData() {
+      const results = await Promise.all(
+        FAMILIES.map(function (family) {
+          return fetchFamily(family).then(
+            function (data) { return data; },
+            function () { return { active: [], archived: [] }; }
+          );
+        })
+      );
+      const data = {};
+      FAMILIES.forEach(function (family, i) {
+        data[family] = results[i];
+      });
+      return data;
+    }
+
+    // --- Split a title into { id, label } on the em-dash separator ---
+    function splitTitle(title) {
+      const idx = title.indexOf(' — ');
+      if (idx === -1) return { id: null, label: title };
+      return {
+        id: title.slice(0, idx).trim(),
+        label: title.slice(idx + 3).trim(),
+      };
+    }
+
+    // ============================================================
+    // Routing
+    // ============================================================
+
+    // location.hash -> { view, family?, file? }. Unknown routes fall back
+    // to the overview; a bad file segment falls back to the family page.
+    function parseRoute() {
+      const hash = location.hash.replace(/^#\/?/, '');
+      if (!hash) return { view: 'overview' };
+      const parts = hash.split('/').map(function (p) {
+        try { return decodeURIComponent(p); } catch (e) { return p; }
+      });
+      const family = parts[0];
+      if (FAMILIES.indexOf(family) === -1) return { view: 'overview' };
+      if (parts.length === 1) return { view: 'family', family: family };
+      const file = parts.slice(1).join('/');
+      const fileOk =
+        /^(archive\/)?[A-Za-z0-9][A-Za-z0-9 ._-]*\.md$/.test(file) &&
+        file.indexOf('..') === -1;
+      if (fileOk) return { view: 'item', family: family, file: file };
+      return { view: 'family', family: family };
+    }
+
+    function itemHash(family, path) {
+      return '#/' + family + '/' + path;
+    }
+
+    // ============================================================
+    // View: overview (summary cards)
+    // ============================================================
+
+    function buildFamilyCard(family, bucket) {
+      const active = bucket.active || [];
+      const archived = bucket.archived || [];
+
+      const card = document.createElement('a');
+      card.className = 'family-card';
+      card.href = '#/' + family;
+
+      const top = document.createElement('div');
+      top.className = 'card-top';
+      const h2 = document.createElement('h2');
+      h2.textContent = FAMILY_LABELS[family] || family;
+      const count = document.createElement('span');
+      count.className = 'panel-count';
+      count.textContent = String(active.length);
+      top.appendChild(h2);
+      top.appendChild(count);
+      card.appendChild(top);
+
+      // Per-status breakdown of active items.
+      const breakdown = document.createElement('div');
+      breakdown.className = 'card-breakdown';
+      if (active.length === 0) {
+        const note = document.createElement('span');
+        note.className = 'empty-note';
+        note.textContent = 'No active items.';
+        breakdown.appendChild(note);
+      } else {
+        const counts = {};
+        active.forEach(function (item) {
+          const kw = statusKeyword(item.status) || 'active';
+          counts[kw] = (counts[kw] || 0) + 1;
+        });
+        Object.keys(counts).forEach(function (kw) {
+          const badge = buildBadge(kw);
+          badge.textContent = counts[kw] + ' ' + kw;
+          breakdown.appendChild(badge);
+        });
+      }
+      card.appendChild(breakdown);
+
+      const arch = document.createElement('div');
+      arch.className = 'card-archived';
+      arch.textContent = archived.length + ' archived';
+      card.appendChild(arch);
+
+      return card;
+    }
+
+    function renderOverview(container, data) {
+      container.textContent = '';
+      const grid = document.createElement('div');
+      grid.className = 'card-grid';
+      FAMILIES.forEach(function (family) {
+        const bucket = (data && data[family]) || { active: [], archived: [] };
+        grid.appendChild(buildFamilyCard(family, bucket));
+      });
+      container.appendChild(grid);
+    }
+
+    // ============================================================
+    // View: family page
+    // ============================================================
+
+    // Active row: two-line layout —
+    //   line 1: [ID chip] linked title
+    //   line 2: summary (muted) ......... [status badge + extra status text]
+    function buildItemRow(item, family) {
+      const row = document.createElement('div');
+      row.className = 'wiki-item';
+
+      const parsed = splitTitle(item.title || '');
+
+      const line1 = document.createElement('div');
+      line1.className = 'item-line1';
+      if (parsed.id) {
+        const idEl = document.createElement('span');
+        idEl.className = 'item-id';
+        idEl.textContent = parsed.id;
+        line1.appendChild(idEl);
+      }
+      const labelEl = document.createElement(item.path ? 'a' : 'span');
+      labelEl.className = 'item-label';
+      labelEl.textContent = parsed.label || '(untitled)';
+      if (item.path) {
+        labelEl.href = itemHash(family, item.path);
+        labelEl.title = item.path;
+      }
+      line1.appendChild(labelEl);
+      row.appendChild(line1);
+
+      const kw = statusKeyword(item.status);
+      if (item.summary || item.status) {
+        const line2 = document.createElement('div');
+        line2.className = 'item-line2';
+
+        const sumEl = document.createElement('span');
+        sumEl.className = 'item-summary';
+        sumEl.textContent = item.summary || '';
+        line2.appendChild(sumEl);
+
+        const meta = document.createElement('span');
+        meta.className = 'item-meta';
+        if (item.status) {
+          // Segments that exactly match a known keyword render as a badge;
+          // everything else stays as plain mono text.
+          const segments = item.status.split(' · ');
+          const extras = [];
+          let badged = false;
+          segments.forEach(function (seg) {
+            if (!badged && kw && seg.trim().toLowerCase() === kw) {
+              meta.appendChild(buildBadge(kw));
+              badged = true;
+            } else {
+              extras.push(seg.trim());
+            }
+          });
+          if (extras.length) {
+            const extraEl = document.createElement('span');
+            extraEl.className = 'item-status-extra';
+            extraEl.textContent = extras.join(' · ');
+            meta.appendChild(extraEl);
+          }
+        }
+        line2.appendChild(meta);
+        row.appendChild(line2);
+      }
+
+      return row;
+    }
+
+    // Archived row: ID chip + title + final-status badge + archived date.
+    // Unlinked: archive tables carry [[ID]] wiki-links, not paths, and
+    // deriving a filename from an ID is unreliable (slugs vary).
+    function buildArchiveRow(item) {
+      const row = document.createElement('div');
+      row.className = 'archive-item';
+
+      const parsed = splitTitle(item.title || '');
+
+      if (parsed.id) {
+        const idEl = document.createElement('span');
+        idEl.className = 'item-id';
+        idEl.textContent = parsed.id;
+        row.appendChild(idEl);
+      }
+
+      const labelEl = document.createElement('span');
+      labelEl.className = 'item-label';
+      labelEl.textContent = parsed.label || '(untitled)';
+      row.appendChild(labelEl);
+
+      const kw = statusKeyword(item.status);
+      if (kw) row.appendChild(buildBadge(kw));
+
+      if (item.archivedDate) {
+        const dateEl = document.createElement('span');
+        dateEl.className = 'item-date';
+        dateEl.textContent = item.archivedDate;
+        row.appendChild(dateEl);
+      }
+
+      return row;
+    }
+
+    function emptyNote(text) {
+      const note = document.createElement('span');
+      note.className = 'empty-note';
+      note.textContent = text;
+      return note;
+    }
+
+    function renderFamilyPage(container, family, data) {
+      const bucket = (data && data[family]) || { active: [], archived: [] };
+      const active = bucket.active || [];
+      const archived = bucket.archived || [];
+
+      // Preserve the archive <details> open state across poll re-renders.
+      const prevArchive = container.querySelector('.panel-archive');
+      const archiveWasOpen = prevArchive ? prevArchive.open : false;
+
+      container.textContent = '';
+
+      const back = document.createElement('a');
+      back.className = 'back-link';
+      back.href = '#/';
+      back.textContent = '← Overview';
+      container.appendChild(back);
+
+      const panel = document.createElement('section');
+      panel.className = 'panel';
+
+      const header = document.createElement('div');
+      header.className = 'panel-header';
+      const title = document.createElement('h2');
+      title.className = 'panel-title';
+      title.textContent = FAMILY_LABELS[family] || family;
+      const count = document.createElement('span');
+      count.className = 'panel-count';
+      count.textContent = String(active.length);
+      header.appendChild(title);
+      header.appendChild(count);
+      panel.appendChild(header);
+
+      const body = document.createElement('div');
+      body.className = 'panel-body';
+
+      const activeArea = document.createElement('div');
+      activeArea.className = 'panel-active';
+      if (active.length === 0) {
+        activeArea.appendChild(emptyNote('No active items.'));
+      } else {
+        active.forEach(function (item) {
+          activeArea.appendChild(buildItemRow(item, family));
+        });
+      }
+      body.appendChild(activeArea);
+
+      const details = document.createElement('details');
+      details.className = 'panel-archive';
+      details.open = archiveWasOpen;
+      const summary = document.createElement('summary');
+      summary.appendChild(document.createTextNode('Archived '));
+      const archCount = document.createElement('span');
+      archCount.className = 'archive-count';
+      archCount.textContent = String(archived.length);
+      summary.appendChild(archCount);
+      details.appendChild(summary);
+
+      const list = document.createElement('div');
+      list.className = 'panel-archive-list';
+      if (archived.length === 0) {
+        list.appendChild(emptyNote('Nothing archived.'));
+      } else {
+        archived.forEach(function (item) {
+          list.appendChild(buildArchiveRow(item));
+        });
+      }
+      details.appendChild(list);
+      body.appendChild(details);
+
+      panel.appendChild(body);
+      container.appendChild(panel);
+    }
+
+    // ============================================================
+    // View: item page (rendered markdown)
+    // ============================================================
+
+    // Split "---\n...\n---\n" frontmatter off the top of a markdown file.
+    function splitFrontmatter(text) {
+      const m = text.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?/);
+      if (!m) return { frontmatter: null, body: text };
+      return { frontmatter: m[1], body: text.slice(m[0].length) };
+    }
+
+    // Top-level "key: value" lines only; quotes stripped from values.
+    function parseFrontmatter(text) {
+      const pairs = [];
+      text.split(/\r?\n/).forEach(function (line) {
+        const m = line.match(/^([A-Za-z_][A-Za-z0-9_-]*):\s*(.*)$/);
+        if (!m) return;
+        let value = m[2].trim().replace(/^"(.*)"$/, '$1');
+        pairs.push([m[1], value]);
+      });
+      return pairs;
+    }
+
+    // Resolve a markdown link target to a dashboard href.
+    // Relative .md links become hash routes; absolute URLs pass through.
+    function resolveLink(url, family) {
+      if (/^[a-z][a-z0-9+.-]*:/i.test(url)) return { href: url, external: true };
+      if (url.charAt(0) === '#') return { href: url, external: false };
+      let clean = url.replace(/^\.\//, '');
+      const cross = clean.match(/^\.\.\/([a-z]+)\/((?:archive\/)?[^/]+\.md)$/);
+      if (cross && FAMILIES.indexOf(cross[1]) !== -1) {
+        return { href: itemHash(cross[1], cross[2]), external: false };
+      }
+      if (/^(archive\/)?[^/]+\.md$/.test(clean)) {
+        return { href: itemHash(family, clean), external: false };
+      }
+      // Anything else (images, deep relative paths): serve from the wiki tree.
+      return { href: '/wiki/work/' + family + '/' + clean, external: false };
+    }
+
+    // Append inline-formatted markdown (code, bold, italic, links) to a node.
+    // Text is always attached via createTextNode/textContent — never markup.
+    function renderInline(target, text, family) {
+      const re = /(`[^`]+`)|\*\*([^*]+)\*\*|\*([^*]+)\*|\[([^\]]+)\]\(([^)\s]+)\)|(\[\[([^\]]+)\]\])/g;
+      let last = 0;
+      let m;
+      while ((m = re.exec(text)) !== null) {
+        if (m.index > last) {
+          target.appendChild(document.createTextNode(text.slice(last, m.index)));
+        }
+        if (m[1]) {
+          const code = document.createElement('code');
+          code.textContent = m[1].slice(1, -1);
+          target.appendChild(code);
+        } else if (m[2] != null) {
+          const strong = document.createElement('strong');
+          strong.textContent = m[2];
+          target.appendChild(strong);
+        } else if (m[3] != null) {
+          const em = document.createElement('em');
+          em.textContent = m[3];
+          target.appendChild(em);
+        } else if (m[4] != null) {
+          const resolved = resolveLink(m[5], family);
+          const a = document.createElement('a');
+          a.textContent = m[4];
+          a.href = resolved.href;
+          if (resolved.external) {
+            a.target = '_blank';
+            a.rel = 'noopener noreferrer';
+          }
+          target.appendChild(a);
+        } else if (m[6]) {
+          // [[wiki-link]] — no path to resolve; render as inline code.
+          const wl = document.createElement('code');
+          wl.textContent = m[7];
+          target.appendChild(wl);
+        }
+        last = re.lastIndex;
+      }
+      if (last < text.length) {
+        target.appendChild(document.createTextNode(text.slice(last)));
+      }
+    }
+
+    // Minimal escape-first block renderer: headings, lists (+ checkboxes),
+    // fenced code, blockquotes, tables, hr, paragraphs.
+    function renderMarkdown(md, family) {
+      const root = document.createElement('article');
+      root.className = 'md';
+      const lines = md.split(/\r?\n/);
+
+      let para = [];
+      let list = null; // { el, type, indentBase }
+
+      function flushPara() {
+        if (!para.length) return;
+        const p = document.createElement('p');
+        renderInline(p, para.join(' '), family);
+        root.appendChild(p);
+        para = [];
+      }
+
+      function flushList() {
+        list = null;
+      }
+
+      function ensureList(type) {
+        if (list && list.type === type) return list.el;
+        const el = document.createElement(type);
+        root.appendChild(el);
+        list = { el: el, type: type };
+        return el;
+      }
+
+      let i = 0;
+      while (i < lines.length) {
+        const line = lines[i];
+
+        // Fenced code block.
+        const fence = line.match(/^\s*```/);
+        if (fence) {
+          flushPara(); flushList();
+          const buf = [];
+          i++;
+          while (i < lines.length && !/^\s*```/.test(lines[i])) {
+            buf.push(lines[i]);
+            i++;
+          }
+          i++; // skip closing fence (or run off the end)
+          const pre = document.createElement('pre');
+          const code = document.createElement('code');
+          code.textContent = buf.join('\n');
+          pre.appendChild(code);
+          root.appendChild(pre);
+          continue;
+        }
+
+        // Blank line.
+        if (/^\s*$/.test(line)) {
+          flushPara(); flushList();
+          i++;
+          continue;
+        }
+
+        // Heading.
+        const h = line.match(/^(#{1,6})\s+(.*)$/);
+        if (h) {
+          flushPara(); flushList();
+          const el = document.createElement('h' + h[1].length);
+          // Strip trailing inline-comment markers like "<!-- agent: x -->".
+          renderInline(el, h[2].replace(/<!--.*?-->/g, '').trim(), family);
+          root.appendChild(el);
+          i++;
+          continue;
+        }
+
+        // Horizontal rule.
+        if (/^\s*(-{3,}|\*{3,})\s*$/.test(line) && para.length === 0) {
+          flushList();
+          root.appendChild(document.createElement('hr'));
+          i++;
+          continue;
+        }
+
+        // Blockquote (consecutive > lines collapse into one).
+        if (/^\s*>/.test(line)) {
+          flushPara(); flushList();
+          const buf = [];
+          while (i < lines.length && /^\s*>/.test(lines[i])) {
+            buf.push(lines[i].replace(/^\s*>\s?/, ''));
+            i++;
+          }
+          const bq = document.createElement('blockquote');
+          const p = document.createElement('p');
+          renderInline(p, buf.join(' '), family);
+          bq.appendChild(p);
+          root.appendChild(bq);
+          continue;
+        }
+
+        // Table: current line parses as cells and next line is a separator.
+        const cells = parseTableCells(line);
+        if (cells && i + 1 < lines.length) {
+          const sepCells = parseTableCells(lines[i + 1]);
+          const isSep = sepCells && sepCells.every(function (c) { return /^:?-{2,}:?$/.test(c); });
+          if (isSep) {
+            flushPara(); flushList();
+            const table = document.createElement('table');
+            const thead = document.createElement('thead');
+            const headRow = document.createElement('tr');
+            cells.forEach(function (c) {
+              const th = document.createElement('th');
+              renderInline(th, c, family);
+              headRow.appendChild(th);
+            });
+            thead.appendChild(headRow);
+            table.appendChild(thead);
+            const tbody = document.createElement('tbody');
+            i += 2;
+            while (i < lines.length) {
+              const rowCells = parseTableCells(lines[i]);
+              if (!rowCells) break;
+              const tr = document.createElement('tr');
+              rowCells.forEach(function (c) {
+                const td = document.createElement('td');
+                renderInline(td, c, family);
+                tr.appendChild(td);
+              });
+              tbody.appendChild(tr);
+              i++;
+            }
+            table.appendChild(tbody);
+            root.appendChild(table);
+            continue;
+          }
+        }
+
+        // Bullet list item (with optional checkbox).
+        const bullet = line.match(/^(\s*)[-*]\s+(.*)$/);
+        if (bullet) {
+          flushPara();
+          const ul = ensureList('ul');
+          const li = document.createElement('li');
+          const indent = Math.min(Math.floor(bullet[1].length / 2), 4);
+          if (indent > 0) li.style.marginLeft = (indent * 16) + 'px';
+          const task = bullet[2].match(/^\[([ xX])\]\s+(.*)$/);
+          if (task) {
+            li.className = 'task-li';
+            const cb = document.createElement('input');
+            cb.type = 'checkbox';
+            cb.disabled = true;
+            cb.checked = task[1] !== ' ';
+            li.appendChild(cb);
+            renderInline(li, task[2], family);
+          } else {
+            renderInline(li, bullet[2], family);
+          }
+          ul.appendChild(li);
+          i++;
+          continue;
+        }
+
+        // Ordered list item.
+        const ordered = line.match(/^(\s*)\d+\.\s+(.*)$/);
+        if (ordered) {
+          flushPara();
+          const ol = ensureList('ol');
+          const li = document.createElement('li');
+          const indent = Math.min(Math.floor(ordered[1].length / 2), 4);
+          if (indent > 0) li.style.marginLeft = (indent * 16) + 'px';
+          renderInline(li, ordered[2], family);
+          ol.appendChild(li);
+          i++;
+          continue;
+        }
+
+        // Plain paragraph text (consecutive lines join).
+        flushList();
+        para.push(line.trim());
+        i++;
+      }
+
+      flushPara();
+      return root;
+    }
+
+    async function renderItemPage(container, family, file) {
+      container.textContent = '';
+
+      const back = document.createElement('a');
+      back.className = 'back-link';
+      back.href = '#/' + family;
+      back.textContent = '← ' + (FAMILY_LABELS[family] || family);
+      container.appendChild(back);
+
+      const page = document.createElement('div');
+      page.className = 'item-page';
+      container.appendChild(page);
+
+      let text = null;
+      try {
+        const resp = await fetch('/wiki/work/' + family + '/' + file, { cache: 'no-store' });
+        if (resp.ok) text = await resp.text();
+      } catch (_err) { /* fall through to not-found */ }
+
+      // A route change while fetching means this render is stale — bail.
+      const route = parseRoute();
+      if (!(route.view === 'item' && route.family === family && route.file === file)) return;
+
+      if (text === null) {
+        const nf = document.createElement('p');
+        nf.className = 'not-found';
+        nf.textContent = 'Could not load ' + file + ' — it may have been moved or archived.';
+        page.appendChild(nf);
+        return;
+      }
+
+      const split = splitFrontmatter(text);
+
+      if (split.frontmatter) {
+        const pairs = parseFrontmatter(split.frontmatter);
+        if (pairs.length) {
+          const grid = document.createElement('div');
+          grid.className = 'fm-grid';
+          pairs.forEach(function (pair) {
+            const key = document.createElement('span');
+            key.className = 'fm-key';
+            key.textContent = pair[0];
+            grid.appendChild(key);
+            const value = document.createElement('span');
+            value.className = 'fm-value';
+            const kw = pair[0] === 'status' ? statusKeyword(pair[1]) : null;
+            if (kw) {
+              value.appendChild(buildBadge(kw));
+            } else {
+              value.textContent = pair[1];
+            }
+            grid.appendChild(value);
+          });
+          page.appendChild(grid);
+        }
+      }
+
+      page.appendChild(renderMarkdown(split.body, family));
+    }
+
+    // ============================================================
+    // Shell: breadcrumbs, routing, polling, theme
+    // ============================================================
+
+    let wikiData = null;
+    let lastDataSerialized = null;
+
+    function updateCrumbs(route) {
+      const nav = document.getElementById('crumbs');
+      if (!nav) return;
+      nav.textContent = '';
+      const root = document.createElement('a');
+      root.href = '#/';
+      root.textContent = 'Wiki Dashboard';
+      nav.appendChild(root);
+      if (route.view === 'overview') return;
+
+      const sep1 = document.createElement('span');
+      sep1.className = 'crumb-sep';
+      sep1.textContent = '›';
+      nav.appendChild(sep1);
+
+      if (route.view === 'family') {
+        const cur = document.createElement('span');
+        cur.className = 'crumb-current';
+        cur.textContent = FAMILY_LABELS[route.family] || route.family;
+        nav.appendChild(cur);
+        return;
+      }
+
+      const fam = document.createElement('a');
+      fam.href = '#/' + route.family;
+      fam.textContent = FAMILY_LABELS[route.family] || route.family;
+      nav.appendChild(fam);
+
+      const sep2 = document.createElement('span');
+      sep2.className = 'crumb-sep';
+      sep2.textContent = '›';
+      nav.appendChild(sep2);
+
+      const cur = document.createElement('span');
+      cur.className = 'crumb-current';
+      const idMatch = route.file.match(/^(?:archive\/)?([A-Z]+-\d+)/);
+      cur.textContent = idMatch ? idMatch[1] : route.file;
+      nav.appendChild(cur);
+    }
+
+    function renderRoute() {
+      const route = parseRoute();
+      const container = document.getElementById('view');
+      if (!container) return;
+      updateCrumbs(route);
+      if (route.view === 'family') {
+        renderFamilyPage(container, route.family, wikiData);
+      } else if (route.view === 'item') {
+        renderItemPage(container, route.family, route.file);
+      } else {
+        renderOverview(container, wikiData);
+      }
+    }
+
+    function updateTimestamp(date) {
+      const container = document.getElementById('last-updated');
+      if (!container) return;
+      const strong = container.querySelector('strong');
+      if (strong) strong.textContent = date.toLocaleTimeString();
+    }
+
+    function setBanner(message) {
+      const banner = document.getElementById('status-banner');
+      if (!banner) return;
+      if (message) {
+        banner.textContent = message;
+        banner.hidden = false;
+      } else {
+        banner.textContent = '';
+        banner.hidden = true;
+      }
+    }
+
+    // Overlap guard: true while a fetch cycle is in flight so a slow poll or
+    // a rapid button mash can't stack overlapping fetch/render cycles.
+    let refreshInFlight = false;
+
+    // One refresh cycle: fetch indexes, re-render the current view if the
+    // data changed (or on force), stamp the timestamp. The item view is only
+    // re-fetched on force (navigation handles its own first render).
+    async function refresh(force) {
+      if (refreshInFlight) return;
+      refreshInFlight = true;
+
+      const btn = document.getElementById('refresh-btn');
+      if (btn) btn.setAttribute('data-loading', 'true');
+
+      try {
+        const data = await fetchWikiData();
+        wikiData = data;
+        const serialized = JSON.stringify(data);
+        const changed = serialized !== lastDataSerialized;
+        lastDataSerialized = serialized;
+
+        const route = parseRoute();
+        if (route.view === 'item') {
+          if (force) renderRoute();
+        } else if (changed || force) {
+          renderRoute();
+        }
+        updateTimestamp(new Date());
+        setBanner(null);
+      } catch (err) {
+        setBanner('Could not load wiki data. Retrying…');
+      } finally {
+        refreshInFlight = false;
+        if (btn) btn.removeAttribute('data-loading');
+      }
+    }
+
+    function startPolling() {
+      setInterval(function () { refresh(false); }, POLL_INTERVAL_MS);
+    }
+
+    // --- Theme toggle (explicit choice > OS preference) ---
+    function resolvedTheme() {
+      const attr = document.documentElement.getAttribute('data-theme');
+      if (attr === 'light' || attr === 'dark') return attr;
+      return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    }
+
+    function updateThemeButton() {
+      const icon = document.getElementById('theme-btn-icon');
+      if (icon) icon.textContent = resolvedTheme() === 'dark' ? '☀' : '☾';
+    }
+
+    function initTheme() {
+      const btn = document.getElementById('theme-btn');
+      if (btn) {
+        btn.addEventListener('click', function () {
+          const next = resolvedTheme() === 'dark' ? 'light' : 'dark';
+          document.documentElement.setAttribute('data-theme', next);
+          try { localStorage.setItem('dashboard-theme', next); } catch (e) {}
+          updateThemeButton();
+        });
+      }
+      // Live OS flips apply only while no explicit choice is set.
+      const mq = window.matchMedia('(prefers-color-scheme: dark)');
+      const onChange = function () {
+        if (!document.documentElement.getAttribute('data-theme')) updateThemeButton();
+      };
+      if (mq.addEventListener) mq.addEventListener('change', onChange);
+      else if (mq.addListener) mq.addListener(onChange);
+      updateThemeButton();
+    }
+
+    // --- Boot ---
+    function init() {
+      const btn = document.getElementById('refresh-btn');
+      if (btn) {
+        btn.addEventListener('click', function () { refresh(true); });
+      }
+      window.addEventListener('hashchange', renderRoute);
+      initTheme();
+      renderRoute(); // paint the shell immediately (empty data)
+      refresh(true); // then fill with first data
+      startPolling();
+    }
+
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', init);
+    } else {
+      init();
+    }
+  </script>
+</body>
+</html>

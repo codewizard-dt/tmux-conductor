@@ -1,5 +1,6 @@
 ---
 id: UAT-103
+aliases: [UAT-103]
 title: "UAT: dashboard status display uses backend status fields"
 status: passed
 task: TASK-103

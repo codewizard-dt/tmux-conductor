@@ -1,5 +1,6 @@
 ---
 id: TASK-024
+aliases: [TASK-024]
 title: "Strip AGENTS/BG_PROCESSES/AGENT_BG_LINKS/TASK_QUEUE from conductor.conf and retire tasks.txt"
 status: done
 created: 2026-06-12

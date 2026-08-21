@@ -1,5 +1,6 @@
 ---
 id: TASK-007
+aliases: [TASK-007]
 title: "Add /api/projects CRUD and POST /api/projects/:id/agents with auto-naming"
 status: done
 created: 2026-06-12

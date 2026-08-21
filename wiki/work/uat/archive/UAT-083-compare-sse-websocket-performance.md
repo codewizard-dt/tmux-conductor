@@ -1,5 +1,6 @@
 ---
 id: UAT-083
+aliases: [UAT-083]
 title: "UAT: compare optimized SSE and WebSocket performance"
 status: passed
 task: TASK-083

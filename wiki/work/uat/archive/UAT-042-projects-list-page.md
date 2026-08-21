@@ -1,5 +1,6 @@
 ---
 id: UAT-042
+aliases: [UAT-042]
 title: "UAT: Create /projects route page wrapping ProjectList and AddProjectForm"
 status: passed
 task: TASK-042

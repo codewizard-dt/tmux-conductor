@@ -1,5 +1,6 @@
 ---
 id: TASK-049
+aliases: [TASK-049]
 title: "Invite codes frontend — two-step signup page + admin list/create UI (react-router-dom)"
 status: done
 created: 2026-06-14

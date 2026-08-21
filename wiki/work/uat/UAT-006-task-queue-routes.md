@@ -1,5 +1,6 @@
 ---
 id: UAT-006
+aliases: [UAT-006]
 title: "UAT: ID-based /api/tasks routes and SSE events"
 status: pending
 task: TASK-006

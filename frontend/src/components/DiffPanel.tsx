@@ -18,8 +18,11 @@ function DiffPanel({ agentId }: { agentId: number }) {
   const [error, setError] = useState<string | null>(null)
 
   const load = useCallback((signal: { cancelled: boolean }) => {
-    setLoading(true)
-    setError(null)
+    queueMicrotask(() => {
+      if (signal.cancelled) return
+      setLoading(true)
+      setError(null)
+    })
     fetchAgentDiff(agentId)
       .then((data) => {
         if (signal.cancelled) return
@@ -42,6 +45,17 @@ function DiffPanel({ agentId }: { agentId: number }) {
     const signal = { cancelled: false }
     load(signal)
     return () => { signal.cancelled = true }
+  }, [agentId, load])
+
+  useEffect(() => {
+    function handleDiffRefresh(event: Event) {
+      const detail = (event as CustomEvent<{ agentId: number }>).detail
+      if (detail.agentId === agentId) {
+        load({ cancelled: false })
+      }
+    }
+    window.addEventListener('conductor:diff-refresh', handleDiffRefresh)
+    return () => { window.removeEventListener('conductor:diff-refresh', handleDiffRefresh) }
   }, [agentId, load])
 
   // Non-git agent (endpoint reports no base branch): this component owns its own visibility

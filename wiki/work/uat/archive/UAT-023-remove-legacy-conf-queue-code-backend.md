@@ -1,5 +1,6 @@
 ---
 id: UAT-023
+aliases: [UAT-023]
 title: "UAT: Delete dead conf-splice + legacy file-queue code from backend/config.ts and backend/state.ts"
 status: passed
 task: TASK-023

@@ -1,5 +1,6 @@
 ---
 id: ROADMAP-015
+aliases: [ROADMAP-015]
 title: Latency improvements — terminal transport, runtime knobs, state simplification
 status: done
 created: 2026-07-04

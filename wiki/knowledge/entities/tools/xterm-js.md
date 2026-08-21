@@ -2,9 +2,11 @@
 id: xterm-js
 title: xterm.js
 aliases: [xterm, xtermjs, "@xterm/xterm"]
-updated: 2026-06-22
+updated: 2026-08-15
 sources:
   - ../../../raw/research/web-terminal-emulators/index.md
+  - ../../../raw/research/terminal-keyboard-clipboard/index.md
+confidence: extracted
 tags: [terminal, browser, ansi, npm, tool]
 ---
 
@@ -44,4 +46,17 @@ fitAddon.fit()
 
 **Theming**: `ITheme` interface accepts `background`, `foreground`, `cursor`, named ANSI colors (black through brightWhite), and extended ANSI (16–255).
 
-derived_from::[[web-terminal-emulators]] relates_to::[[log-tail]] relates_to::[[ansi-terminal-emulation-browser]]
+## Input interception — matters when xterm is NOT the input source (2026-08-15)
+
+Verified against the installed v6.0.0 bundle and in the live app. If you drive a remote pty from your own key-capture layer and use xterm purely as a read-only mirror, xterm still competes for input events:
+
+- **`paste` is registered on both `term.textarea` and `term.element`**, and `handlePasteEvent` calls `ev.stopPropagation()` as its first statement. Under `disableStdin: true` the resulting paste is a no-op, so `Cmd+V` is consumed and silently discarded. A bubble-phase listener on an ancestor (including React's delegated `onPaste`) never fires. **Listen in the capture phase instead** — verified to work.
+- **`copy` is registered on `term.element`**, filling the clipboard from `selectionText` when `hasSelection()`.
+- **A hidden `.xterm-helper-textarea` steals focus** on a click or drag-select inside the terminal. While it holds focus xterm also stops propagation on `keydown`, so an external capture layer receives nothing at all.
+- Clipboard and keyboard events route differently: with an ancestor div focused, `keydown` targets that div but `paste` still targets `.xterm-helper-textarea`.
+- **Selection**: mouse drag-select works out of the box and renders as `.xterm-selection` overlay divs. Shift+click extends a selection (`_handleIncrementalClick`). On macOS the "force selection" modifier is **Option+click**, not Shift, and only when `macOptionClickForcesSelection` is enabled — it defaults to `false`.
+- Writing `\x1bc` (RIS) before a snapshot performs a full terminal reset, which resets the buffer on every repaint.
+
+See `relates_to::[[browser-terminal-input-capture]]` for the resulting integration rules.
+
+derived_from::[[web-terminal-emulators]] derived_from::[[terminal-keyboard-clipboard]] relates_to::[[log-tail]] relates_to::[[ansi-terminal-emulation-browser]] relates_to::[[browser-terminal-input-capture]]

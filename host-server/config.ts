@@ -30,6 +30,7 @@ export interface ConductorConf {
   terminalTailLines: number;
   focusedTerminalTailLines: number;
   terminalLogMaxRowsPerAgent: number;
+  metricsSnapshotIntervalMs: number;
   agents: AgentEntry[];
   bgProcesses: BgProcessEntry[];
   agentBgLinks: Record<string, string>;
@@ -151,7 +152,7 @@ export function readConductorConf(confPath: string = DEFAULT_CONF_PATH): Conduct
   // IDLE_PATTERN/AWAITING_PATTERN/POLL_INTERVAL settings: declare -p still
   // prints the variables that exist, and missing ones simply parse as empty
   // (pollInterval then falls back to 15, idlePattern to '' → regex skipped).
-  const cmd = `bash -c "source ${confPath} && declare -p BG_PROCESSES AGENT_BG_LINKS SESSION_NAME STATE_DIR LOG_DIR DB_PATH IDLE_PATTERN BUSY_PATTERN AWAITING_PATTERN POLL_INTERVAL CONTEXT_WINDOW STATUS_POLL_MS TERMINAL_POLL_MS FOCUSED_TERMINAL_POLL_MS FOCUSED_TERMINAL_WS_POLL_MS TERMINAL_TAIL_LINES FOCUSED_TERMINAL_TAIL_LINES TERMINAL_LOG_MAX_ROWS_PER_AGENT 2>/dev/null || true"`;
+  const cmd = `bash -c "source ${confPath} && declare -p BG_PROCESSES AGENT_BG_LINKS SESSION_NAME STATE_DIR LOG_DIR DB_PATH IDLE_PATTERN BUSY_PATTERN AWAITING_PATTERN POLL_INTERVAL CONTEXT_WINDOW STATUS_POLL_MS TERMINAL_POLL_MS FOCUSED_TERMINAL_POLL_MS FOCUSED_TERMINAL_WS_POLL_MS TERMINAL_TAIL_LINES FOCUSED_TERMINAL_TAIL_LINES TERMINAL_LOG_MAX_ROWS_PER_AGENT METRICS_SNAPSHOT_INTERVAL_MS 2>/dev/null || true"`;
   const output = execSync(cmd, { encoding: 'utf8', timeout: CONFIG_SYNC_TIMEOUT_MS });
 
   // Relative paths in the conf (./logs/state, ./data/conductor.db) are relative to the
@@ -178,6 +179,9 @@ export function readConductorConf(confPath: string = DEFAULT_CONF_PATH): Conduct
   const terminalTailLines = parsePositiveIntSetting(output, 'TERMINAL_TAIL_LINES', 100);
   const focusedTerminalTailLines = parsePositiveIntSetting(output, 'FOCUSED_TERMINAL_TAIL_LINES', 300);
   const terminalLogMaxRowsPerAgent = parsePositiveIntSetting(output, 'TERMINAL_LOG_MAX_ROWS_PER_AGENT', 500);
+  // TASK-119: interval between full liveUpdateMetrics snapshots persisted to
+  // observability.jsonl (restart survivability — see appendObservabilityLog call site).
+  const metricsSnapshotIntervalMs = parsePositiveIntSetting(output, 'METRICS_SNAPSHOT_INTERVAL_MS', 60000);
   const agentsRaw = parseArray(parseDeclare(output, 'AGENTS'));
   const agents = agentsRaw.map(parseAgentEntry);
   const bgProcessesRaw = parseArray(parseDeclare(output, 'BG_PROCESSES'));
@@ -211,6 +215,7 @@ export function readConductorConf(confPath: string = DEFAULT_CONF_PATH): Conduct
     terminalTailLines,
     focusedTerminalTailLines,
     terminalLogMaxRowsPerAgent,
+    metricsSnapshotIntervalMs,
     agents,
     bgProcesses,
     agentBgLinks,

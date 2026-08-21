@@ -1,5 +1,6 @@
 ---
 id: UAT-001
+aliases: [UAT-001]
 title: "UAT: Skill detection — backend scanner + dashboard surfacing"
 status: pending
 task: TASK-001

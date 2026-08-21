@@ -1,5 +1,6 @@
 ---
 id: TASK-052
+aliases: [TASK-052]
 title: "Daemon connector: outbound WSS client to app/api relay with reconnect/backoff and path-allowlisted proxying"
 status: done
 created: 2026-06-14

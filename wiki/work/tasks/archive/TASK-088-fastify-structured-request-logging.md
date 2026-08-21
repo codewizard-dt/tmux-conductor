@@ -1,5 +1,6 @@
 ---
 id: TASK-088
+aliases: [TASK-088]
 title: "enable env-gated Fastify structured request logging"
 status: done
 created: 2026-07-04

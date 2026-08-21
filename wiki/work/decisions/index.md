@@ -1,6 +1,6 @@
 ---
 title: Decisions Index
-updated: 2026-06-11
+updated: 2026-08-15
 ---
 
 # Decisions — Active Items

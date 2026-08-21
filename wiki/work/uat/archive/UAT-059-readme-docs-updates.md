@@ -1,5 +1,6 @@
 ---
 id: UAT-059
+aliases: [UAT-059]
 title: "UAT: README install one-liner + docs updates (CLAUDE.md, scripts/README, .env.example)"
 status: passed
 task: TASK-059

@@ -1,0 +1,68 @@
+---
+id: TASK-133
+aliases: [TASK-133]
+title: "Investigate BUG-0001 and wire a Notification-driven sentinel gate for background-agent-in-flight dispatch"
+status: todo
+created: 2026-08-15
+updated: 2026-08-15
+depends_on: []
+blocks: []
+parallel_safe_with: []
+uat: ""
+tags: [host-server, dispatch, hooks, subagents, bug-0001]
+---
+
+# TASK-133 — Investigate BUG-0001 and wire a Notification-driven sentinel gate for background-agent-in-flight dispatch
+
+## Objective
+
+`BUG-0001` (main agent falsely marked idle while waiting on a background sub-agent, causing premature task dequeue) is now behaviorally confirmed, not just theorized. A live repro (`tmp/dashboard-drops/1786843012759-stage-1.png`, `-stage-2.png`, `-stage-3.png`) shows the exact sequence: stage-1, the agent is `BUSY` running `/power-mode roadmap 7`'s own turn with 2 tasks queued (`roadmap 17`, `roadmap 10`); stage-2, that same turn has spawned 3 background `/uat-auto` agents (TASK-062/066/071), its own top-level turn legitimately ends ("Waiting for 3 background agents to finish", then an empty prompt), and the dashboard status flips to `IDLE` — while the footer still shows all 3 sub-agents actively running (9s/6s/3s elapsed, still counting); stage-3, moments later, the dashboard is `BUSY` again because the conductor dispatched the next queued task (`/power-mode roadmap 17`) into the **same pane**, interleaving a second roadmap run on top of the first roadmap's still-running background agents (footer now shows 24s/20s/17s elapsed on the original 3 — not finished).
+
+Per `raw/research/stop-hook-subagent-detection/index.md`: the `Stop` hook's payload has no field for outstanding background work, and this is Claude Code's background/async-agent feature (shipped v2.1.198), which legitimately ends the outer turn while background work continues. The fix is an **event-driven sentinel**, not a fixed grace period (explicitly rejected — background agent waits can be arbitrarily long, as seen here: still running past 24s and climbing), driven by the `Notification` hook's `agent_needs_input`/`agent_completed` subtypes, gating `scripts/monitor.sh`'s dispatch call site.
+
+## Approach
+
+This is investigate-then-implement in one task because the exact payload shape of `agent_needs_input`/`agent_completed` is unconfirmed from documentation alone (per the research's two flagged unknowns) — steps 2-4 below adapt based on what step 1 finds, so read step 1's captured payload carefully before writing step 2's logic rather than assuming field names in advance.
+
+Key design decisions:
+- **Sentinel is per-outstanding-agent, not a shared counter** — one file per background agent under a per-agent directory (`$STATE_DIR/<agent>.pending-agents/<correlator>`), so concurrent Node hook processes never need a read-modify-write on a shared counter (file create/delete is atomic; counter increment is not).
+- **Narrow Notification hook, not the old 4-state vocabulary** — only `agent_needs_input`/`agent_completed` (or whatever step 1 confirms is the correct "outstanding" vs "resolved" pair) drive the sentinel; every other `notification_type` stays a no-op/log-only, mirroring the original `on-notification.sh`'s `*` branch. Do not resurrect `done`/`working`/`wait`/`dispatching` — TASK-009 deliberately collapsed that vocabulary in April 2026 and this fix must not undo it for unrelated notification types.
+- **Generous staleness fallback, not a tight one** — a missed/misunderstood `agent_completed` notification must not permanently wedge the queue, but the fallback threshold must be long enough to not reproduce the original bug for genuinely long-running background agents (tens of minutes, not `POLL_INTERVAL`-scale — mirror the *intent* of the existing `stalled`-after-2×POLL_INTERVAL pattern, not its timescale).
+- **Out of scope**: the screenshots also show the dashboard's queued-tasks list panel not dropping a just-dispatched row immediately (stage-3's count badge reads "(1)" while the list still visually renders 2 rows) — this looks like a separate frontend staleness issue, not the dispatch bug itself. Do not fix it as part of this task; note it in the completion report if still reproducible, for a possible follow-up bug filing.
+
+## Steps
+
+### 1. Live investigation — confirm Notification payload shape <!-- agent: general-purpose -->
+
+- [ ] Create `hooks/on-notification.js` (Node.js, matching the existing per-event hook convention documented in `hooks/README.md`) that does **only** this: drain stdin, parse JSON, and append the full raw payload plus `notification_type` to `$CONDUCTOR_LOG_DIR/notification-debug.jsonl` (new file, timestamped JSONL, one record per event) — no state-file writes yet. Resolve `AGENT_NAME`/`STATE_DIR`/`LOG_DIR` the same way `hooks/lib/write-state.js` does (env vars, tmux window-name fallback) for consistency, but keep this script self-contained rather than routing through `writeState()` since it isn't writing `idle`/`busy` state.
+- [ ] Register it in `hooks/register-hooks.jq` under the `Notification` event (no matcher — mirror the `register("UserPromptSubmit"; ...)` pattern at `hooks/register-hooks.jq:67`) and add the corresponding copy/chmod step in `install-hooks.sh` (alongside the existing `on-session-start.js`/`on-prompt-submit.js`/`on-stop.js`/`on-stop-failure.js` loop).
+- [ ] Run `./install-hooks.sh` to install the updated hook set.
+- [ ] Reproduce the bug live: dispatch a `/power-mode` run on a test agent with a skill/prompt known to spawn background agents (the user confirmed this reproduces easily by "stacking power mode tasks on top of each other" — queue 2+ `/power-mode roadmap N, all phases` tasks behind one that will spawn background `/uat-auto` agents, same shape as the screenshots).
+- [ ] Read `$CONDUCTOR_LOG_DIR/notification-debug.jsonl` from the repro run. Confirm, with real captured data: (a) does `agent_needs_input` fire when a background agent starts vs. only when it's blocked waiting for input specifically? (b) does `agent_completed` fire reliably when each background agent finishes? (c) what correlator field (if any — `agent_id`, `tool_use_id`, something else) ties a given notification to a specific background agent, so multiple concurrent background agents (as in the screenshots — 3 at once) can be tracked independently? (d) is there any distinct "started" signal, or does the pending count need to be seeded from somewhere else (e.g. a `PreToolUse` hook on whichever tool call initiated the background dispatch — inspect `tool_input` in that case to see if background/async dispatch is syntactically distinguishable from a synchronous sub-agent call before relying on it).
+- [ ] Write up the confirmed payload shape as a short comment block at the top of `hooks/on-notification.js` (field names, example payload) so step 2 isn't re-deriving this from scratch, and so the sentinel logic in step 2 has a citation for its assumptions.
+
+### 2. Sentinel write/clear logic <!-- agent: general-purpose -->
+
+- [ ] Extend `hooks/on-notification.js` (built in step 1) to, based on what step 1 confirmed: on the "agent outstanding" signal, create an empty file under `$STATE_DIR/<agent>.pending-agents/<correlator>` (mkdir -p the directory first); on the "agent resolved" signal (`agent_completed`), delete that file if it exists. Every other `notification_type` remains a no-op (matching the narrow-scope design decision above) but still gets logged to `notification-debug.jsonl` for now (keep the debug logging from step 1 — cheap, and useful if a future notification type needs similar handling).
+- [ ] If step 1 found no reliable per-agent correlator, fall back to a monotonic counter scheme instead (a numbered file per "still outstanding" signal, e.g. `$STATE_DIR/<agent>.pending-agents/<timestamp>-<random-suffix>`, decremented by removing the oldest file on `agent_completed`) — document why in the code comment, since it's a degraded but still-atomic alternative to the ideal correlator-keyed version.
+- [ ] Add a helper (in `hooks/lib/write-state.js` or a new small `hooks/lib/pending-agents.js`, whichever fits better once you see the actual logic) for "is there any file under `$STATE_DIR/<agent>.pending-agents/` newer than the staleness threshold" — this is what `monitor.sh` will need to query in step 3. Bash needs to read this too, so prefer a shape `monitor.sh` can check directly with `find`/`ls` rather than requiring a Node subprocess call on every poll tick (performance-sensitive — this runs every `POLL_INTERVAL`).
+
+### 3. Gate scripts/monitor.sh's dispatch call site <!-- agent: general-purpose -->
+
+- [ ] In `scripts/monitor.sh`, add a new function (near `mark_busy()`, `scripts/monitor.sh:314-320`) — e.g. `has_pending_background_agents()` — that checks `$STATE_DIR/<agent>.pending-agents/` for any file newer than a new `PENDING_AGENT_STALE_S` config var (see step 4), following the existing staleness-check idiom already used elsewhere in this file for the `busy`-older-than-2×POLL_INTERVAL recovery logic.
+- [ ] In the main dispatch loop, at the point where `is_idle "$target" "$window_name" "$name"` gates entry into the dispatch branch (`scripts/monitor.sh:425`), add the new check: only proceed to `pop_task`/`dispatch` (lines 436-447) when `is_idle` is true **and** `has_pending_background_agents "$name"` is false. When the agent is idle but has pending background agents, `log` a clear message (e.g. `"$name — idle but $N background agent(s) still pending, holding dispatch"`) each tick so this state is visible in `$LOG_DIR/monitor-*.log`, and leave the queue untouched (same as the existing "queue empty, no task" branch — don't pop, don't dispatch, just wait for the next tick).
+- [ ] Update the inline comments around the dispatch loop to explain why this check exists, citing `BUG-0001` and `raw/research/stop-hook-subagent-detection/index.md`.
+
+### 4. Config, docs, and the future host-server migration point <!-- agent: general-purpose -->
+
+- [ ] Add `PENDING_AGENT_STALE_S` to `conductor.conf` (near the existing `# --- Context window ---`/usage-monitoring sections), with a comment explaining it's the staleness fallback for the background-agent sentinel — generous default (document the reasoning: long enough that a real, long-running background agent run doesn't trip it, e.g. an hour-scale default, but tune based on what step 1's live repro actually showed for realistic `/uat-auto`-style background agent durations).
+- [ ] Update `hooks/README.md`'s state-machine section: add `on-notification.js` to the scripts table (event `Notification`, "state written" column should describe the sentinel file, not `idle`/`busy`, to avoid implying it reopens the collapsed vocabulary), and add a new subsection describing the sentinel mechanism at the same level of detail as the existing `on-stop.js`/`write-state.js` subsections.
+- [ ] Update `CLAUDE.md`'s "Key Design Decisions" idle-detection paragraph to mention the sentinel gate as an additional, orthogonal check beyond the `idle`/`busy` state file and pane-pattern fallback — briefly, one to two sentences, referencing `hooks/README.md` for detail rather than duplicating it.
+- [ ] Leave a clear note (comment in `scripts/monitor.sh` near the new check, plus a line in this task's completion report) that TASK-120/TASK-121 (both `todo` as of this task, planning to move dispatch triggering from `monitor.sh`'s loop into `host-server`'s `pollAndDiff`) will need to carry the same `has_pending_background_agents` check when that migration happens — this task does not itself touch `host-server/`.
+
+### 5. Verify and close the loop with BUG-0001 <!-- agent: general-purpose -->
+
+- [ ] Re-run the same repro from step 1 (stacked `/power-mode roadmap N, all phases` tasks, one of which spawns background agents) and confirm the second queued task no longer dispatches into the pane while the first roadmap's background agents are still running — confirm via `$LOG_DIR/monitor-*.log` showing the new "holding dispatch" log line during the wait, and via the dashboard/pane genuinely staying on the original roadmap until its background agents resolve.
+- [ ] Run `bash -n` on all modified/new shell scripts and the project's existing test suites (`host-server` test files, any `scripts/verify-*.sh` scripts relevant to `monitor.sh`/`pop_task_sql`) to confirm nothing regressed.
+- [ ] Report back whether the stale queued-tasks-list-row cosmetic issue (noted in Approach → Out of scope) is still reproducible, so it can be filed as a separate bug if so.
+- [ ] Do not run `/bug-close BUG-0001` yourself — leave that as the explicit next step for the user, since closing requires the regression-test-and-fix-commit gate documented in `wiki/work/bugs/lifecycle.md`, and this task's own UAT (once generated) should be the thing that verifies the fix before closure.

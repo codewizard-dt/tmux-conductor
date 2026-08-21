@@ -1,5 +1,6 @@
 ---
 id: TASK-075
+aliases: [TASK-075]
 title: "consolidate dashboard EventSource usage"
 status: done
 created: 2026-06-28

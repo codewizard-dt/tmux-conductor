@@ -1,5 +1,6 @@
 ---
 id: TASK-077
+aliases: [TASK-077]
 title: "remove avoidable duplicate tmux capture work"
 status: done
 created: 2026-06-28

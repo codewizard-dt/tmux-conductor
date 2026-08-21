@@ -1,5 +1,6 @@
 ---
 id: UAT-035
+aliases: [UAT-035]
 title: "UAT: app/api WS relay endpoint, user-first connection registry, and mux"
 status: passed
 task: TASK-035

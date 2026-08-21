@@ -1,5 +1,6 @@
 ---
 id: TASK-016
+aliases: [TASK-016]
 title: "Make AddAgentForm project-aware and add ProjectList/AddProjectForm components"
 status: done
 created: 2026-06-12

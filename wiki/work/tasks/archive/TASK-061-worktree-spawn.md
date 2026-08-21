@@ -1,5 +1,6 @@
 ---
 id: TASK-061
+aliases: [TASK-061]
 title: "Worktree spawn — detect git repo on agent spawn, create worktree + branch, store in DB"
 status: done
 created: 2026-06-14

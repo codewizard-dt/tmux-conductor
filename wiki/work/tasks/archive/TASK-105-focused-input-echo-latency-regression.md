@@ -1,5 +1,6 @@
 ---
 id: TASK-105
+aliases: [TASK-105]
 title: "focused input echo-latency regression checks"
 status: done
 created: 2026-07-04

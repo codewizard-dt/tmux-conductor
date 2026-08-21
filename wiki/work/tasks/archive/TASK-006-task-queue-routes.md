@@ -1,5 +1,6 @@
 ---
 id: TASK-006
+aliases: [TASK-006]
 title: "Replace index-based queue endpoints with ID-based /api/tasks routes and SSE events"
 status: done
 created: 2026-06-12

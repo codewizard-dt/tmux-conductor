@@ -1,5 +1,6 @@
 ---
 id: TASK-097
+aliases: [TASK-097]
 title: "focused terminal WebSocket exclusive output and input path"
 status: done
 created: 2026-07-04

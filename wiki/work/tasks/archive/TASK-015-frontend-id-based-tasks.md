@@ -1,5 +1,6 @@
 ---
 id: TASK-015
+aliases: [TASK-015]
 title: "Update lib/api.ts types and TaskList/AddTaskForm to ID-based tasks with per-row delete and jump-to-head"
 status: done
 created: 2026-06-12

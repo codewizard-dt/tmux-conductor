@@ -92,17 +92,22 @@ pop_task_sql() {
   LAST_QUEUE_KIND=""
   LAST_QUEUE_REMAINING=0
 
-  # Atomic DELETE…RETURNING. agent_id/project_id are numeric ids resolved by
-  # load_agents, so they are safe to inline directly. Matching on the id avoids
-  # the old `WHERE name='…'` subquery, which silently picked one arbitrary row
-  # when two projects shared a short agent name (now only unique per-project).
-  # When the agent has no project, project_id is empty and that clause is dropped.
+  # Atomic UPDATE…RETURNING (TASK-125: soft flip, was DELETE…RETURNING). The
+  # popped row's status becomes 'done' with completed_at set instead of being
+  # removed, so it stays queryable for task history. agent_id/project_id are
+  # numeric ids resolved by load_agents, so they are safe to inline directly.
+  # Matching on the id avoids the old `WHERE name='…'` subquery, which
+  # silently picked one arbitrary row when two projects shared a short agent
+  # name (now only unique per-project). When the agent has no project,
+  # project_id is empty and that clause is dropped. The candidate-selection
+  # subquery is unchanged: it still only matches status='queued' rows, so a
+  # popped row can never be picked again once its status flips.
   local project_pred="0"
   if [[ -n "$project_id" ]]; then
     project_pred="(t.project_id = ${project_id})"
   fi
   local pop_sql
-  pop_sql="DELETE FROM tasks WHERE id = (
+  pop_sql="UPDATE tasks SET status='done', completed_at=strftime('%Y-%m-%dT%H:%M:%SZ','now') WHERE id = (
     SELECT t.id FROM tasks t
     WHERE t.status = 'queued' AND (
          (t.agent_id IS NOT NULL AND t.agent_id = ${agent_id})

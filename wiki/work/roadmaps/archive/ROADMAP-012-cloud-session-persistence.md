@@ -1,5 +1,6 @@
 ---
 id: ROADMAP-012
+aliases: [ROADMAP-012]
 title: Cloud session persistence — keep agents running when the local host goes offline
 status: abandoned
 created: 2026-06-13

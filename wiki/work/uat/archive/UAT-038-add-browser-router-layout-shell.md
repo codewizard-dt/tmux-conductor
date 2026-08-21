@@ -1,5 +1,6 @@
 ---
 id: UAT-038
+aliases: [UAT-038]
 title: "UAT: Wrap app in BrowserRouter in main.tsx"
 status: pending
 task: TASK-038

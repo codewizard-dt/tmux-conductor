@@ -1,5 +1,6 @@
 ---
 id: TASK-010
+aliases: [TASK-010]
 title: "Rewrite monitor.sh pop_task as atomic SQL pop and move_to_backlog as status flip"
 status: done
 created: 2026-06-12

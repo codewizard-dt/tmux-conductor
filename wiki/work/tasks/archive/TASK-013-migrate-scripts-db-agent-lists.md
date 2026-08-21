@@ -1,5 +1,6 @@
 ---
 id: TASK-013
+aliases: [TASK-013]
 title: "Migrate conductor.sh, spawn.sh, teardown.sh, broadcast.sh to DB-loaded agent lists"
 status: done
 created: 2026-06-12

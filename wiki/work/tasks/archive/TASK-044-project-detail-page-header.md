@@ -1,5 +1,6 @@
 ---
 id: TASK-044
+aliases: [TASK-044]
 title: "Create /projects/:id route page with project header (name, workdir, defaultLaunchCmd)"
 status: done
 created: 2026-06-13

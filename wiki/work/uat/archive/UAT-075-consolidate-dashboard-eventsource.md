@@ -1,5 +1,6 @@
 ---
 id: UAT-075
+aliases: [UAT-075]
 title: "UAT: consolidate dashboard EventSource usage"
 status: passed
 task: TASK-075

@@ -1,5 +1,6 @@
 ---
 id: TASK-091
+aliases: [TASK-091]
 title: "add focused terminal debug overlay"
 status: done
 created: 2026-07-04

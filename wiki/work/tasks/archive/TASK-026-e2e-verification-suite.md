@@ -1,5 +1,6 @@
 ---
 id: TASK-026
+aliases: [TASK-026]
 title: "Run the end-to-end SQLite-migration verification suite (seed, pop race, fake dispatch, schedule fire, backlog restore)"
 status: done
 created: 2026-06-12

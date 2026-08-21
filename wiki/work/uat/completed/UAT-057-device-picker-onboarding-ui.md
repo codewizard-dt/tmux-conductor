@@ -1,5 +1,6 @@
 ---
 id: UAT-057
+aliases: [UAT-057]
 title: "UAT: DevicePicker (pairing code + device list/rename/revoke) and Onboarding UI"
 status: passed
 task: TASK-057

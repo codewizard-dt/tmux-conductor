@@ -1,5 +1,6 @@
 ---
 id: UAT-085
+aliases: [UAT-085]
 title: "UAT: add tmux operation metrics with owner labels"
 status: passed
 task: TASK-085

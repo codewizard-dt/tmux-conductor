@@ -1,5 +1,6 @@
 ---
 id: TASK-087
+aliases: [TASK-087]
 title: "add input-to-ack and input-to-echo latency metrics"
 status: done
 created: 2026-07-04

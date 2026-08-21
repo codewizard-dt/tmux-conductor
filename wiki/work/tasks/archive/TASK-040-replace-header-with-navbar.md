@@ -1,5 +1,6 @@
 ---
 id: TASK-040
+aliases: [TASK-040]
 title: "Replace the static header in App.tsx with the NavBar component"
 status: done
 created: 2026-06-13

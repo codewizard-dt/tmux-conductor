@@ -1,5 +1,6 @@
 ---
 id: UAT-011
+aliases: [UAT-011]
 title: "UAT: Immediate dispatch for tasks enqueued to an idle agent with an empty queue"
 status: pending
 task: TASK-011

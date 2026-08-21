@@ -1,5 +1,6 @@
 ---
 id: UAT-061
+aliases: [UAT-061]
 title: "UAT: Worktree spawn — detect git repo on agent spawn, create worktree + branch, store in DB"
 status: passed
 task: TASK-061

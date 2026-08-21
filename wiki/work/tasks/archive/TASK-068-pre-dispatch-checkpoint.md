@@ -1,13 +1,14 @@
 ---
 id: TASK-068
+aliases: [TASK-068]
 title: "Pre-dispatch checkpoint — git stash push before each task dispatch + record in agent_checkpoints"
-status: pending-uat
+status: done
 created: 2026-06-14
-updated: 2026-07-06
+updated: 2026-08-15
 depends_on: [TASK-067]
 blocks: []
 parallel_safe_with: [TASK-069, TASK-070, TASK-071]
-uat: ""
+uat: "[[UAT-068]]"
 tags: [git, checkpoint, dispatch, monitor, roadmap-007]
 ---
 

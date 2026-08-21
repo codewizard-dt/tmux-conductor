@@ -1,5 +1,6 @@
 ---
 id: UAT-054
+aliases: [UAT-054]
 title: "UAT: Relay streaming — SSE pass-through, image-upload bodies, cancel/backpressure"
 status: passed
 task: TASK-054

@@ -1,5 +1,6 @@
 ---
 id: UAT-052
+aliases: [UAT-052]
 title: "UAT: Daemon connector — outbound WSS client to app/api relay with reconnect/backoff and path-allowlisted proxying"
 status: passed
 task: TASK-052

@@ -33,15 +33,49 @@ Source: `/Users/davidtaylor/Repositories/tmux-conductor`
 | `scripts/teardown.sh` | **Graceful shutdown.** Sends `/exit` to each agent via `dispatch.sh`, sends `C-c` to each `BG_PROCESSES` window, sleeps ~10 seconds, then runs `tmux kill-session`. | **Essential** |
 | `scripts/add-task.sh` | **Queue enqueuer.** Writes a scoped task (`<cwd-basename>: <cmd>`) to the SQLite DB. Intended to be run (or aliased) from within the target project directory. | **Useful** |
 
-### Dashboard server (`backend/`)
+### Diagnostics & verification scripts (`scripts/`)
 
-These files implement the Fastify HTTP API backing the Astro+React dashboard from ROADMAP-001. They are being actively developed and will be Essential on completion.
+Not part of the runtime dispatch path — these are dev-time checks and measurement helpers added since the SQLite cutover.
 
 | Script | Purpose | Going forward? |
 |--------|---------|----------------|
-| `backend/index.js` | **HTTP server.** Fastify app exposing `GET /status` (per-agent state + queue lengths), `GET|POST /queue/:agent` (task queue CRUD), `PUT /queue/:agent/reorder`, `DELETE /queue/:agent/:index`, `POST /agents` (spawn new agent), `GET /events` (SSE live state stream), `GET /healthz`. | **Active (ROADMAP-001)** |
-| `backend/config.js` | **Config reader.** Parses `conductor.conf` via regex, extracts `SESSION_NAME`, `TASK_QUEUE`, `STATE_DIR`, and `AGENTS` array. Exports `readConductorConf()` and `appendAgentToConf()`. | **Active (ROADMAP-001)** |
-| `backend/state.js` | **State reader.** Exports `readAgentState()` (reads `<agent>.state` file), `countQueuedTasks()`, `isTmuxWindowPresent()`, `readQueue()`, `writeQueue()`, `getAgentLines()`. | **Active (ROADMAP-001)** |
+| `scripts/verify-sqlite-migration.sh` | **End-to-end SQLite migration suite.** Boots a real `host-server` instance against a scratch DB under `./tmp/verify/` and checks seed-import, task-pop race/precedence, fake dispatch, schedule firing, and backlog restore. Never touches `./data/conductor.db`. | **Test** |
+| `scripts/verify-task-pop-soft-flip.sh` | **Targeted `pop_task_sql` check.** Builds a from-scratch scratch DB, seeds one agent + one queued task, and asserts the bash pop path (`pop_task_sql` in `scripts/lib/db.sh`) soft-flips the row (`status='done'`, `completed_at` set) without re-popping it. No live server needed — just `sqlite3` + `bash`, so it's fast to rerun. | **Test** |
+| `scripts/test-host-performance.mjs` | **Perf-budget source assertion.** Statically checks that `host-server/perfBudgets.ts` defines the required budget keys and that `host-server/index.ts` records the matching live-update timing metrics (status/terminal ticks, tmux capture calls, SSE connections). Fails fast if a budget or its instrumentation is dropped. | **Test** |
+| `scripts/check-frontend-live-updates.sh` | **SSE hook-usage guard.** Walks `frontend/src` and fails if any file other than `frontend/src/hooks/useSSE.ts` constructs `new EventSource` directly, keeping SSE consumption behind the shared hook. | **Test** |
+| `scripts/measure-dashboard-performance.sh` | **Live-update perf sampler.** Polls the host-server's `GET /api/perf/live-updates` metrics endpoint for `DURATION_SECONDS` and prints timing/tmux-operation summaries. Manual dev tool for eyeballing dashboard poll-loop performance. | **Useful** |
+| `scripts/collect-diagnostics.sh` | **Diagnostics bundle.** Fetches `GET /api/perf/live-updates` once and writes a timestamped bundle (`README.md`, raw JSON, a Markdown summary of event-loop and terminal-WebSocket stats) under `./tmp/diagnostics/<timestamp>/`. Handy to attach when reporting a perf issue. | **Useful** |
+
+### Library (`scripts/lib/`)
+
+| Script | Purpose | Going forward? |
+|--------|---------|----------------|
+| `scripts/lib/db.sh` | **Shared SQLite helper library**, sourced (not executed) by `conductor.sh`, `spawn.sh`, `monitor.sh`, `dispatch.sh`, `teardown.sh`, and `add-task.sh`. Resolves `CONDUCTOR_DB` from env/`conductor.conf`/default, and provides `sql()`/`sql_one()` wrappers plus `load_agents()`, `load_bg()`, `pop_task_sql()`, and `checkpoint_agent()` (pre-dispatch stash checkpoint for worktree rollback). | **Essential (sourced)** |
+
+### host-server/
+
+The native Fastify HTTP server backing the Vite React dashboard. Runs on `127.0.0.1:8788` (env `BACKEND_PORT`), directly on the host — never Dockerized. All routes live under the `/api` prefix. ROADMAP-001 (the SQLite cutover) is long complete; every file below is live, actively-developed code.
+
+| File | Purpose | Going forward? |
+|------|---------|-----------------|
+| `host-server/index.ts` | **Fastify HTTP + WebSocket server.** Registers every `/api` route: agent/project/schedule/task CRUD, `GET /agents/:agent/tail`, `POST /agents/:agent/keys`\|`upload`, terminal WebSocket, `POST /agents/:id/worktree` (opt-in retroactive worktree creation) and `POST /agents/:id/rollback` (checkpoint stash apply), `GET /skills`, `GET /events` (SSE), `GET /api/perf/live-updates` metrics, `GET /healthz`. Also runs the status/context/tail poll loops and monitor-window self-heal. | **Essential** |
+| `host-server/db.ts` | **All SQLite queries** — agents, tasks/queue, bg processes, projects, schedules, checkpoints, usage, terminal log. `createAgent()` gates worktree creation behind a `useWorktree` flag (see "Git worktrees" below); `addWorktreeToAgent()` is the retroactive counterpart. | **Essential** |
+| `host-server/config.ts` | **Config reader.** Reads the root `conductor.conf` (tuning settings only — poll interval, detection patterns, `DB_PATH`) and resolves `DB_PATH`/state dir relative to the conf file's directory. | **Essential** |
+| `host-server/state.ts` | **Agent status/mode/type detection.** `detectAgentStatus()`, `detectAgentMode()`, `detectAgentType()`, `getActiveTask()`, `capturePaneTail()`/`capturePaneTailRaw()`, tmux pane/window liveness checks (`isPaneDead`, `isTmuxWindowPresent`, `readTmuxWindowInventory`). | **Essential** |
+| `host-server/git.ts` | **Git worktree/branch/stash operations** — `createWorktree()`, `siblingWorktreePath()`, `removeWorktree()`, `detectBaseBranch()`, `stashCheckpoint()`/`applyStash()` (checkpoint-based rollback). See "Git worktrees" below. | **Essential** |
+| `host-server/usage.ts` | **Usage-delta extraction.** `extractUsageDeltas()` parses Claude transcript token-usage records into per-request deltas; tracks per-session start markers. | **Essential** |
+| `host-server/usage-store.ts` | **In-memory usage store.** `recordUsageDeltas()` accumulates per-agent session token/cost totals for the dashboard's usage display. | **Essential** |
+| `host-server/pricing.ts` | **Model pricing table.** `MODEL_PRICING` + `computeCostUsd()`/`resolvePricing()` — converts token counts into an estimated USD cost per model. | **Essential** |
+| `host-server/context.ts` | **Context-window badge data.** `getAgentContext()`/`getCodexAgentContext()` resolve the active Claude/Codex transcript and compute the context-window percentage and model display name shown on the agent status badge. | **Essential** |
+| `host-server/rolePresets.ts` + `host-server/role-presets.json` | **Per-agent role fragments.** `getRoleFragment()` looks up a role's Markdown fragment from `role-presets.json`; `applyRoleFragmentToWorktree()` writes it into the agent's worktree `CLAUDE.md` on creation. | **Essential** |
+| `host-server/skills.ts` | **Skill discovery.** Backs `GET /skills` and `GET /agents/:agent/skills` — scans user, project, and plugin skill directories and parses frontmatter, with a short-lived cache. | **Essential** |
+| `host-server/perfBudgets.ts` | **Live-update performance budgets.** `LIVE_UPDATE_PERF_BUDGETS` — threshold constants (max status/terminal tick ms, max tmux capture calls per interval, max SSE connections) consumed by `index.ts`'s instrumentation and asserted against by `scripts/test-host-performance.mjs`. | **Essential** |
+
+**Git worktrees (opt-in, not automatic):** an agent's workdir is not automatically turned into a git worktree. Worktree creation only happens when the caller explicitly opts in:
+- At agent-creation time, via the `useWorktree` checkbox in `AddAgentForm.tsx`, which sends `useWorktree: true` to `POST /agents`; `db.ts#createAgent` only calls into `git.ts#createWorktree` when that flag is set.
+- Retroactively for an existing agent, via the "Create worktree" button in `AgentList.tsx`'s agent detail view, which calls `POST /agents/:id/worktree` → `db.ts#addWorktreeToAgent`.
+
+Either path is best-effort: a failure (not a git repo, worktree already exists, etc.) is reported back to the caller (or logged as a warning at agent-creation time) without blocking the rest of the flow. Pre-dispatch, `git.ts#stashCheckpoint` snapshots an agent's worktree so the task about to run can be rolled back via `applyStash`/`POST /agents/:id/rollback`.
 
 ### Archived scripts (`scripts/.archive/`)
 

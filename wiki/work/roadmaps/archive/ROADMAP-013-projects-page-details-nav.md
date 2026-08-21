@@ -1,5 +1,6 @@
 ---
 id: ROADMAP-013
+aliases: [ROADMAP-013]
 title: Projects page, project details page, and nav bar
 status: done
 created: 2026-06-13

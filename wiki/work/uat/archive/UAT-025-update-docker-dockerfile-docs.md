@@ -1,5 +1,6 @@
 ---
 id: UAT-025
+aliases: [UAT-025]
 title: "UAT: Update docker-compose mounts, Dockerfile native-build step, and docs for the SQLite data layer"
 status: passed
 task: TASK-025

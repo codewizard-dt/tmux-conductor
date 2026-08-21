@@ -1,5 +1,6 @@
 ---
 id: UAT-092
+aliases: [UAT-092]
 title: "UAT: add local diagnostic bundle command"
 status: passed
 task: TASK-092

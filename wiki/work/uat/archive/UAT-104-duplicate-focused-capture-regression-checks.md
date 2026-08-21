@@ -1,5 +1,6 @@
 ---
 id: UAT-104
+aliases: [UAT-104]
 title: "UAT: duplicate focused-capture regression checks"
 status: passed
 task: TASK-104

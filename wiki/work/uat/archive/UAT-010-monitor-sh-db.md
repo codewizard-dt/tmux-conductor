@@ -1,5 +1,6 @@
 ---
 id: UAT-010
+aliases: [UAT-010]
 title: "UAT: Rewrite monitor.sh pop_task as atomic SQL pop and move_to_backlog as status flip"
 status: passed
 task: TASK-010

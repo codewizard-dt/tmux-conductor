@@ -64,7 +64,7 @@ function assistantLine(opts: {
   }) + '\n';
 }
 
-test('streaming dedup — last entry per requestId wins', () => {
+void test('streaming dedup — last entry per requestId wins', () => {
   const f = makeFixture('dedup');
   fs.writeFileSync(
     f.transcriptPath,
@@ -74,31 +74,37 @@ test('streaming dedup — last entry per requestId wins', () => {
   );
   const deltas = extractUsageDeltas(f.agent, f.workdir, f.stateDir);
   assert.equal(deltas.length, 1);
-  assert.equal(deltas[0]!.outputTokens, 120); // not 180
-  assert.equal(deltas[0]!.cacheReadTokens, 100); // not 300
-  assert.equal(deltas[0]!.model, 'claude-fable-5');
-  assert.equal(deltas[0]!.sessionId, 'session-a');
+  const d0 = deltas[0];
+  assert.ok(d0);
+  assert.equal(d0.outputTokens, 120); // not 180
+  assert.equal(d0.cacheReadTokens, 100); // not 300
+  assert.equal(d0.model, 'claude-fable-5');
+  assert.equal(d0.sessionId, 'session-a');
   resetUsageMemo(f.agent);
 });
 
-test('incremental — second poll returns only appended records, unchanged file returns []', () => {
+void test('incremental — second poll returns only appended records, unchanged file returns []', () => {
   const f = makeFixture('incr');
   fs.writeFileSync(f.transcriptPath, assistantLine({ requestId: 'req_1', output: 40, input: 5 }));
   const first = extractUsageDeltas(f.agent, f.workdir, f.stateDir);
   assert.equal(first.length, 1);
-  assert.equal(first[0]!.outputTokens, 40);
+  const first0 = first[0];
+  assert.ok(first0);
+  assert.equal(first0.outputTokens, 40);
 
   fs.appendFileSync(f.transcriptPath, assistantLine({ requestId: 'req_2', output: 30 }));
   const second = extractUsageDeltas(f.agent, f.workdir, f.stateDir);
   assert.equal(second.length, 1);
-  assert.equal(second[0]!.outputTokens, 30);
-  assert.equal(second[0]!.inputTokens, 0);
+  const second0 = second[0];
+  assert.ok(second0);
+  assert.equal(second0.outputTokens, 30);
+  assert.equal(second0.inputTokens, 0);
 
   assert.deepEqual(extractUsageDeltas(f.agent, f.workdir, f.stateDir), []);
   resetUsageMemo(f.agent);
 });
 
-test('sidechain, <synthetic>, and malformed lines are ignored without throwing', () => {
+void test('sidechain, <synthetic>, and malformed lines are ignored without throwing', () => {
   const f = makeFixture('filter');
   fs.writeFileSync(
     f.transcriptPath,
@@ -109,11 +115,13 @@ test('sidechain, <synthetic>, and malformed lines are ignored without throwing',
   );
   const deltas = extractUsageDeltas(f.agent, f.workdir, f.stateDir);
   assert.equal(deltas.length, 1);
-  assert.equal(deltas[0]!.outputTokens, 7);
+  const d0 = deltas[0];
+  assert.ok(d0);
+  assert.equal(d0.outputTokens, 7);
   resetUsageMemo(f.agent);
 });
 
-test('session change resets the memo and re-emits from the new transcript', () => {
+void test('session change resets the memo and re-emits from the new transcript', () => {
   const f = makeFixture('session');
   fs.writeFileSync(f.transcriptPath, assistantLine({ requestId: 'req_1', output: 40, timestamp: '2026-07-06T10:00:00.000Z' }));
   extractUsageDeltas(f.agent, f.workdir, f.stateDir);
@@ -125,13 +133,15 @@ test('session change resets the memo and re-emits from the new transcript', () =
 
   const deltas = extractUsageDeltas(f.agent, f.workdir, f.stateDir);
   assert.equal(deltas.length, 1);
-  assert.equal(deltas[0]!.outputTokens, 11);
-  assert.equal(deltas[0]!.sessionId, 'session-b');
+  const d0 = deltas[0];
+  assert.ok(d0);
+  assert.equal(d0.outputTokens, 11);
+  assert.equal(d0.sessionId, 'session-b');
   assert.equal(getUsageSessionStart(f.agent), '2026-07-06T11:00:00.000Z');
   resetUsageMemo(f.agent);
 });
 
-test('no sidecar → [] without error', () => {
+void test('no sidecar → [] without error', () => {
   const rand = Math.random().toString(36).slice(2, 10);
   const dir = path.join(tmpDir, `usage-test-nosidecar-${rand}`);
   const stateDir = path.join(dir, 'state');
@@ -140,7 +150,7 @@ test('no sidecar → [] without error', () => {
   assert.deepEqual(extractUsageDeltas(`agent-${rand}`, path.join(dir, 'no-such-workdir'), stateDir), []);
 });
 
-test('truncation (size < offset) resets the memo — no negative deltas', () => {
+void test('truncation (size < offset) resets the memo — no negative deltas', () => {
   const f = makeFixture('trunc');
   fs.writeFileSync(
     f.transcriptPath,
@@ -152,23 +162,29 @@ test('truncation (size < offset) resets the memo — no negative deltas', () => 
   fs.writeFileSync(f.transcriptPath, assistantLine({ requestId: 'req_3', output: 5 }));
   const deltas = extractUsageDeltas(f.agent, f.workdir, f.stateDir);
   assert.equal(deltas.length, 1);
-  assert.equal(deltas[0]!.outputTokens, 5);
+  const d0 = deltas[0];
+  assert.ok(d0);
+  assert.equal(d0.outputTokens, 5);
   for (const d of deltas) {
     assert.ok(d.inputTokens >= 0 && d.outputTokens >= 0 && d.cacheCreationTokens >= 0 && d.cacheReadTokens >= 0);
   }
   resetUsageMemo(f.agent);
 });
 
-test('streaming update across polls emits only the per-field difference', () => {
+void test('streaming update across polls emits only the per-field difference', () => {
   const f = makeFixture('stream');
   fs.writeFileSync(f.transcriptPath, assistantLine({ requestId: 'req_1', output: 30 }));
   const first = extractUsageDeltas(f.agent, f.workdir, f.stateDir);
-  assert.equal(first[0]!.outputTokens, 30);
+  const first0 = first[0];
+  assert.ok(first0);
+  assert.equal(first0.outputTokens, 30);
 
   // Same requestId re-logged with a larger snapshot (mid-stream update).
   fs.appendFileSync(f.transcriptPath, assistantLine({ requestId: 'req_1', output: 120 }));
   const second = extractUsageDeltas(f.agent, f.workdir, f.stateDir);
   assert.equal(second.length, 1);
-  assert.equal(second[0]!.outputTokens, 90); // 120 - 30, so totals converge to 120
+  const second0 = second[0];
+  assert.ok(second0);
+  assert.equal(second0.outputTokens, 90); // 120 - 30, so totals converge to 120
   resetUsageMemo(f.agent);
 });
