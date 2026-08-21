@@ -4,7 +4,7 @@ aliases: [TASK-109]
 title: "History toggle — switch LogTail between live SSE and persisted terminal log"
 status: pending-uat
 created: 2026-07-06
-updated: 2026-07-06
+updated: 2026-08-21
 depends_on: [TASK-108]
 blocks: []
 parallel_safe_with: [TASK-001, TASK-011, TASK-050, TASK-061, TASK-062, TASK-063, TASK-066, TASK-069, TASK-070, TASK-071, TASK-072, TASK-074, TASK-076, TASK-106, TASK-107]

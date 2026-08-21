@@ -5,7 +5,7 @@ title: "UAT: Token/cost badge — compact usage badge on agent card header in da
 status: pending
 task: TASK-074
 created: 2026-08-15
-updated: 2026-08-15
+updated: 2026-08-21
 ---
 
 # UAT-074 — UAT: Token/cost badge — compact usage badge on agent card header in dashboard
@@ -161,7 +161,7 @@ implements::[[TASK-074]]
   4. Compute the expected label by hand from the chosen agent's live `usage` values using UAT-EDGE-001/002's formulas (cost segment `$X.XX`/`<$0.01`/absent, joined with ` · ` to the humanized token total, `k`/`M` tier).
 - **Expected Result**: The chip appears in Row 1 immediately before the agent-type badge, showing exactly the hand-computed label (e.g. `$0.14 · 56k`, or `10M` if `costUsd` is `0`). Styling is a small muted pill, visually subordinate to the status badge on the far right.
 - **Repeatable Unit Test**: Not applicable: verifies browser rendering / DOM placement of a React conditional; `frontend/` has no component test harness (no vitest/jsdom, no existing `*.test.tsx`). The underlying label computation is pinned browser-free in UAT-EDGE-001/002.
-- [FAIL: auto-judge: UI test requires human verification — use /uat-walk] <!-- 2026-08-15 -->
+- [FAIL: auto-judge: prerequisite not satisfied — host-server (:8788) and frontend dev server (:4321) are not running] <!-- 2026-08-21 -->
 
 ### UAT-UI-002: No usage badge on an agent with no usage data
 - **Page**: `http://localhost:4321/`
@@ -173,7 +173,7 @@ implements::[[TASK-074]]
   3. Locate that agent's card and inspect Row 1 between the name and the agent-type badge.
 - **Expected Result**: No usage chip appears anywhere on the card — the name span sits directly against the agent-type badge with no gap left by a hidden/empty element. The card otherwise renders normally.
 - **Repeatable Unit Test**: Not applicable: verifies absence of a rendered DOM element in the browser; no frontend component test harness exists. The `!u → null` guard itself is pinned browser-free in UAT-EDGE-002's first case.
-- [FAIL: auto-judge: UI test requires human verification — use /uat-walk] <!-- 2026-08-15 -->
+- [FAIL: auto-judge: prerequisite not satisfied — host-server (:8788) and frontend dev server (:4321) are not running] <!-- 2026-08-21 -->
 
 ### UAT-UI-003: Tooltip itemizes the full usage breakdown and Row 1 layout stays intact
 - **Page**: `http://localhost:4321/`
@@ -186,7 +186,7 @@ implements::[[TASK-074]]
   4. Separately, find (or temporarily note) an agent with a long `name` and confirm its name row still truncates with an ellipsis rather than wrapping or overflowing the card when the usage badge is present.
 - **Expected Result**: Tooltip text reads `Session usage: <cost or "cost n/a"> · in <inputTokens> / out <outputTokens> / cache-w <cacheCreationInputTokens> / cache-r <cacheReadInputTokens> · <sessions> session(s)`, matching the chosen agent's real numbers exactly. The name column still truncates; the usage badge, agent-type badge, and status badge all remain visible on one row without wrapping.
 - **Repeatable Unit Test**: Not applicable: verifies rendered tooltip text and CSS truncation behavior in the browser; no frontend component/visual test harness exists. The `title` string's construction is pinned browser-free in UAT-EDGE-002.
-- [FAIL: auto-judge: UI test requires human verification — use /uat-walk] <!-- 2026-08-15 -->
+- [FAIL: auto-judge: prerequisite not satisfied — host-server (:8788) and frontend dev server (:4321) are not running] <!-- 2026-08-21 -->
 
 ---
 

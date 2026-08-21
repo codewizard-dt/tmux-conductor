@@ -100,7 +100,7 @@ implements::[[TASK-071]]
   5. Scroll to the bottom of the modal body.
 - **Expected Result**: Step 3 — the "Checkpoints" section is visible for the git-backed agent. Step 5 — no "Checkpoints" section renders for the non-git agent (nothing where it would be, no error, no empty placeholder).
 - **Repeatable Unit Test**: Not applicable: requires rendering `AgentDetailModal` in a browser DOM; no frontend component-test harness exists in this repo (see Notes).
-- [FAIL: auto-judge: UI test requires human verification — use /uat-walk] <!-- 2026-08-15 -->
+- [FAIL: auto-judge: prerequisite not satisfied — host-server not reachable at http://127.0.0.1:8788] <!-- 2026-08-21 -->
 
 ### UAT-UI-002: Checkpoint rows render a relative timestamp, the `stashRef`, and a Rollback button
 - **Page**: `AgentDetailModal` → "Checkpoints" section (expanded) for a git-backed agent with at least one checkpoint recorded (e.g. dispatch a task to a git-backed agent so `POST /tasks`'s pre-dispatch-checkpoint path records one, per TASK-068).
@@ -110,7 +110,7 @@ implements::[[TASK-071]]
   2. Observe each checkpoint row.
 - **Expected Result**: Each row shows a human-readable relative time string (e.g. "2m ago", "1h ago"; never a raw epoch number), the checkpoint's `stashRef` text, and a "Rollback" button. Rows are ordered most-recent-first (matches `listCheckpoints`'s `ORDER BY ts DESC`).
 - **Repeatable Unit Test**: Not applicable: requires rendering in a browser DOM; no frontend component-test harness exists in this repo (see Notes).
-- [FAIL: auto-judge: UI test requires human verification — use /uat-walk] <!-- 2026-08-15 -->
+- [FAIL: auto-judge: prerequisite not satisfied — host-server not reachable at http://127.0.0.1:8788] <!-- 2026-08-21 -->
 
 ### UAT-UI-003: Empty state renders when the agent has no checkpoints yet
 - **Page**: `AgentDetailModal` → "Checkpoints" section for a git-backed agent that has never had a task dispatched to it (so no pre-dispatch checkpoint has been recorded).
@@ -119,7 +119,7 @@ implements::[[TASK-071]]
   1. Open the "Checkpoints" section for a fresh git-backed agent with zero checkpoints.
 - **Expected Result**: The section shows the text "No checkpoints yet — checkpoints are taken before each task dispatch." — no spinner stuck, no error, no empty list with no explanation.
 - **Repeatable Unit Test**: Not applicable: requires rendering in a browser DOM; no frontend component-test harness exists in this repo (see Notes).
-- [FAIL: auto-judge: UI test requires human verification — use /uat-walk] <!-- 2026-08-15 -->
+- [FAIL: auto-judge: prerequisite not satisfied — host-server not reachable at http://127.0.0.1:8788] <!-- 2026-08-21 -->
 
 ### UAT-UI-004: Rollback button confirms, calls the rollback endpoint, and refreshes both the checkpoint list and the diff panel
 - **Page**: `AgentDetailModal` → "Checkpoints" section for a git-backed agent with at least one checkpoint and some uncommitted changes in its worktree (so the diff panel has visible content to refresh).
@@ -131,7 +131,7 @@ implements::[[TASK-071]]
   4. Observe the Checkpoints section and the Diff panel immediately after.
 - **Expected Result**: Cancelling the confirm dialog issues no network request. Confirming issues `POST /api/agents/:id/rollback` and receives `{ "ok": true, "stash_ref": "<ref>" }` (HTTP 200). The checkpoint list re-fetches (a new network `GET /checkpoints` call fires). The Diff panel also re-fetches (a new `GET .../diff` call fires without the user touching its own "Refresh" button) and its content reflects the worktree state after the stash was reapplied.
 - **Repeatable Unit Test**: Blocked: no frontend test/component harness exists in this repo to mount `CheckpointList`/`DiffPanel` and simulate the `window.confirm` + fetch + `CustomEvent` sequence without a real browser; see Notes.
-- [FAIL: auto-judge: UI test requires human verification — use /uat-walk; also requires an unrestricted environment (git stash blocked in this sandbox)] <!-- 2026-08-15 -->
+- [FAIL: auto-judge: prerequisite not satisfied — host-server not reachable at http://127.0.0.1:8788] <!-- 2026-08-21 -->
 
 ### UAT-UI-005: Error state renders if the checkpoints fetch fails
 - **Page**: `AgentDetailModal` → "Checkpoints" section, with the host-server request for `GET /api/agents/:id/checkpoints` forced to fail (e.g. browser DevTools → Network → set to "Offline" briefly while opening the modal, or block the request via a DevTools request-blocking rule, then re-enable).
@@ -141,7 +141,7 @@ implements::[[TASK-071]]
   2. Open (or refresh) the "Checkpoints" section for a git-backed agent.
 - **Expected Result**: An error message renders in red instead of the loading text or an empty/blank section.
 - **Repeatable Unit Test**: Not applicable: requires simulating a browser-level network failure; no frontend test harness exists in this repo (see Notes).
-- [FAIL: auto-judge: UI test requires human verification — use /uat-walk] <!-- 2026-08-15 -->
+- [FAIL: auto-judge: prerequisite not satisfied — host-server not reachable at http://127.0.0.1:8788] <!-- 2026-08-21 -->
 
 ### UAT-STATIC-001: `npx tsc --noEmit` and `npm run build` pass cleanly in `frontend/`
 - **Scenario**: The task's Acceptance Criteria require a clean typecheck and build after adding `CheckpointList.tsx`, the `api.ts` helpers/types, the `AgentDetailModal` wiring, the `Agent.worktreePath` field, and the `DiffPanel` refresh listener.

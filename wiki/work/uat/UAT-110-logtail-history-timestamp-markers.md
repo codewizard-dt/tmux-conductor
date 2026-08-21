@@ -129,7 +129,7 @@ implements::[[TASK-110]]
   7. Cleanup: close the modal, then `curl -sS -X DELETE "http://localhost:8788/api/agents/$UID"` for this fixture's id.
 - **Expected Result**: Exactly 3 chunk blocks are visible in History mode, each with its own timestamp label directly above it, in oldest-first order. No chunk renders without a label; no label renders without a corresponding chunk. No `entry.ts` raw ISO string is shown verbatim (it is always passed through `formatChunkTs`, never rendered raw) unless the fixture's seeded timestamp happens to be unparseable (not the case here).
 - **Repeatable Unit Test**: Not applicable: verifies browser rendering, DOM ordering, and count of a React component's output; the frontend has no component test harness (no vitest/jsdom present in this repo). The underlying label-derivation and ordering/count *data* are pinned browser-free in UAT-EDGE-001 and UAT-API-001 respectively — this case confirms they actually reach the screen.
-- [FAIL: auto-judge: UI test requires human verification — use /uat-walk] <!-- 2026-08-15 -->
+- [FAIL: auto-judge: prerequisite not satisfied — host-server not reachable on http://127.0.0.1:8788 and frontend dev server not reachable on http://localhost:4321] <!-- 2026-08-21 -->
 
 ### UAT-UI-002: Zero-row history shows the existing empty state with no stray marker; Live mode is unaffected
 - **Page**: `http://localhost:4321/`
@@ -143,7 +143,7 @@ implements::[[TASK-110]]
   5. Cleanup: close the modal, then `curl -sS -X DELETE "http://localhost:8788/api/agents/$ZID"` for this fixture's id.
 - **Expected Result**: History mode shows exactly the "No persisted history yet." message and nothing else; Live mode toggling behaves identically to TASK-109's landed behaviour (unaffected by this task).
 - **Repeatable Unit Test**: Not applicable: verifies absence of a rendered DOM element and Live-mode toggle timing in the actual browser; no frontend component test harness exists.
-- [FAIL: auto-judge: UI test requires human verification — use /uat-walk] <!-- 2026-08-15 -->
+- [FAIL: auto-judge: prerequisite not satisfied — host-server not reachable on http://127.0.0.1:8788 and frontend dev server not reachable on http://localhost:4321] <!-- 2026-08-21 -->
 
 ---
 

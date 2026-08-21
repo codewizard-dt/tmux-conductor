@@ -4,7 +4,7 @@ aliases: [TASK-114]
 title: "Role badge — colour-coded role badge on the agent card in the dashboard"
 status: pending-uat
 created: 2026-08-15
-updated: 2026-08-15
+updated: 2026-08-21
 depends_on: [TASK-111]
 blocks: []
 parallel_safe_with: [TASK-113, TASK-115]

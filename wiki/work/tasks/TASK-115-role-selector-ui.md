@@ -4,7 +4,7 @@ aliases: [TASK-115]
 title: "Role selector — dropdown in AddAgentForm and the project-spawn UI in ProjectList"
 status: pending-uat
 created: 2026-08-15
-updated: 2026-08-15
+updated: 2026-08-21
 depends_on: [TASK-111]
 blocks: []
 parallel_safe_with: [TASK-113, TASK-114]

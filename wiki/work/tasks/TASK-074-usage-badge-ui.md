@@ -4,7 +4,7 @@ aliases: [TASK-074]
 title: "Token/cost badge — compact usage badge on agent card header in dashboard"
 status: pending-uat
 created: 2026-07-06
-updated: 2026-07-06
+updated: 2026-08-21
 depends_on: [TASK-072, TASK-073, TASK-075]
 blocks: []
 parallel_safe_with: [TASK-001, TASK-011, TASK-012, TASK-050, TASK-061, TASK-062, TASK-063, TASK-065, TASK-066, TASK-067, TASK-068, TASK-069, TASK-070, TASK-071]

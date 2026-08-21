@@ -5,7 +5,7 @@ title: "UAT: Role badge — colour-coded role badge on the agent card in the das
 status: pending
 task: TASK-114
 created: 2026-08-15
-updated: 2026-08-15
+updated: 2026-08-21
 ---
 
 # UAT-114 — UAT: Role badge — colour-coded role badge on the agent card in the dashboard
@@ -182,7 +182,7 @@ implements::[[TASK-114]]
   6. Teardown: `curl -sS -X DELETE "http://localhost:8788/api/agents/<RID>"`.
 - **Expected Result**: A lime-coloured "security" pill with a leading dot appears in the documented position on both the card and the modal header, with an accurate tooltip. No layout shift or overflow on either surface.
 - **Repeatable Unit Test**: Not applicable: verifies browser rendering, colour, and DOM positioning of a React component; `frontend/` has no component test harness. The underlying colour-mapping and null-guard logic are pinned browser-free in UAT-EDGE-001.
-- [FAIL: auto-judge: UI test requires human verification — use /uat-walk] <!-- 2026-08-15 -->
+- [FAIL: auto-judge: prerequisite not satisfied — host-server (localhost:8788) and frontend dev server (localhost:4321) not running] <!-- 2026-08-21 -->
 
 ### UAT-UI-002: No role badge appears for a `generic`-role agent, on either surface
 - **Page**: `http://localhost:4321/`
@@ -194,7 +194,7 @@ implements::[[TASK-114]]
   3. Open its detail modal: confirm the header row between the agent-type badge and the context meter shows no role pill either.
 - **Expected Result**: No role badge is rendered anywhere for a `generic`-role agent, on either surface, and no layout gap is left behind.
 - **Repeatable Unit Test**: Not applicable: verifies absence of a rendered DOM element in the browser. The `role == null || role === 'generic' → null` guard itself is pinned browser-free in UAT-EDGE-001's first case.
-- [FAIL: auto-judge: UI test requires human verification — use /uat-walk] <!-- 2026-08-15 -->
+- [FAIL: auto-judge: prerequisite not satisfied — host-server (localhost:8788) and frontend dev server (localhost:4321) not running] <!-- 2026-08-21 -->
 
 ---
 
