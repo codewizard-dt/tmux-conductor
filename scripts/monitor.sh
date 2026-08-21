@@ -408,6 +408,10 @@ while true; do
   fi
 
   all_idle=true
+  # TASK-120: fleet-wide usage-hit flag; also written to STATE_DIR/usage-limited
+  # below so host-server's fast idle-transition dispatch path can skip a
+  # usage-limited agent via a cheap existsSync check instead of re-implementing
+  # USAGE_CHECK_CMD in TypeScript.
   all_usage_hit=true
 
   for name in "${AGENT_NAMES[@]}"; do
@@ -432,28 +436,20 @@ while true; do
       fi
       all_usage_hit=false
 
-      # Pop next task — if queue is empty, agent stays idle (no fallback)
-      if pop_task "${AGENT_IDS[$name]}" "${AGENT_PROJECT_IDS[$name]:-}"; then
-        task="$POPPED_TASK"
-        log "$name — dispatching task [queue=$LAST_QUEUE_KIND remaining=$LAST_QUEUE_REMAINING detection=$LAST_DETECTION]: $task"
-        emit_dispatch_jsonl "$window_name" "$task" "$LAST_QUEUE_KIND" "$LAST_QUEUE_REMAINING" "$target"
-        mark_busy "$window_name"
-        # Pre-dispatch checkpoint (ROADMAP-007): snapshot the worktree before the
-        # task runs so it can be rolled back. No-op for agents without a worktree.
-        checkpoint_agent "${AGENT_IDS[$name]}"
-        if [[ "$LAST_QUEUE_KIND" == "project" ]]; then
-          dispatch "$target" "/clear"
-        fi
-        dispatch "$target" "$task"
-      else
-        log "$name — queue empty, no task. Agent stays idle."
-        emit_dispatch_jsonl "$window_name" "" "none" "" "$target"
-      fi
     else
       all_idle=false
       all_usage_hit=false
     fi
   done
+
+  # TASK-120: fleet-wide usage-limited marker for host-server's fast
+  # idle-transition dispatch path — checked via existsSync so host-server
+  # doesn't need to re-implement USAGE_CHECK_CMD evaluation.
+  if $all_usage_hit; then
+    touch "${STATE_DIR}/usage-limited"
+  else
+    rm -f "${STATE_DIR}/usage-limited"
+  fi
 
   # Liveness check for bg processes — warn only, do not affect shutdown decision
   for bg_name in "${BG_NAMES[@]}"; do

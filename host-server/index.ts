@@ -9,8 +9,9 @@ import fastifyCors from '@fastify/cors';
 import fastifyStatic from '@fastify/static';
 import fastifyWebsocket from '@fastify/websocket';
 import type { WebSocket } from 'ws';
-import { readConductorConf, DEFAULT_CONF_PATH, appendBgProcessToConf, removeBgProcessFromConf, removeBgLink, addBgLink, clearConfCache } from './config.ts';
-import { openDb, getDbPath, listAgents, getAgentById, createAgent, addWorktreeToAgent, clearAgentWorktree, deleteAgent, updateAgentName, agentWindowName, addTask, deleteTask, reorderTasks, jumpTaskToHead, listTasksForAgentId, listTasksByProject, listProjects, createProject, updateProject, deleteProject, nextAgentName, listSchedules, createSchedule, updateSchedule, deleteSchedule, dueSchedules, fireSchedule, getAllAgentUsageTotals, listAgentUsage, listCheckpoints, insertCheckpoint, getCheckpoint, listTerminalLog, appendTerminalLogChunk, type AgentUsageTotals, type Agent } from './db.ts';
+import { readConductorConf, DEFAULT_CONF_PATH, appendBgProcessToConf, removeBgProcessFromConf, removeBgLink, addBgLink, clearConfCache, type ConductorConf } from './config.ts';
+import type Database from 'better-sqlite3';
+import { openDb, getDbPath, listAgents, getAgentById, createAgent, addWorktreeToAgent, clearAgentWorktree, deleteAgent, updateAgentName, agentWindowName, addTask, deleteTask, reorderTasks, jumpTaskToHead, listTasksForAgentId, listTasksByProject, listCompletedTasks, listProjects, createProject, updateProject, deleteProject, nextAgentName, listSchedules, createSchedule, updateSchedule, deleteSchedule, dueSchedules, fireSchedule, getAllAgentUsageTotals, listAgentUsage, listCheckpoints, insertCheckpoint, getCheckpoint, listTerminalLog, appendTerminalLogChunk, popTask, type AgentUsageTotals, type Agent } from './db.ts';
 import { detectAgentStatus, detectAgentMode, detectAgentType, readTmuxWindowInventory, isTmuxWindowPresent, windowState, getActiveTask, capturePaneTail as capturePaneTailUninstrumented, capturePaneTailRaw as capturePaneTailRawUninstrumented, sendTextToPane, extractPaneLabel, applyGlobalPaneSize, type AgentMode, type AgentRunState, type AgentType } from './state.ts';
 import { getAgentContext, getCodexAgentContext, type AgentContext } from './context.ts';
 import dotenv from 'dotenv';
@@ -458,6 +459,62 @@ function capturePaneTail(sessionName: string, windowName: string, n: number, own
   return text;
 }
 
+
+/**
+ * Shared dispatch sequence: pre-dispatch checkpoint, mark the agent's pane
+ * busy, append a dispatch.jsonl record, optionally send /clear, then send
+ * the command text to the agent's pane. Used by any code path that hands a
+ * task straight to an idle agent (currently: POST /api/tasks fast-path).
+ */
+function dispatchTaskToAgent(
+  db: Database.Database,
+  conf: ConductorConf,
+  agent: Agent,
+  cmdText: string,
+  detection: string,
+  opts?: { clearFirst?: boolean },
+): void {
+  const win = agentWindowName(agent);
+
+  // Pre-dispatch checkpoint (ROADMAP-007): snapshot the agent's worktree so
+  // the task about to run can be rolled back. Best-effort — a clean worktree
+  // (nothing to stash) or any git error must never block the dispatch.
+  if (agent.worktreePath) {
+    const ts = Date.now();
+    const stashRef = stashCheckpoint(agent.worktreePath, ts);
+    if (stashRef) {
+      insertCheckpoint(db, agent.id, ts, stashRef);
+    } else {
+      console.warn(`[conductor] dispatchTaskToAgent: no checkpoint recorded for agent ${String(agent.id)} (clean worktree or git error)`);
+    }
+  }
+
+  writeFileSync(
+    `${conf.stateDir}/${win}.state`,
+    'busy\n',
+    'utf8',
+  );
+
+  const paneTail = capturePaneTail(conf.sessionName, win, 5, 'task-dispatch');
+  const dispatchRecord = {
+    ts: new Date().toISOString(),
+    agent: win,
+    command: cmdText,
+    state: 'idle',
+    state_age_s: 0,
+    detection,
+    queue: 'none',
+    queue_remaining: 0,
+    pane_tail: paneTail,
+  };
+  appendFileSync(`${conf.logDir}/dispatch.jsonl`, JSON.stringify(dispatchRecord) + '\n', 'utf8');
+
+  if (opts?.clearFirst) {
+    sendTextToPane(conf.sessionName, win, '/clear');
+  }
+  sendTextToPane(conf.sessionName, win, cmdText);
+}
+
 function capturePaneTailRaw(sessionName: string, windowName: string, n: number, owner = 'unknown'): string {
   const started = performance.now();
   const text = timeSync('tmuxCaptureTailRaw', () => capturePaneTailRawUninstrumented(sessionName, windowName, n));
@@ -791,6 +848,30 @@ await fastify.register((api) => {
     return reply.status(400).send({ error: 'projectId query param is required' });
   });
 
+  // TASK-126: global completed-task history (read-side companion to TASK-125's
+  // soft-delete pop) for the dashboard's task history view. Optional query
+  // filters scope by agent/project; `limit` caps the result count.
+  api.get<{ Querystring: { agentId?: string; projectId?: string; limit?: string } }>('/tasks/history', async (req, reply) => {
+    const { agentId, projectId, limit } = req.query;
+    const opts: { agentId?: number; projectId?: number; limit?: number } = {};
+    if (agentId !== undefined) {
+      const id = parseInt(agentId, 10);
+      if (isNaN(id)) return reply.status(400).send({ error: 'agentId must be an integer' });
+      opts.agentId = id;
+    }
+    if (projectId !== undefined) {
+      const id = parseInt(projectId, 10);
+      if (isNaN(id)) return reply.status(400).send({ error: 'projectId must be an integer' });
+      opts.projectId = id;
+    }
+    if (limit !== undefined) {
+      const n = parseInt(limit, 10);
+      if (isNaN(n) || n <= 0) return reply.status(400).send({ error: 'limit must be a positive integer' });
+      opts.limit = n;
+    }
+    return reply.send(listCompletedTasks(db, opts));
+  });
+
   api.post<{ Body: { command?: unknown; agentId?: unknown; projectId?: unknown; placement?: unknown } }>('/tasks', async (req, reply) => {
     const { command, agentId: agentIdRaw, projectId, placement } = req.body;
 
@@ -828,39 +909,8 @@ await fastify.register((api) => {
       listTasksForAgentId(db, foundAgent.id, foundAgent.projectId).length === 0
     ) {
       const conf = readConductorConf();
-      const win = agentWindowName(foundAgent);
       const cmdText = command.trim();
-      writeFileSync(
-        `${conf.stateDir}/${win}.state`,
-        'busy\n',
-        'utf8',
-      );
-      const paneTail = capturePaneTail(conf.sessionName, win, 5, 'task-dispatch');
-      const dispatchRecord = {
-        ts: new Date().toISOString(),
-        agent: win,
-        command: cmdText,
-        state: 'idle',
-        state_age_s: 0,
-        detection: 'immediate-enqueue',
-        queue: 'none',
-        queue_remaining: 0,
-        pane_tail: paneTail,
-      };
-      appendFileSync(`${conf.logDir}/dispatch.jsonl`, JSON.stringify(dispatchRecord) + '\n', 'utf8');
-      // Pre-dispatch checkpoint (ROADMAP-007): snapshot the agent's worktree so
-      // the task about to run can be rolled back. Best-effort — a clean worktree
-      // (nothing to stash) or any git error must never block the dispatch.
-      if (foundAgent.worktreePath) {
-        const ts = Date.now();
-        const stashRef = stashCheckpoint(foundAgent.worktreePath, ts);
-        if (stashRef) {
-          insertCheckpoint(db, foundAgent.id, ts, stashRef);
-        } else {
-          console.warn(`[conductor] POST /tasks: no checkpoint recorded for agent ${String(foundAgent.id)} (clean worktree or git error)`);
-        }
-      }
-      sendTextToPane(conf.sessionName, win, cmdText);
+      dispatchTaskToAgent(db, conf, foundAgent, cmdText, 'immediate-enqueue');
       broadcastSSE('snapshot', buildSnapshot());
       return reply.status(200).send({ ok: true, dispatched: true });
     }
@@ -2293,6 +2343,8 @@ function pollAndDiff() {
     broadcastSSE('session-update', { sessionAlive: current.sessionAlive, sessionExists: current.sessionExists });
   }
 
+  const conf = readConductorConf();
+
   for (const agent of current.agents) {
     const prev = prevSnapshot.agents.find((a) => a.id === agent.id);
     if (
@@ -2321,6 +2373,28 @@ function pollAndDiff() {
           nextState: agent.state,
         });
       }
+
+      // TASK-120 step 3: on an idle-transition with queued work, dispatch the
+      // next task immediately instead of waiting for the next scheduled poll.
+      // Skipped when the fleet-wide usage-limited marker is present (Step 2)
+      // or when the agent's tmux window is gone (nothing to dispatch into).
+      if (
+        prev &&
+        prev.state !== 'idle' &&
+        agent.state === 'idle' &&
+        agent.queuedTasks > 0 &&
+        agent.windowPresent &&
+        !existsSync(path.join(conf.stateDir, 'usage-limited'))
+      ) {
+        const dbAgent = getAgentById(db, agent.id);
+        if (dbAgent) {
+          const task = popTask(db, agent.name);
+          if (task) {
+            dispatchTaskToAgent(db, conf, dbAgent, task.command, 'idle-transition-poll', { clearFirst: task.kind === 'project' });
+          }
+        }
+      }
+
       broadcastSSE('agent-update', {
         id: agent.id,
         name: agent.name,

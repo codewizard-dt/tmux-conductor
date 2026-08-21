@@ -2,13 +2,13 @@
 id: TASK-126
 aliases: [TASK-126]
 title: "Task history view — dashboard page reading completed tasks"
-status: todo
+status: pending-uat
 created: 2026-08-15
-updated: 2026-08-15
+updated: 2026-08-21
 depends_on: [TASK-125]
 blocks: []
 parallel_safe_with: [TASK-122, TASK-123, TASK-124]
-uat: ""
+uat: "[[UAT-126]]"
 tags: [frontend, host-server, ui, roadmap-017]
 ---
 
@@ -36,25 +36,33 @@ There is **no completed-task data to read** until TASK-125's soft-flip migration
 
 ### 1. Confirm TASK-125 has landed  <!-- agent: Explore -->
 
-- [ ] Confirm `wiki/work/tasks/archive/TASK-125-soft-delete-task-pop.md` exists with `status: done` (or the active file shows `status: done` if not yet archived). If not landed, STOP — do not proceed with implementation.
-- [ ] `mcp__serena__find_symbol` on `listTasksForAgentId`/`listTasksByProject` in `host-server/db.ts` (`include_body=true`) to confirm the exact query-helper pattern to mirror.
+- [x] Confirm `wiki/work/tasks/archive/TASK-125-soft-delete-task-pop.md` exists with `status: done` (or the active file shows `status: done` if not yet archived). If not landed, STOP — do not proceed with implementation.
+- [x] `mcp__serena__find_symbol` on `listTasksForAgentId`/`listTasksByProject` in `host-server/db.ts` (`include_body=true`) to confirm the exact query-helper pattern to mirror.
+
+Findings: TASK-125 archived at `wiki/work/tasks/archive/TASK-125-soft-delete-task-pop.md`, `status: done`. `host-server/db.ts` confirms soft-flip landed in code: `tasks.completed_at TEXT` column exists (v8 migration, ~line 430), `popTask` (~lines 757-766) does `UPDATE tasks SET status='done', completed_at=strftime(...)`. Pattern to mirror: `db.prepare(sql).all(...params) as TaskRow[]` then `.map(mapTask)`. Gap flagged: `Task` interface (~line 45-55) types `status: 'queued' | 'backlog'` only, no `completedAt` field, and `mapTask` (~lines 215-221) doesn't map `completed_at` — `listCompletedTasks` needs either a widened `Task['status']` + `completedAt` field, or its own row-based shape exposing `completed_at`.
 
 ### 2. Add the backend query + route  <!-- agent: general-purpose -->
 
-- [ ] Add `listCompletedTasks(db, opts?)` to `host-server/db.ts`, querying `status='done'` rows ordered by `completed_at DESC`, following the Step 1 pattern.
-- [ ] Add a new route in `host-server/index.ts` (hot file — re-read the target insertion point immediately before editing) exposing the query, following the shape of an adjacent simple `GET` route (e.g. the `/agents/:id/usage` route TASK-076 added, or `/agents/:id/skills`) for error-handling/response conventions.
+- [x] Add `listCompletedTasks(db, opts?)` to `host-server/db.ts`, querying `status='done'` rows ordered by `completed_at DESC`, following the Step 1 pattern.
+- [x] Add a new route in `host-server/index.ts` (hot file — re-read the target insertion point immediately before editing) exposing the query, following the shape of an adjacent simple `GET` route (e.g. the `/agents/:id/usage` route TASK-076 added, or `/agents/:id/skills`) for error-handling/response conventions.
+
+Findings: `listCompletedTasks(db, opts?: { agentId?, projectId?, limit? })` added to `host-server/db.ts` (~line 694-718), builds `WHERE status='done'` + optional `agent_id`/`project_id`/`LIMIT` clauses, `ORDER BY completed_at DESC`, mirrors `.prepare().all() as TaskRow[]` → `.map(mapTask)` pattern. `Task` interface widened (`status` now includes `'done'`, added `completedAt?: string | null`); `TaskRow`/`mapTask` updated to carry `completed_at`. Route `GET /tasks/history` added in `host-server/index.ts` (~line 851-873), inside the `/api`-prefixed block → reachable at `GET /api/tasks/history?agentId=&projectId=&limit=`, returns a bare `Task[]` JSON array (matches the adjacent `GET /tasks` route's shape). `cd host-server && npx tsc --noEmit` — zero errors.
 
 ### 3. Add the frontend history view  <!-- agent: general-purpose -->
 
-- [ ] Add a `TaskHistoryPage` component (or similar) and wire a `/history` route into `frontend/src/App.tsx`.
-- [ ] Add a nav link in `frontend/src/components/NavBar.tsx` (re-read immediately before editing — concurrently touched by TASK-122).
-- [ ] Render the fetched completed-task list: command, agent/project, formatted `completed_at`.
+- [x] Add a `TaskHistoryPage` component (or similar) and wire a `/history` route into `frontend/src/App.tsx`.
+- [x] Add a nav link in `frontend/src/components/NavBar.tsx` (re-read immediately before editing — concurrently touched by TASK-122).
+- [x] Render the fetched completed-task list: command, agent/project, formatted `completed_at`.
+
+Findings: `frontend/src/pages/TaskHistoryPage.tsx` added (fetches `fetchTaskHistory()` + `listProjects()`, uses existing `useAgents()` hook for names, reuses `formatSessionStart` from `AgentList.tsx`, mirrors `ProjectsPage` structure). `/history` route wired into `frontend/src/App.tsx`. `NavBar.tsx` re-read fresh via Serena before editing — confirmed TASK-122's theme toggle button already present; added a single additive `<NavLink to="/history">History</NavLink>` alongside `Agents`/`Projects`, nothing removed/reordered. `frontend/src/lib/api.ts`: extended `Task` interface (`status` now includes `'done'`, added `completedAt?: string | null`) and added `fetchTaskHistory(opts?)` following the `apiFetch` convention. `npx tsc --noEmit` and `npm run build` in `frontend/` both pass clean.
 
 ### 4. Typecheck, build, smoke  <!-- agent: general-purpose -->
 
-- [ ] `npx tsc --noEmit` in `host-server/` and `frontend/` — zero errors in both.
-- [ ] `npm run build` in `frontend/` — clean.
-- [ ] With `make dev` running and at least one task popped since TASK-125 landed, open `/history` and confirm it lists that task with a sensible timestamp.
+- [x] `npx tsc --noEmit` in `host-server/` and `frontend/` — zero errors in both.
+- [x] `npm run build` in `frontend/` — clean (only a pre-existing >500kB chunk-size advisory, unrelated to this change).
+- [DEFERRED-TO-UAT] With `make dev` running and at least one task popped since TASK-125 landed, open `/history` and confirm it lists that task with a sensible timestamp. Runtime/E2E verification is out of scope for /tackle; deferred to UAT.
+
+<!-- Updated: 2026-08-21 -->
 
 ## Acceptance Criteria
 

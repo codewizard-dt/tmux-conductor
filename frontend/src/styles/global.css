@@ -2,6 +2,48 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  color-scheme: light;
+  --color-canvas: #f6f7f9;
+  --color-surface: #f1f2f4;
+  --color-paper: #ffffff;
+  --color-card: #ffffff;
+  --color-ink: #0b0b0d;
+  --color-ink-2: #33353b;
+  --color-muted: #6b6e76;
+  --color-muted-2: #9a9da5;
+  --color-line: #e7e8ea;
+  --color-line-2: #f0f1f3;
+  --color-accent: #4f5a78;
+  --color-accent-red: #e5484d;
+  --color-accent-green: #30a46c;
+  --color-accent-blue: #3b6ef6;
+  --color-accent-amber: #e0901a;
+  --color-accent-violet: #8b5cf6;
+  --color-accent-rose: #f43f5e;
+}
+
+.dark {
+  color-scheme: dark;
+  --color-canvas: #16171c;
+  --color-surface: #1c1d24;
+  --color-paper: #1e2028;
+  --color-card: #21232b;
+  --color-ink: #eef0f4;
+  --color-ink-2: #c3c6d0;
+  --color-muted: #9a9da8;
+  --color-muted-2: #6f727d;
+  --color-line: #2b2d36;
+  --color-line-2: #363842;
+  --color-accent: #8891b8;
+  --color-accent-red: #ff6b70;
+  --color-accent-green: #3ddc91;
+  --color-accent-blue: #6c93ff;
+  --color-accent-amber: #f2a93c;
+  --color-accent-violet: #a78bfa;
+  --color-accent-rose: #fb7185;
+}
+
 @layer base {
   html {
     @apply bg-canvas text-ink antialiased;

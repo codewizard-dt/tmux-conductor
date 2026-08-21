@@ -1,6 +1,28 @@
+import { useEffect, useState } from 'react'
 import { NavLink } from 'react-router-dom'
 
+type Theme = 'light' | 'dark'
+
+function getInitialTheme(): Theme {
+  return document.documentElement.classList.contains('dark') ? 'dark' : 'light'
+}
+
 export default function NavBar() {
+  const [theme, setTheme] = useState<Theme>(getInitialTheme)
+
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', theme === 'dark')
+    try {
+      localStorage.setItem('theme', theme)
+    } catch {
+      // localStorage unavailable (private browsing, etc.) — theme just won't persist
+    }
+  }, [theme])
+
+  const toggleTheme = () => {
+    setTheme((t) => (t === 'dark' ? 'light' : 'dark'))
+  }
+
   const linkCls = ({ isActive }: { isActive: boolean }) =>
   `text-[13px] font-medium transition ${
     isActive
@@ -17,7 +39,17 @@ export default function NavBar() {
       <nav className="flex items-center gap-4">
         <NavLink to="/" end className={linkCls}>Agents</NavLink>
         <NavLink to="/projects" className={linkCls}>Projects</NavLink>
+        <NavLink to="/history" className={linkCls}>History</NavLink>
       </nav>
+      <button
+        type="button"
+        onClick={toggleTheme}
+        aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+        title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+        className="ml-auto flex h-7 w-7 flex-shrink-0 cursor-pointer items-center justify-center rounded-full border border-line text-[13px] text-muted transition hover:bg-surface hover:text-ink"
+      >
+        {theme === 'dark' ? '☀️' : '🌙'}
+      </button>
     </header>
   )
 }

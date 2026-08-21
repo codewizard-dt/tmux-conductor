@@ -2,7 +2,7 @@
 id: TASK-117
 aliases: [TASK-117]
 title: "Capture a representative period of real liveUpdateMetrics data from /api/perf/live-updates"
-status: todo
+status: in-progress
 created: 2026-08-15
 updated: 2026-08-15
 depends_on: []
@@ -48,20 +48,29 @@ After capture, write a short summarization step (can be a second small script or
 
 ### 1. Write the capture script  <!-- agent: general-purpose -->
 
-- [ ] Create `scripts/capture-perf-baseline.sh`, polling `GET /api/perf/live-updates` (adjust host/port from `conductor.conf`'s `BACKEND_PORT`/env, default `8788`) on a configurable interval, appending one JSON line per sample to `./tmp/roadmap-017-perf-capture/<run-id>.jsonl` where `<run-id>` is a timestamp-derived name.
-- [ ] Support a configurable duration or graceful `Ctrl-C` stop; log sample count + elapsed time to stdout periodically.
-- [ ] `bash -n scripts/capture-perf-baseline.sh` — clean.
+- [x] Create `scripts/capture-perf-baseline.sh`, polling `GET /api/perf/live-updates` (adjust host/port from `conductor.conf`'s `BACKEND_PORT`/env, default `8788`) on a configurable interval, appending one JSON line per sample to `./tmp/roadmap-017-perf-capture/<run-id>.jsonl` where `<run-id>` is a timestamp-derived name.
+- [x] Support a configurable duration or graceful `Ctrl-C` stop; log sample count + elapsed time to stdout periodically.
+- [x] `bash -n scripts/capture-perf-baseline.sh` — clean.
+
+<!-- Updated: 2026-08-21 (this cycle) -->
+Script created (env: `BACKEND_PORT`/`HOST`/`ENDPOINT` override, `--interval`/`INTERVAL_S` default 10s, `--duration`/`DURATION_S` default 7200s), traps SIGINT/SIGTERM for a clean stop, logs a running summary every 6 samples. Verified with `bash -n` — clean.
 
 ### 2. Run the capture against real usage  <!-- agent: general-purpose -->
 
-- [ ] Start the capture script, then use the dashboard (`http://localhost:4321/`) and dispatch real tasks to at least 2 agents over the capture window, meeting all 5 "representative" criteria above.
-- [ ] Confirm the resulting `.jsonl` file meets the duration and sample-count bar before proceeding (`wc -l` the file, check first/last timestamps).
+- [BLOCKED: no live host-server/dashboard session available] Start the capture script, then use the dashboard (`http://localhost:4321/`) and dispatch real tasks to at least 2 agents over the capture window, meeting all 5 "representative" criteria above.
+- [BLOCKED: depends on above] Confirm the resulting `.jsonl` file meets the duration and sample-count bar before proceeding (`wc -l` the file, check first/last timestamps).
+
+<!-- Updated: 2026-08-21 (this cycle) -->
+Verified `curl -sS http://localhost:8788/api/perf/live-updates` and `curl -sS http://localhost:4321/` both fail to connect (exit 7, "Couldn't connect to server") — neither the host-server nor the dashboard is currently running in this environment. This step's own bar (2+ continuous hours of genuine interactive use, ≥2 distinct agents, a connected dashboard client) cannot be satisfied by an autonomous agent turn; it requires the user to run `make dev`, open `http://localhost:4321/`, and dispatch real work to ≥2 agents over a live 2-hour window, ideally with `scripts/capture-perf-baseline.sh` running in the background for that same window (e.g. `nohup scripts/capture-perf-baseline.sh > ./tmp/roadmap-017-perf-capture/run.log 2>&1 &`, or backgrounded in its own tmux/terminal pane). Leaving this step BLOCKED rather than fabricating a capture run.
 
 ### 3. Summarize the captured data  <!-- agent: general-purpose -->
 
-- [ ] Write a small summarization script (or Node one-liner, kept in `scripts/` if reusable) that reads the captured `.jsonl`, computes per-interval deltas for each `timings` key, and reports p50/p95/p99/max.
-- [ ] Append the computed summary (the actual numbers, plus the run's start/end timestamps, sample count, and duration) to this task file under a new "Captured Baseline" section, and copy the raw `.jsonl` file's path into that section so TASK-118 can find it.
-- [ ] Note in the summary whether any of the 5 representativeness criteria were only marginally met (e.g. fewer than 2 hours), so TASK-118's author can judge whether to trust the numbers as-is or ask for a longer re-capture.
+- [BLOCKED: depends on step 2's raw .jsonl data] Write a small summarization script (or Node one-liner, kept in `scripts/` if reusable) that reads the captured `.jsonl`, computes per-interval deltas for each `timings` key, and reports p50/p95/p99/max.
+- [BLOCKED: depends on step 2] Append the computed summary (the actual numbers, plus the run's start/end timestamps, sample count, and duration) to this task file under a new "Captured Baseline" section, and copy the raw `.jsonl` file's path into that section so TASK-118 can find it.
+- [BLOCKED: depends on step 2] Note in the summary whether any of the 5 representativeness criteria were only marginally met (e.g. fewer than 2 hours), so TASK-118's author can judge whether to trust the numbers as-is or ask for a longer re-capture.
+
+<!-- Updated: 2026-08-21 (this cycle) -->
+Not started — no raw capture data exists yet (see Step 2). The summarization script itself is straightforward (per-sample deltas on `timings[*].{count,totalMs}`, percentile of interval averages, plus direct aggregation of `eventLoop.delay`'s already-percentiled fields) and can be written as soon as a real `.jsonl` file exists to develop/validate it against.
 
 ## Acceptance Criteria
 

@@ -133,10 +133,11 @@ export interface Task {
   agentId: number | null
   projectId: number | null
   position: number
-  status: 'queued' | 'backlog'
+  status: 'queued' | 'backlog' | 'done'
   source: 'manual' | 'schedule'
   scheduleId: number | null
   createdAt: string
+  completedAt?: string | null
 }
 
 export async function addTask(
@@ -193,6 +194,21 @@ export async function jumpTaskToHead(id: number): Promise<void> {
 
 export async function fetchProjectTasks(projectId: number): Promise<Task[]> {
   const res = await apiFetch(`${API_BASE}/tasks?projectId=${projectId.toString()}`)
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({})) as { error?: string }
+    throw new Error(body.error ?? `HTTP ${res.status.toString()}`)
+  }
+  return res.json() as Promise<Task[]>
+}
+
+/** Completed task history (status='done'), newest-completed first. Optional filters scope by agent/project/count. */
+export async function fetchTaskHistory(opts?: { agentId?: number; projectId?: number; limit?: number }): Promise<Task[]> {
+  const params = new URLSearchParams()
+  if (opts?.agentId !== undefined) params.set('agentId', opts.agentId.toString())
+  if (opts?.projectId !== undefined) params.set('projectId', opts.projectId.toString())
+  if (opts?.limit !== undefined) params.set('limit', opts.limit.toString())
+  const qs = params.toString()
+  const res = await apiFetch(`${API_BASE}/tasks/history${qs ? `?${qs}` : ''}`)
   if (!res.ok) {
     const body = await res.json().catch(() => ({})) as { error?: string }
     throw new Error(body.error ?? `HTTP ${res.status.toString()}`)

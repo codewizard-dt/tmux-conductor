@@ -49,10 +49,11 @@ export interface Task {
   agentId: number | null;
   projectId: number | null;
   position: number;
-  status: 'queued' | 'backlog';
+  status: 'queued' | 'backlog' | 'done';
   source: 'manual' | 'schedule';
   scheduleId: number | null;
   createdAt: string;
+  completedAt?: string | null;
 }
 
 export interface Schedule {
@@ -154,6 +155,7 @@ interface TaskRow {
   source: string;
   schedule_id: number | null;
   created_at: string;
+  completed_at: string | null;
 }
 
 interface ScheduleRow {
@@ -217,7 +219,7 @@ function mapTask(r: TaskRow): Task {
   return {
     id: r.id, command: r.command, agentId: r.agent_id, projectId: r.project_id,
     position: r.position, status: r.status as Task['status'], source: r.source as Task['source'],
-    scheduleId: r.schedule_id, createdAt: r.created_at,
+    scheduleId: r.schedule_id, createdAt: r.created_at, completedAt: r.completed_at,
   };
 }
 
@@ -689,6 +691,34 @@ export function listTasksForAgentId(db: Database.Database, agentId: number, proj
            WHEN t.project_id IS NOT NULL THEN 1 ELSE 2 END,
       t.position
   `).all(agentId, projectId, projectId) as TaskRow[];
+  return rows.map(mapTask);
+}
+
+
+// TASK-126: read-side companion to TASK-125's soft-delete pop — surfaces
+// popped (status='done') tasks for the dashboard's task history view.
+// Optional filters mirror listTasksForAgentId's scoping knobs; unlike that
+// function's fixed queued-only ordering, history is newest-completed-first.
+export function listCompletedTasks(
+  db: Database.Database,
+  opts?: { agentId?: number; projectId?: number; limit?: number }
+): Task[] {
+  const clauses = [`status = 'done'`];
+  const params: number[] = [];
+  if (opts?.agentId !== undefined) {
+    clauses.push('agent_id = ?');
+    params.push(opts.agentId);
+  }
+  if (opts?.projectId !== undefined) {
+    clauses.push('project_id = ?');
+    params.push(opts.projectId);
+  }
+  let sql = `SELECT * FROM tasks WHERE ${clauses.join(' AND ')} ORDER BY completed_at DESC`;
+  if (opts?.limit !== undefined) {
+    sql += ' LIMIT ?';
+    params.push(opts.limit);
+  }
+  const rows = db.prepare(sql).all(...params) as TaskRow[];
   return rows.map(mapTask);
 }
 

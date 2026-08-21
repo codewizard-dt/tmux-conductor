@@ -2,13 +2,13 @@
 id: TASK-122
 aliases: [TASK-122]
 title: "Dashboard dark mode — theme toggle over the Tailwind color tokens"
-status: todo
+status: pending-uat
 created: 2026-08-15
-updated: 2026-08-15
+updated: 2026-08-21
 depends_on: []
 blocks: []
 parallel_safe_with: [TASK-123, TASK-124]
-uat: ""
+uat: "[[UAT-122]]"
 tags: [frontend, ui, theming, roadmap-017]
 ---
 
@@ -30,28 +30,31 @@ Add a dark mode to the dashboard, toggleable by the user and persisted across re
 
 ## Steps
 
+<!-- Updated: 2026-08-21 -->
+
 ### 1. Convert color tokens to CSS-variable indirection  <!-- agent: general-purpose -->
 
-- [ ] Read `frontend/tailwind.config.js` in full (re-read immediately before editing — concurrent Phase 3 tasks may also touch this file) and read the app's base CSS entrypoint (find it via `mcp__serena__search_for_pattern` for `@tailwind base` or similar, likely `frontend/src/index.css` or `frontend/src/App.css`).
-- [ ] Define the current light values as CSS custom properties on `:root` in the base stylesheet (one variable per existing token: `--color-canvas`, `--color-surface`, `--color-paper`, `--color-card`, `--color-ink`, `--color-ink-2`, `--color-muted`, `--color-muted-2`, `--color-line`, `--color-line-2`, `--color-accent`, `--color-accent-red`, `--color-accent-green`, `--color-accent-blue`, `--color-accent-amber`, `--color-accent-violet`, `--color-accent-rose`).
-- [ ] Update `theme.extend.colors` in `tailwind.config.js` so each key resolves via `var(--color-*, <original-hex-fallback>)` instead of a literal hex string — keep the fallback so any consumer bypassing the CSS-variable layer (e.g. a build tool inlining at a different stage) still gets a sane color.
-- [ ] Add `darkMode: 'class'` to the Tailwind config root (sibling to `content`/`theme`).
+- [x] Read `frontend/tailwind.config.js` in full (re-read immediately before editing — concurrent Phase 3 tasks may also touch this file) and read the app's base CSS entrypoint (found: `frontend/src/styles/global.css`).
+- [x] Define the current light values as CSS custom properties on `:root` in the base stylesheet (one variable per existing token: `--color-canvas`, `--color-surface`, `--color-paper`, `--color-card`, `--color-ink`, `--color-ink-2`, `--color-muted`, `--color-muted-2`, `--color-line`, `--color-line-2`, `--color-accent`, `--color-accent-red`, `--color-accent-green`, `--color-accent-blue`, `--color-accent-amber`, `--color-accent-violet`, `--color-accent-rose`).
+- [x] Update `theme.extend.colors` in `tailwind.config.js` so each key resolves via `var(--color-*, <original-hex-fallback>)` instead of a literal hex string — keep the fallback so any consumer bypassing the CSS-variable layer (e.g. a build tool inlining at a different stage) still gets a sane color.
+- [x] Add `darkMode: 'class'` to the Tailwind config root (sibling to `content`/`theme`).
 
 ### 2. Define the dark palette  <!-- agent: general-purpose -->
 
-- [ ] In the base stylesheet, add a `.dark { ... }` (or `:root[data-theme="dark"]{ ... }` — pick one and use it consistently with Step 3's toggle mechanism) block redefining every `--color-*` variable from Step 1 with dark-appropriate values. Design goal: a calm, low-glare dark surface (not pure black), with `ink`/`ink-2` light enough to read against it, and `accent.*` state colors kept legible (test against the actual `StatusBadge`/`AgentTypeBadge`/badge components once wired).
-- [ ] Spot-check for hardcoded hex/rgb literals outside the token system: `mcp__serena__search_for_pattern` for `#[0-9a-fA-F]{3,6}` and `rgb(` across `frontend/src/components/*.tsx` and any `.css` files. Anything found bypasses the token system and needs its own dark-mode handling (either convert it to a token or add an explicit dark-mode override) — note what you find even if out of scope to fix everything.
+- [x] In the base stylesheet, add a `.dark { ... }` (or `:root[data-theme="dark"]{ ... }` — pick one and use it consistently with Step 3's toggle mechanism) block redefining every `--color-*` variable from Step 1 with dark-appropriate values. Design goal: a calm, low-glare dark surface (not pure black), with `ink`/`ink-2` light enough to read against it, and `accent.*` state colors kept legible (test against the actual `StatusBadge`/`AgentTypeBadge`/badge components once wired). Used `.dark` class selector (matches `darkMode: 'class'`); also added `color-scheme: light`/`dark` on `:root`/`.dark` for native form-control theming.
+- [x] Spot-check for hardcoded hex/rgb literals outside the token system: `mcp__serena__search_for_pattern` for `#[0-9a-fA-F]{3,6}` and `rgb(` across `frontend/src/components/*.tsx` and any `.css` files. Anything found bypasses the token system and needs its own dark-mode handling (either convert it to a token or add an explicit dark-mode override) — note what you find even if out of scope to fix everything.
+  - **Found, left as-is (out of scope for this task):** `AgentList.tsx` has extensive hardcoded hex/rgba literals for status-badge colors (`STATUS_STYLES`/role-color maps ~lines 81-91, 152-153, 168-173, 1062-1160) and several `bg-[#f1f2f4]`/`text-[#...]` arbitrary-value classes (lines 222, 310, 324, 329, 337, 353, 690, 699, 749, 952, 982); `LogTail.tsx` hardcodes the xterm.js theme colors and several `bg-[#0b0b0d]`/`border-[#e0901a]` arbitrary classes (lines 276, 667-758); `FolderPickerModal.tsx`, `AddAgentForm.tsx`, `AddProjectForm.tsx`, `AddBgProcessForm.tsx` each have one hardcoded `bg-white`/`rgb(...)` shadow or border literal. None of these will re-theme when `.dark` is toggled — they'll stay light-mode-colored on top of the dark surface. Recommend a follow-up task to convert these to tokens (status colors especially, since they drive the exact badges called out in Step 4's smoke test).
 
 ### 3. Add the toggle control  <!-- agent: general-purpose -->
 
-- [ ] In `frontend/src/components/NavBar.tsx` (re-read immediately before editing), add a theme toggle control (button/switch) that flips the `dark` class (or `data-theme` attribute, matching Step 2's selector choice) on `document.documentElement` and writes the choice to `localStorage` (e.g. key `theme`, values `'light' | 'dark'`).
-- [ ] Add a small inline script or early-executing effect that applies the stored `localStorage` preference (falling back to `window.matchMedia('(prefers-color-scheme: dark)')` when unset) before/at first paint, to avoid a flash of the wrong theme on load.
+- [x] In `frontend/src/components/NavBar.tsx` (re-read immediately before editing), add a theme toggle control (button/switch) that flips the `dark` class (or `data-theme` attribute, matching Step 2's selector choice) on `document.documentElement` and writes the choice to `localStorage` (e.g. key `theme`, values `'light' | 'dark'`).
+- [x] Add a small inline script or early-executing effect that applies the stored `localStorage` preference (falling back to `window.matchMedia('(prefers-color-scheme: dark)')` when unset) before/at first paint, to avoid a flash of the wrong theme on load. Added as an inline `<script>` in `frontend/index.html`'s `<head>`, before `main.tsx` loads.
 
 ### 4. Typecheck and smoke  <!-- agent: general-purpose -->
 
-- [ ] `npx tsc --noEmit` in `frontend/` — zero errors.
-- [ ] `npm run build` in `frontend/` — clean.
-- [ ] With `make dev` running, manually toggle dark mode and visually confirm the agent list, `AgentDetailModal`, badges (`StatusBadge`, `AgentTypeBadge`, `UsageBadge` if landed, `RoleBadge` if landed), and `FolderPickerModal`'s overlay all render legibly in both themes; reload the page and confirm the choice persists.
+- [x] `npx tsc --noEmit` in `frontend/` — zero errors.
+- [x] `npm run build` in `frontend/` — clean (pre-existing >500kB chunk-size warning only, unrelated to this change).
+- [DEFERRED-TO-UAT] With `make dev` running, manually toggle dark mode and visually confirm the agent list, `AgentDetailModal`, badges (`StatusBadge`, `AgentTypeBadge`, `UsageBadge` if landed, `RoleBadge` if landed), and `FolderPickerModal`'s overlay all render legibly in both themes; reload the page and confirm the choice persists. Runtime/visual verification belongs to the UAT phase, not tackle's static-gate verification.
 
 ## Acceptance Criteria
 

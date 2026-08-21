@@ -23,6 +23,10 @@ Entry format: `- [UAT-NNN — Title](UAT-NNN-slug.md) — verifies TASK-NNN · s
 - [UAT-114 — UAT: Role badge — colour-coded role badge on the agent card in the dashboard](UAT-114-role-badge-ui.md) — verifies TASK-114 · pending
 - [UAT-115 — UAT: Role selector — dropdown in AddAgentForm and the project-spawn UI in ProjectList](UAT-115-role-selector-ui.md) — verifies TASK-115 · pending
 - [UAT-119 — UAT: Persist periodic liveUpdateMetrics snapshots to observability.jsonl so metrics survive a host-server restart](UAT-119-persist-metrics-snapshots.md) — verifies TASK-119 · pending
+- [UAT-120 — UAT: Collapse monitor.sh's 15s dispatch loop into the host-server's 2s status-poll loop](UAT-120-collapse-dispatch-into-status-poll.md) — verifies TASK-120 · pending
+- [UAT-121 — UAT: Remove monitor.sh's now-redundant dispatch block, reusing mark_busy to prevent double-dispatch races](UAT-121-remove-redundant-monitor-dispatch.md) — verifies TASK-121 · pending
+- [UAT-122 — UAT: Dashboard dark mode — theme toggle over the Tailwind color tokens](UAT-122-dashboard-dark-mode.md) — verifies TASK-122 · pending
 - [UAT-123 — UAT: Replace window.confirm() destructive-action dialogs with the app's custom modal styling](UAT-123-replace-confirm-dialogs.md) — verifies TASK-123 · pending
 - [UAT-124 — UAT: AgentList text filter — scale the dashboard past small agent counts](UAT-124-agentlist-text-filter.md) — verifies TASK-124 · pending
 - [UAT-130 — UAT: Dynamic tmux pane sizing from the browser terminal's full-width probe](UAT-130-dynamic-terminal-pane-sizing.md) — verifies TASK-130 · pending
+- [UAT-126 — UAT: Task history view — dashboard page reading completed tasks](UAT-126-task-history-view.md) — verifies TASK-126 · pending

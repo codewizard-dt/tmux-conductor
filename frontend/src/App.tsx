@@ -3,6 +3,7 @@ import NavBar from './components/NavBar'
 import AgentsPage from './pages/AgentsPage'
 import ProjectsPage from './pages/ProjectsPage'
 import ProjectDetailPage from './pages/ProjectDetailPage'
+import TaskHistoryPage from './pages/TaskHistoryPage'
 
 function Dashboard() {
   return (
@@ -12,6 +13,7 @@ function Dashboard() {
         <Route path="/" element={<AgentsPage />} />
         <Route path="/projects" element={<ProjectsPage />} />
         <Route path="/projects/:id" element={<ProjectDetailPage />} />
+        <Route path="/history" element={<TaskHistoryPage />} />
       </Routes>
     </div>
   )

@@ -2,13 +2,13 @@
 id: TASK-120
 aliases: [TASK-120]
 title: "Collapse monitor.sh's 15s dispatch loop into the host-server's 2s status-poll loop"
-status: todo
+status: pending-uat
 created: 2026-08-15
 updated: 2026-08-15
 depends_on: []
 blocks: [TASK-121, TASK-116]
 parallel_safe_with: []
-uat: ""
+uat: "[[UAT-120]]"
 tags: [latency, dispatch, monitor, host-server, roadmap-017]
 ---
 
@@ -43,38 +43,40 @@ Factor this sequence (checkpoint → mark-busy → dispatch-log → optional `/c
 
 ## Steps
 
+<!-- Updated: 2026-08-21 00:00 -->
+
 ### 1. Extract the shared dispatch sequence  <!-- agent: general-purpose -->
 
-- [ ] In `host-server/index.ts`, factor the checkpoint → mark-busy → dispatch-log → optional-`/clear` → `sendTextToPane` sequence currently inline in the `POST /api/tasks` fast-path handler (`~824-865`) into a standalone function, e.g. `dispatchTaskToAgent(db: Database.Database, conf: ConductorConf, agent: Agent, cmdText: string, detection: string, opts?: { clearFirst?: boolean }): void`.
-- [ ] Update the `POST /api/tasks` handler to call it with `detection: 'immediate-enqueue'`.
-- [ ] Confirm `npx tsc --noEmit` in `host-server/` is still clean after the refactor before adding new behavior.
+- [x] In `host-server/index.ts`, factor the checkpoint → mark-busy → dispatch-log → optional-`/clear` → `sendTextToPane` sequence currently inline in the `POST /api/tasks` fast-path handler (`~824-865`) into a standalone function, e.g. `dispatchTaskToAgent(db: Database.Database, conf: ConductorConf, agent: Agent, cmdText: string, detection: string, opts?: { clearFirst?: boolean }): void`. Landed at `host-server/index.ts:469-516`.
+- [x] Update the `POST /api/tasks` handler to call it with `detection: 'immediate-enqueue'`.
+- [x] Confirm `npx tsc --noEmit` in `host-server/` is still clean after the refactor before adding new behavior. Confirmed clean.
 
 ### 2. Add the usage-limit marker to monitor.sh  <!-- agent: general-purpose -->
 
-- [ ] In `scripts/monitor.sh`, inside `check_usage()`'s caller (the per-agent loop, `~410-456`) or right after the aggregate `all_usage_hit` is finalized for the tick, write `${STATE_DIR}/usage-limited` (empty file, `touch`) when usage is hit and remove it (`rm -f`) when usage recovers. Keep this fleet-wide (matches the existing `all_usage_hit`/teardown semantics) rather than per-agent, to keep the check on the host-server side a single cheap `existsSync`.
-- [ ] Add a one-line comment at the write/remove sites and at `all_usage_hit`'s declaration explaining the marker's purpose and that TASK-120 added it.
+- [x] In `scripts/monitor.sh`, inside `check_usage()`'s caller (the per-agent loop, `~410-456`) or right after the aggregate `all_usage_hit` is finalized for the tick, write `${STATE_DIR}/usage-limited` (empty file, `touch`) when usage is hit and remove it (`rm -f`) when usage recovers. Keep this fleet-wide (matches the existing `all_usage_hit`/teardown semantics) rather than per-agent, to keep the check on the host-server side a single cheap `existsSync`. Landed at lines 461-469 (write/remove block, after the per-agent loop, before the teardown check).
+- [x] Add a one-line comment at the write/remove sites and at `all_usage_hit`'s declaration explaining the marker's purpose and that TASK-120 added it. Comment added at line 411 (declaration) and within the write/remove block.
 
 ### 3. Add the idle-transition dispatch trigger to pollAndDiff  <!-- agent: general-purpose -->
 
-- [ ] In `pollAndDiff()` (`host-server/index.ts:~2209-2263`), inside the existing per-agent diff loop, after the existing `if (prev && prev.state !== agent.state)` status-transition bookkeeping block, add: when `prev.state !== 'idle' && agent.state === 'idle' && agent.queuedTasks > 0 && !existsSync(path.join(conf.stateDir, 'usage-limited'))`, call `popTask(db, agent.name)`; if it returns a row, call the shared `dispatchTaskToAgent(...)` from Step 1 with `detection: 'idle-transition-poll'` and `clearFirst: task.kind === 'project'`.
-- [ ] Guard against a missing/`no-window` agent (skip dispatch if `!agent.windowPresent`).
-- [ ] `npx tsc --noEmit` in `host-server/` — zero errors.
+- [x] In `pollAndDiff()` (`host-server/index.ts:~2209-2263`), inside the existing per-agent diff loop, after the existing `if (prev && prev.state !== agent.state)` status-transition bookkeeping block, add: when `prev.state !== 'idle' && agent.state === 'idle' && agent.queuedTasks > 0 && !existsSync(path.join(conf.stateDir, 'usage-limited'))`, call `popTask(db, agent.name)`; if it returns a row, call the shared `dispatchTaskToAgent(...)` from Step 1 with `detection: 'idle-transition-poll'` and `clearFirst: task.kind === 'project'`. Landed at `host-server/index.ts:~2352-2371` (guarded by `agent.windowPresent` and resolving the full `Agent` row via `getAgentById` before dispatch, since the snapshot's per-agent type lacks fields `dispatchTaskToAgent` requires).
+- [x] Guard against a missing/`no-window` agent (skip dispatch if `!agent.windowPresent`).
+- [x] `npx tsc --noEmit` in `host-server/` — zero errors. Confirmed clean.
 
 ### 4. Typecheck and smoke-check both paths  <!-- agent: general-purpose -->
 
-- [ ] With `make dev` running, queue a task for an idle agent via `POST /api/tasks` and confirm it still dispatches immediately (existing fast path, now going through the shared function) — status 200, `dispatched: true`.
-- [ ] Queue a task for a **busy** agent, then let it go idle naturally (or flip its state file to `idle` manually); confirm the task dispatches within one status-poll tick (`STATUS_POLL_MS`, default 2000ms in `conductor.conf`) without waiting for `monitor.sh`'s next 15s tick — check `dispatch.jsonl` for a `detection: "idle-transition-poll"` record with a `ts` within ~2-3s of the state file flipping to `idle`.
-- [ ] Confirm a checkpoint row was recorded for that dispatch (`GET /api/agents/:id/checkpoints`) when the agent has a `worktree_path`.
-- [ ] Leave `monitor.sh`'s own dispatch block (`scripts/monitor.sh:436-451`) untouched for now — TASK-121 removes it after verifying no double-dispatch occurs with both paths active.
+- [DEFERRED-TO-UAT] With `make dev` running, queue a task for an idle agent via `POST /api/tasks` and confirm it still dispatches immediately (existing fast path, now going through the shared function) — status 200, `dispatched: true`. Requires a live running system; final `npx tsc --noEmit` gate re-confirmed clean across all three steps' combined changes in the meantime.
+- [DEFERRED-TO-UAT] Queue a task for a **busy** agent, then let it go idle naturally (or flip its state file to `idle` manually); confirm the task dispatches within one status-poll tick (`STATUS_POLL_MS`, default 2000ms in `conductor.conf`) without waiting for `monitor.sh`'s next 15s tick — check `dispatch.jsonl` for a `detection: "idle-transition-poll"` record with a `ts` within ~2-3s of the state file flipping to `idle`. Requires a live running system.
+- [DEFERRED-TO-UAT] Confirm a checkpoint row was recorded for that dispatch (`GET /api/agents/:id/checkpoints`) when the agent has a `worktree_path`. Requires a live running system.
+- [x] Leave `monitor.sh`'s own dispatch block (`scripts/monitor.sh:436-451`) untouched for now — TASK-121 removes it after verifying no double-dispatch occurs with both paths active. Statically verified: block now at lines 443-450, `checkpoint_agent` still runs immediately before `dispatch`; `git diff scripts/monitor.sh` shows only 13 additive lines across the two Step-2-intended locations (comment at ~411, marker write/remove block at ~461-469) — nothing else in the file touched. `bash -n scripts/monitor.sh` clean.
 
 ## Acceptance Criteria
 
-- [ ] `pollAndDiff`'s idle-transition detection triggers task pop + dispatch for an agent with queued tasks within one `STATUS_POLL_MS` tick of going idle.
-- [ ] The new dispatch path calls `stashCheckpoint`/`insertCheckpoint` (or the shared function wrapping them) before every dispatch to a git-worktree agent — TASK-068's checkpoint feature is preserved, not silently dropped.
-- [ ] An agent whose usage is limited (fleet-wide `usage-limited` marker present) is not dispatched by the new path even if it goes idle with queued tasks.
-- [ ] The existing `POST /api/tasks` fast-path behavior is unchanged (still 200 + immediate dispatch for idle-agent-with-empty-queue).
-- [ ] `monitor.sh`'s existing dispatch block is untouched by this task (TASK-121's scope).
-- [ ] `npx tsc --noEmit` passes in `host-server/`; `bash -n scripts/monitor.sh` is clean.
+- [DEFERRED-TO-UAT] `pollAndDiff`'s idle-transition detection triggers task pop + dispatch for an agent with queued tasks within one `STATUS_POLL_MS` tick of going idle. Implemented (host-server/index.ts pollAndDiff, ~2352-2371); requires a live running system to confirm actual timing.
+- [x] The new dispatch path calls `stashCheckpoint`/`insertCheckpoint` (or the shared function wrapping them) before every dispatch to a git-worktree agent — TASK-068's checkpoint feature is preserved, not silently dropped. Code-verified: the new trigger calls the shared `dispatchTaskToAgent` (host-server/index.ts:469-516), which performs checkpoint (guarded by `worktreePath`) before mark-busy/dispatch-log/send.
+- [x] An agent whose usage is limited (fleet-wide `usage-limited` marker present) is not dispatched by the new path even if it goes idle with queued tasks. Code-verified: the trigger condition includes `!existsSync(path.join(conf.stateDir, 'usage-limited'))`.
+- [x] The existing `POST /api/tasks` fast-path behavior is unchanged (still 200 + immediate dispatch for idle-agent-with-empty-queue). Code-verified: response shape, status codes, and guard conditions unchanged per Step 1; full E2E confirmation deferred to UAT.
+- [x] `monitor.sh`'s existing dispatch block is untouched by this task (TASK-121's scope). Statically verified — see Step 4.
+- [x] `npx tsc --noEmit` passes in `host-server/`; `bash -n scripts/monitor.sh` is clean. Confirmed after all three code steps combined.
 
 ## Dependencies
 
