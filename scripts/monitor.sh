@@ -423,6 +423,16 @@ while true; do
     if ! tmux has-session -t "$target" 2>/dev/null; then
       log "WARN: $name — pane not found (window=$window_name), skipping"
       move_to_backlog "${AGENT_IDS[$name]}"
+      # BUG FIX: a missing pane must not vacuously satisfy the
+      # all-idle + all-usage-hit auto-teardown check below — an agent
+      # we can't observe is neither confirmed idle nor confirmed
+      # usage-limited. Without this, a fleet where every pane is
+      # transiently absent (e.g. right after a session restart, before
+      # windows finish spawning) leaves both flags at their initial
+      # `true` default and triggers an immediate, mislabeled
+      # "usage limit hit" shutdown of the session it just started.
+      all_idle=false
+      all_usage_hit=false
       continue
     fi
 
