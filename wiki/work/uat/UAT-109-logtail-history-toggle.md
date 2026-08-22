@@ -154,7 +154,7 @@ implements::[[TASK-109]]
   5. Teardown: `curl -sS -X DELETE "http://localhost:8788/api/agents/<FID>"` (cascades any `agent_terminal_log` rows automatically).
 - **Expected Result**: Toggle present and correctly styled; populated case renders real chunks oldest-first, no timestamps; empty case (after the DB-clear technique above) shows exactly "No persisted history yet." with no error and no blank panel.
 - **Repeatable Unit Test**: Not applicable: verifies browser rendering / fetch-triggered DOM updates; `frontend/` has no component test harness. The render-branch selection logic itself is pinned browser-free in UAT-EDGE-001.
-- [FAIL: auto-judge: UI test requires human verification — use /uat-walk] <!-- 2026-08-21 -->
+- [FAIL: auto-judge: UI test requires human verification — use /uat-walk] <!-- 2026-08-22 -->
 
 ### UAT-UI-002: The live xterm terminal is never disposed by toggling — switching back to Live is instant with scrollback/cursor state intact
 - **Page**: `http://localhost:4321/`
@@ -168,7 +168,7 @@ implements::[[TASK-109]]
   5. Toggle back and forth 3-4 more times in quick succession. Confirm the terminal never flashes blank and scrollback is never wiped between toggles.
 - **Expected Result**: Every switch back to Live is instant with no blank flash and no `/tail` re-fetch (check the Network tab if in doubt — no new `GET .../tail` request should fire on a toggle, only on the initial mount). Scrollback position and content survive every toggle, confirming the `Terminal` instance was never disposed/recreated.
 - **Repeatable Unit Test**: Not applicable: verifies that a specific React `useEffect`'s dependency array excludes `viewMode` in a running browser DOM, and that no `xterm.js` `Terminal.dispose()` call fires — there is no frontend component test harness to assert against a live `Terminal` instance, and authoring a headless script whose pass condition requires introspecting the xterm instance is out of scope for this run. The static fact (dependency array shape) was confirmed by source inspection at generation time; only the resulting browser behavior needs a human eye.
-- [FAIL: auto-judge: UI test requires human verification — use /uat-walk] <!-- 2026-08-21 -->
+- [FAIL: auto-judge: UI test requires human verification — use /uat-walk] <!-- 2026-08-22 -->
 
 ### UAT-UI-003: Direct Input form hides in History mode and reappears in Live mode; an active session is turned off on switching away
 - **Page**: `http://localhost:4321/`
@@ -181,7 +181,7 @@ implements::[[TASK-109]]
   4. Click "Live". Confirm the send-text box and "Direct Input" button reappear immediately, and Direct Input is off (not auto-re-enabled).
 - **Expected Result**: Form and banner both vanish on switching to History; form reappears (Direct Input off, not auto-restored) on switching back to Live.
 - **Repeatable Unit Test**: Not applicable: verifies DOM presence/absence of a conditionally-rendered form and banner in the browser. The underlying `windowPresent && viewMode === 'live'` gate and the toggle's `interacting`-clearing side effect are both pinned browser-free in UAT-EDGE-001.
-- [FAIL: auto-judge: UI test requires human verification — use /uat-walk] <!-- 2026-08-21 -->
+- [FAIL: auto-judge: UI test requires human verification — use /uat-walk] <!-- 2026-08-22 -->
 
 ### UAT-STATIC-001: `tsc --noEmit` and `npm run build` pass cleanly in `frontend/`
 - **Description**: The task's static-gate acceptance criterion, re-verified independently of `/tackle`'s own run.

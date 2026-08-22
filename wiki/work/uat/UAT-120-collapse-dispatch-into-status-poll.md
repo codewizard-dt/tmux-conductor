@@ -51,7 +51,7 @@ implements::[[TASK-120]]
   - The command appears in the agent's tmux pane
   - The agent's state file reads `busy` immediately after the response returns
 - **Repeatable Unit Test**: Not applicable: requires a live host-server process with a real tmux pane and DB — see the file-level note above on `host-server/index.ts`'s non-injectable entrypoint.
-- [FAIL: auto-judge: prerequisite not satisfied — host-server not reachable on http://localhost:8788 and no tmux session running] <!-- 2026-08-21 -->
+- [x] Pass <!-- 2026-08-22 -->
 
 ### UAT-INT-001: A queued task dispatches within one STATUS_POLL_MS tick of the agent going idle, via the new idle-transition trigger
 - **Endpoint**: none directly — triggered internally by `pollAndDiff()`'s status-poll loop (`host-server/index.ts:~2352-2371`), default cadence `STATUS_POLL_MS=2000` (`conductor.conf`).
@@ -78,7 +78,7 @@ implements::[[TASK-120]]
   - The command `echo uat120-idletrans` appears in the agent's tmux pane
   - The agent's state file reads `busy` again (marked busy by the dispatch, not left `idle`)
 - **Repeatable Unit Test**: Blocked: the idle-transition condition (`prev.state !== 'idle' && agent.state === 'idle' && agent.queuedTasks > 0 && agent.windowPresent && !existsSync(...)`) is deterministic and would be cheap to unit-test in isolation, but it lives inline inside `pollAndDiff()`, which is unexported and only reachable by importing `host-server/index.ts` — an import that itself starts the real server (see file-level note above). Promoting this would require extracting the condition into an exported, injectable helper, which is new test infrastructure beyond this task's scope.
-- [FAIL: auto-judge: prerequisite not satisfied — host-server not reachable on http://localhost:8788 and no tmux session running] <!-- 2026-08-21 -->
+- [x] Pass <!-- 2026-08-22 -->
 
 ### UAT-INT-002: A checkpoint is recorded for a worktree agent dispatched via the idle-transition trigger
 - **Endpoint**: `GET /api/agents/:id/checkpoints`
@@ -94,7 +94,7 @@ implements::[[TASK-120]]
   ```
 - **Expected Result**: The count returned is strictly greater than the count recorded in Step 2 (at least one new checkpoint row), and the newest checkpoint's `ts` is close to (within a few seconds of) the idle-transition dispatch time from Step 3.
 - **Repeatable Unit Test**: Not applicable: requires a real git worktree, a live host-server, and a real tmux pane transition — same non-injectable-entrypoint constraint as UAT-INT-001. `stashCheckpoint`/`insertCheckpoint` themselves are already covered by existing tests in `host-server/git.test.ts` and `host-server/db.migration.test.ts` (`insertCheckpoint/listCheckpoints/getCheckpoint round-trip and ordering`) — this case is about the new *caller*, not the checkpoint primitives.
-- [FAIL: auto-judge: prerequisite not satisfied — host-server not reachable on http://localhost:8788 and no tmux session running] <!-- 2026-08-21 -->
+- [x] Pass <!-- 2026-08-22 -->
 
 ### UAT-EDGE-001: An agent whose usage is limited (fleet-wide usage-limited marker present) is not dispatched by the idle-transition trigger
 - **Scenario**: The idle-transition condition in `pollAndDiff()` includes `!existsSync(path.join(conf.stateDir, 'usage-limited'))`. When `scripts/monitor.sh` (or, for this test, a manually-created marker file) indicates the fleet is usage-limited, an agent going idle with a queued task must NOT be dispatched by the new path — the task should stay queued.
@@ -114,7 +114,7 @@ implements::[[TASK-120]]
   ```
 - **Expected Result**: Prints nothing (no matching line) — the task was never dispatched by the idle-transition trigger while the marker file was present. The task should still be visible as queued (not `dispatched`) for the agent, e.g. via `GET /api/status` → that agent's `queuedTasks >= 1` immediately after Step 7, before cleanup removes the marker.
 - **Repeatable Unit Test**: Blocked: same reasoning as UAT-INT-001 — the `existsSync(...)` gate is deterministic but is embedded inline in the non-injectable `pollAndDiff()`.
-- [FAIL: auto-judge: prerequisite not satisfied — host-server not reachable on http://localhost:8788 and no tmux session running] <!-- 2026-08-21 -->
+- [FAIL: auto-judge: could not hold the observed condition — the manually-created `logs/state/usage-limited` marker was removed by the live `monitor.sh` process (its own 15s poll recomputes `all_usage_hit` from real usage and does `rm -f "${STATE_DIR}/usage-limited"` when the fleet is not actually usage-limited — `scripts/monitor.sh:444-451`) before the idle-transition poll tick ran; `test -f logs/state/usage-limited` read ABSENT at check time even though `rm -f` cleanup (Step 9) had not yet been run. The idle-transition-poll dispatch for `echo uat120-usagelimited` DID fire (`logs/dispatch.jsonl` ts 17:46:42.125Z), which is correct behavior given the marker was genuinely absent by then — but this means the guarded condition (`!existsSync(...)` while the marker is present) was never actually observed, so the marker-present-blocks-dispatch behavior itself is unverified, not disproven. Re-run against a fleet where `monitor.sh` is briefly paused or genuinely usage-limited, or tighten the window between `touch` and the idle flip below monitor's POLL_INTERVAL (15s).] <!-- 2026-08-22 -->
 
 ### UAT-EDGE-002: A project-scoped task dispatched via the idle-transition trigger sends /clear before the command
 - **Scenario**: `dispatchTaskToAgent`'s `opts.clearFirst` sends `/clear` to the pane before the task text. The idle-transition trigger passes `clearFirst: task.kind === 'project'` — a task popped via a `projectId` match (not a direct `agentId` match) must trigger a `/clear` first, mirroring `scripts/monitor.sh:447-449`'s existing behavior for the old dispatch path.
@@ -135,7 +135,7 @@ implements::[[TASK-120]]
   ```
 - **Expected Result**: The captured pane text shows the pane was cleared (Claude Code's `/clear` output, e.g. a fresh/empty conversation view or a "conversation cleared" style indicator, immediately followed by `echo uat120-clearfirst` running) — i.e. the `/clear` send visibly preceded the task command in the pane's own history, not the other way around. (Note: `dispatch.jsonl`'s record is written *before* the `/clear`/command sends in `dispatchTaskToAgent`'s own body order, so the log itself cannot be used to verify send ordering — this case must be checked against the live pane.)
 - **Repeatable Unit Test**: Not applicable: requires a real tmux pane and a project-scoped agent; the `clearFirst` boolean itself is a one-line pass-through (`task.kind === 'project'`) with no independent logic to isolate — the thing worth verifying is that the pane actually receives `/clear` before the command, which only a live pane observation can show.
-- [FAIL: auto-judge: prerequisite not satisfied — host-server not reachable on http://localhost:8788 and no tmux session running] <!-- 2026-08-21 -->
+- [x] Pass <!-- 2026-08-22 -->
 
 ### UAT-STATIC-001: npx tsc --noEmit passes in host-server/
 - **Scenario**: Task acceptance criterion — all of TASK-120's changes (`host-server/index.ts`) must typecheck cleanly.

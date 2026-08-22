@@ -136,7 +136,7 @@ implements::[[TASK-115]]
   4. Observe the dropdown's initial selected value before touching anything.
 - **Expected Result**: A `Role` dropdown is visible in the form's main area (not requiring "Show advanced" to be expanded). It offers 7 options corresponding to `generic`/`frontend`/`backend`/`qa`/`devops`/`security`/`architect` (exact label text/casing is an implementation choice, not asserted here). Its initial value is the generic/default option — no role is pre-selected as anything else.
 - **Repeatable Unit Test**: Not applicable: verifies browser rendering, DOM placement, and initial-render state of a React component in a live page. (The underlying option-list data and default-selection value are already pinned browser-free — `ROLE_VALUES` in `UAT-EDGE-001`, `'generic'` as the documented default in `TASK-115`'s own implementation notes.)
-- [FAIL: auto-judge: prerequisite not satisfied — Frontend dev server running on http://localhost:4321] <!-- 2026-08-21 -->
+- [FAIL: auto-judge: prerequisite not satisfied — The conductor tmux session running (`GET /api/status` reports `sessionAlive:false, sessionExists:false`)] <!-- 2026-08-22 -->
 
 ### UAT-UI-002: `ProjectList`'s one-click spawn has a role selector per project row, defaulting to Generic
 - **Page**: `http://localhost:4321/` (or wherever `ProjectList` renders — the projects panel)
@@ -149,7 +149,7 @@ implements::[[TASK-115]]
   4. Observe each dropdown's initial value before touching anything.
 - **Expected Result**: Every project row has its own role dropdown, all starting on the generic/default option. Changing one row's selection does not change any other row's selection.
 - **Repeatable Unit Test**: Not applicable: verifies browser rendering and per-row DOM independence in a live page.
-- [FAIL: auto-judge: prerequisite not satisfied — Frontend dev server running on http://localhost:4321] <!-- 2026-08-21 -->
+- [FAIL: auto-judge: prerequisite not satisfied — The conductor tmux session running (`GET /api/status` reports `sessionAlive:false, sessionExists:false`)] <!-- 2026-08-22 -->
 
 ### UAT-UI-003: `AddAgentForm` shows a colour-dot preview next to the role select for a non-generic role, and none for Generic
 - **Page**: `http://localhost:4321/`
@@ -162,7 +162,7 @@ implements::[[TASK-115]]
   4. Look again for a colour dot/swatch next to the dropdown.
 - **Expected Result**: No colour dot is visible while `Generic` is selected. A small coloured dot appears next to the dropdown once a non-generic role is selected, and its colour changes when a different non-generic role is chosen.
 - **Repeatable Unit Test**: Not applicable: verifies conditional browser rendering of a presentational element. `resolveRoleBadge`'s underlying null-for-generic / colour-for-known-role contract this UI reads from is already covered by `AgentList.test.tsx`'s pre-existing `describe('resolveRoleBadge')` tests (not part of TASK-115, reused as-is).
-- [FAIL: auto-judge: prerequisite not satisfied — Frontend dev server running on http://localhost:4321] <!-- 2026-08-21 -->
+- [FAIL: auto-judge: prerequisite not satisfied — The conductor tmux session running (`GET /api/status` reports `sessionAlive:false, sessionExists:false`)] <!-- 2026-08-22 -->
 
 ---
 

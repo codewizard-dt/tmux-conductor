@@ -40,7 +40,7 @@ implements::[[TASK-126]]
   curl -sS 'http://localhost:8788/api/tasks/history'
   ```
 - **Expected Result**: `200 OK`, body is a JSON array (not wrapped in `{tasks: [...]}`) of objects shaped `{id, command, agentId, projectId, position, status, source, scheduleId, createdAt, completedAt}`, every `status` is `"done"`, and the array is ordered by `completedAt` descending.
-- [FAIL: auto-judge: prerequisite not satisfied — host-server not reachable on port 8788] <!-- 2026-08-21 -->
+- [x] Pass <!-- 2026-08-22 -->
 - **Repeatable Unit Test**: Created: `host-server/db.test.ts`
 - **Unit Test Command**: `node --import tsx/esm --test host-server/db.test.ts`
 
@@ -56,7 +56,7 @@ implements::[[TASK-126]]
   curl -sS 'http://localhost:8788/api/tasks/history?agentId=1'
   ```
 - **Expected Result**: `200 OK`, JSON array where every element has `"agentId": 1` (adjust the id to match the one substituted in the command) and `"status": "done"`.
-- [FAIL: auto-judge: prerequisite not satisfied — host-server not reachable on port 8788] <!-- 2026-08-21 -->
+- [x] Pass <!-- 2026-08-22 -->
 - **Repeatable Unit Test**: Created: `host-server/db.test.ts`
 - **Unit Test Command**: `node --import tsx/esm --test host-server/db.test.ts`
 
@@ -72,7 +72,7 @@ implements::[[TASK-126]]
   curl -sS 'http://localhost:8788/api/tasks/history?limit=1'
   ```
 - **Expected Result**: `200 OK`, JSON array with exactly 1 element, matching the newest `completedAt` value from UAT-API-001's full list.
-- [FAIL: auto-judge: prerequisite not satisfied — host-server not reachable on port 8788] <!-- 2026-08-21 -->
+- [x] Pass <!-- 2026-08-22 -->
 - **Repeatable Unit Test**: Created: `host-server/db.test.ts`
 - **Unit Test Command**: `node --import tsx/esm --test host-server/db.test.ts`
 
@@ -84,7 +84,7 @@ implements::[[TASK-126]]
   curl -sS 'http://localhost:8788/api/tasks/history?limit=abc'
   ```
 - **Expected Result**: `400 Bad Request`, body `{"error":"limit must be a positive integer"}`.
-- [FAIL: auto-judge: prerequisite not satisfied — host-server not reachable on port 8788] <!-- 2026-08-21 -->
+- [x] Pass <!-- 2026-08-22 -->
 - **Repeatable Unit Test**: Blocked: the validation branch lives inline in the unexported `api.get('/tasks/history', ...)` Fastify handler closure in `host-server/index.ts`, not extracted into a standalone pure function — importing `index.ts` directly to unit-test it has import-time side effects (`fastify.listen`, DB open, poll loops), the same non-injectable-entrypoint constraint UAT-119/UAT-120 already documented for this file.
 
 ### UAT-EDGE-002: GET /api/tasks/history?agentId= rejects a non-numeric value
@@ -95,7 +95,7 @@ implements::[[TASK-126]]
   curl -sS 'http://localhost:8788/api/tasks/history?agentId=abc'
   ```
 - **Expected Result**: `400 Bad Request`, body `{"error":"agentId must be an integer"}`.
-- [FAIL: auto-judge: prerequisite not satisfied — host-server not reachable on port 8788] <!-- 2026-08-21 -->
+- [x] Pass <!-- 2026-08-22 -->
 - **Repeatable Unit Test**: Blocked: same reason as UAT-EDGE-001 — the validation branch is inline in the unexported route handler closure in `host-server/index.ts`, not a standalone testable function.
 
 ### UAT-UI-001: /history route renders the completed-task list via dashboard navigation
@@ -108,7 +108,7 @@ implements::[[TASK-126]]
   4. For each completed task, confirm its row shows: the command text (monospace), `Agent: <agent name>` (or `#<id>` if the agent no longer resolves by name, or `—` if `agentId` is null), `Project: <project name>` (same fallback rules), and `Completed: <formatted timestamp>` (via the reused `formatSessionStart` helper).
   5. If no completed tasks exist, confirm the empty state "No completed tasks yet" renders instead of an empty list.
 - **Expected Result**: The **History** nav link is visible without any extra discovery step, clicking it navigates to `/history`, and the page lists every completed task with command/agent/project/completion-time — or shows the empty-state message when there are none.
-- [FAIL: auto-judge: prerequisite not satisfied — frontend dev server not reachable on port 4321] <!-- 2026-08-21 -->
+- [FAIL: auto-judge: UI test requires human verification — use /uat-walk] <!-- 2026-08-22 -->
 - **Repeatable Unit Test**: Not applicable: real DOM/browser navigation and rendering verification, not deterministic business logic.
 
 ---

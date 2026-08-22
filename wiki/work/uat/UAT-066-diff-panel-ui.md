@@ -65,7 +65,7 @@ implements::[[TASK-066]]
   6. Teardown: `curl -sS -X DELETE "http://127.0.0.1:8788/api/agents/$DID"`
 - **Expected Result**: A "Changes" `<summary>` is present and expandable. Once expanded, the `<pre>` block renders one `<div>` per diff line. The `@@ -1,3 +1,4 @@` hunk header line has class `text-accent-blue`. The `-line2` line has class `text-accent-red`. The `+line2-changed` and `+line4` lines have class `text-accent-green`. The unchanged `line1`/`line3` context lines and the `--- a/file.txt`/`+++ b/file.txt` header lines have class `text-ink`. No "No changes yet" placeholder is shown.
 - **Repeatable Unit Test**: Blocked: `frontend/` has no test runner configured (no vitest/jest in `frontend/package.json` — only `tsc`/`eslint`/`vite`); unit-testing `DiffPanel`'s internal `lineClass` classification would require introducing new frontend test infrastructure, which this task does not call for.
-- [FAIL: auto-judge: prerequisite not satisfied — host-server not running on http://127.0.0.1:8788] <!-- 2026-08-21 -->
+- [FAIL: auto-judge: prerequisite not satisfied — conductor tmux session not running (POST /api/agents returned 409 {"error":"session not running","sessionAlive":false})] <!-- 2026-08-22 -->
 
 ### UAT-UI-002: "No changes yet" placeholder shown for an empty diff
 - **Page**: `http://localhost:4321/`
@@ -80,7 +80,7 @@ implements::[[TASK-066]]
   4. Teardown: `curl -sS -X DELETE "http://127.0.0.1:8788/api/agents/$EID"`
 - **Expected Result**: The "Changes" section is present (the agent is a git repo, so the panel is not hidden). Expanding it shows the italic text "No changes yet" and no `<pre>` block. The "Refresh" button is still visible.
 - **Repeatable Unit Test**: Blocked: no frontend test runner configured (see UAT-UI-001).
-- [FAIL: auto-judge: prerequisite not satisfied — host-server not running on http://127.0.0.1:8788] <!-- 2026-08-21 -->
+- [FAIL: auto-judge: prerequisite not satisfied — conductor tmux session not running (POST /api/agents returned 409 {"error":"session not running","sessionAlive":false})] <!-- 2026-08-22 -->
 
 ### UAT-UI-003: "Changes" section is absent for a non-git-workdir agent
 - **Page**: `http://localhost:4321/`
@@ -97,7 +97,7 @@ implements::[[TASK-066]]
   6. Teardown: `curl -sS -X DELETE "http://127.0.0.1:8788/api/agents/$NID"`
 - **Expected Result**: Step 3's curl confirms `diff: null, base: null`. In the modal, no "Changes" summary/section is rendered at all (not collapsed, not empty — absent from the DOM), consistent with `DiffPanel` returning `null` once `loaded && diff === null && base === null`.
 - **Repeatable Unit Test**: Blocked: no frontend test runner configured (see UAT-UI-001).
-- [FAIL: auto-judge: prerequisite not satisfied — host-server not running on http://127.0.0.1:8788] <!-- 2026-08-21 -->
+- [FAIL: auto-judge: prerequisite not satisfied — conductor tmux session not running (POST /api/agents returned 409 {"error":"session not running","sessionAlive":false})] <!-- 2026-08-22 -->
 
 ### UAT-UI-004: Diff panel is scrollable and capped at a fixed max-height for a large diff
 - **Page**: `http://localhost:4321/`
@@ -112,7 +112,7 @@ implements::[[TASK-066]]
   4. Scroll within the `<pre>` block and confirm the modal itself does not grow or get pushed off-screen — only the inner diff block scrolls.
 - **Expected Result**: The `<pre>` has `max-h-[400px] overflow-y-auto` applied (Tailwind classes present on the element, and computed style confirms `max-height: 400px`); scrolling reveals the additional lines without resizing the modal.
 - **Repeatable Unit Test**: Blocked: no frontend test runner configured; layout/overflow behavior is a rendering concern requiring a real browser (see UAT-UI-001).
-- [FAIL: auto-judge: prerequisite not satisfied — host-server not running on http://127.0.0.1:8788] <!-- 2026-08-21 -->
+- [FAIL: auto-judge: prerequisite not satisfied — conductor tmux session not running (POST /api/agents returned 409 {"error":"session not running","sessionAlive":false})] <!-- 2026-08-22 -->
 
 ### UAT-UI-005: "Refresh" button re-fetches the diff and reflects new commits without closing the modal
 - **Page**: `http://localhost:4321/`
@@ -127,7 +127,7 @@ implements::[[TASK-066]]
   4. Observe the diff content.
 - **Expected Result**: After clicking Refresh, the rendered diff includes the new `+line5` (green) line that was not present before the commit — confirming the panel re-fetched rather than showing stale/cached content. No page reload or modal close/reopen was needed.
 - **Repeatable Unit Test**: Blocked: no frontend test runner configured; this is a live-fetch/DOM-update behavior requiring a real browser session (see UAT-UI-001).
-- [FAIL: auto-judge: prerequisite not satisfied — host-server not running on http://127.0.0.1:8788] <!-- 2026-08-21 -->
+- [FAIL: auto-judge: prerequisite not satisfied — conductor tmux session not running (POST /api/agents returned 409 {"error":"session not running","sessionAlive":false})] <!-- 2026-08-22 -->
 
 ### UAT-STATIC-001: `tsc --noEmit` and `npm run build` pass cleanly in `frontend/`
 - **Description**: The task's static-gate acceptance criterion, re-verified independently of `/tackle`'s own run.

@@ -119,7 +119,7 @@ implements::[[TASK-076]]
   10. Cleanup: close the modal, then `curl -sS -X DELETE "http://localhost:8788/api/agents/$UID"` for this fixture's id.
 - **Expected Result**: The `Usage (2 sessions)` section expands to a 7-column table with exactly 2 rows in the order described, a bold totals footer row, and disappears entirely (not just collapses) while `logExpanded` is true, reappearing unchanged once the log is collapsed again. No console errors.
 - **Repeatable Unit Test**: Not applicable: verifies browser rendering, DOM ordering, and conditional-visibility of a React component; the frontend has no component test harness (no vitest/jsdom present in this repo).
-- [FAIL: auto-judge: prerequisite not satisfied — host-server on :8788 and frontend dev server on :4321 both unreachable] <!-- 2026-08-21 -->
+- [FAIL: auto-judge: prerequisite not satisfied — conductor tmux session not running (no server on /private/tmp/tmux-501/default); POST /api/agents would 409] <!-- 2026-08-22 -->
 
 ### UAT-UI-002: No Usage section renders for an agent with zero usage rows
 - **Page**: `http://localhost:4321/`
@@ -133,7 +133,7 @@ implements::[[TASK-076]]
   5. Cleanup: close the modal, then `curl -sS -X DELETE "http://localhost:8788/api/agents/$ZID"` for this fixture's id.
 - **Expected Result**: No "Usage" text, `<details>` element, or table appears anywhere in the modal for this agent. The rest of the modal (name, status, Skills section if applicable, log panel) renders normally.
 - **Repeatable Unit Test**: Not applicable: verifies absence of a rendered DOM element in the browser; no frontend component test harness exists.
-- [FAIL: auto-judge: prerequisite not satisfied — host-server on :8788 and frontend dev server on :4321 both unreachable] <!-- 2026-08-21 -->
+- [FAIL: auto-judge: prerequisite not satisfied — conductor tmux session not running (no server on /private/tmp/tmux-501/default); POST /api/agents would 409] <!-- 2026-08-22 -->
 
 ### UAT-EDGE-001: `formatSessionStart` truncation branch and the updatedAt-DESC sort comparator
 - **Scenario**: TASK-075's accumulator keys a session by the first assistant record's ISO timestamp, falling back to the raw `sessionId` UUID when unavailable. `formatSessionStart` (`frontend/src/components/AgentList.tsx:217-223`) does `new Date(s)`; when `Number.isNaN(d.getTime())` it must return `` `${s.slice(0, 8)}…` `` instead of a parsed date string. Separately, `UsageBreakdown`'s row ordering (`AgentList.tsx:317-318`) sorts by `updatedAt` DESC — explicitly *not* `sessionStart` — because a UUID fallback key sorts lexicographically ahead of any ISO date string, which would silently misorder rows if the code sorted on `sessionStart` instead. Both are pure, deterministic functions (no DOM, no fetch); the source is reproduced verbatim below.
@@ -194,7 +194,7 @@ implements::[[TASK-076]]
   6. Cleanup: close the modal, then `curl -sS -X DELETE "http://localhost:8788/api/agents/$EID"`.
 - **Expected Result**: The Session cell renders `a1b2c3d4…` in a visibly monospace font (never `Invalid Date` or a blank cell), and hovering it shows the full UUID (`a1b2c3d4-5678-90ab-cdef-1234567890ab`) as a tooltip.
 - **Repeatable Unit Test**: Not applicable: verifies rendered CSS (monospace font) and a browser tooltip in the actual DOM; no frontend component test harness exists. The underlying string value is pinned browser-free in UAT-EDGE-001.
-- [FAIL: auto-judge: prerequisite not satisfied — host-server on :8788 and frontend dev server on :4321 both unreachable] <!-- 2026-08-21 -->
+- [FAIL: auto-judge: prerequisite not satisfied — conductor tmux session not running (no server on /private/tmp/tmux-501/default); POST /api/agents would 409] <!-- 2026-08-22 -->
 
 ---
 

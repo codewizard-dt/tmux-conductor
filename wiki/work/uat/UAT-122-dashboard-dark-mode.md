@@ -41,7 +41,7 @@ implements::[[TASK-122]]
 - **Expected Result**: Theme flips instantly on click, in both directions, without a reload; button icon and `aria-label`/`title` track the current theme.
 - **Repeatable Unit Test**: Created: `frontend/src/components/NavBar.test.tsx`
 - **Unit Test Command**: `npx vitest run src/components/NavBar.test.tsx`
-- [FAIL: auto-judge: prerequisite not satisfied — `make dev` not running (host-server :8788 and frontend :4321 both unreachable)] <!-- 2026-08-21 -->
+- [FAIL: auto-judge: UI test requires human verification — use /uat-walk] <!-- 2026-08-22 -->
 
 ### UAT-UI-002: Theme choice persists to localStorage and survives a page reload
 - **Page**: `http://localhost:4321/`
@@ -57,7 +57,7 @@ implements::[[TASK-122]]
 - **Expected Result**: `localStorage['theme']` is set on every toggle; a reload restores the stored theme before first paint (no FOUC), because `frontend/index.html`'s inline `<script>` (in `<head>`, before `main.tsx` loads) applies the stored class synchronously.
 - **Repeatable Unit Test**: Created: `frontend/src/components/NavBar.test.tsx` (covers the `localStorage.setItem` write path; the pre-paint reload restore itself runs in an inline `<script>` in `index.html`, outside what a component-level unit test can exercise — see UAT-UI-003)
 - **Unit Test Command**: `npx vitest run src/components/NavBar.test.tsx`
-- [FAIL: auto-judge: prerequisite not satisfied — `make dev` not running (host-server :8788 and frontend :4321 both unreachable)] <!-- 2026-08-21 -->
+- [FAIL: auto-judge: UI test requires human verification — use /uat-walk] <!-- 2026-08-22 -->
 
 ### UAT-UI-003: No stored preference falls back to the OS `prefers-color-scheme`
 - **Page**: `http://localhost:4321/`
@@ -70,7 +70,7 @@ implements::[[TASK-122]]
   4. Switch the emulation to `light`, reload again, and confirm the dashboard loads in light mode.
 - **Expected Result**: With no `localStorage['theme']`, the initial theme follows the OS/browser `prefers-color-scheme` media query.
 - **Repeatable Unit Test**: Not applicable: this fallback logic lives entirely in the inline `<script>` in `frontend/index.html`'s `<head>` (intentionally not an importable module, so it can run synchronously before `main.tsx` loads and avoid a flash of the wrong theme) — it isn't reachable from a jsdom-based component test.
-- [FAIL: auto-judge: prerequisite not satisfied — `make dev` not running (host-server :8788 and frontend :4321 both unreachable)] <!-- 2026-08-21 -->
+- [FAIL: auto-judge: UI test requires human verification — use /uat-walk] <!-- 2026-08-22 -->
 
 ### UAT-UI-004: Every existing Tailwind color-token usage re-themes with no separate per-component edits
 - **Pages**: `http://localhost:4321/` (Agents) and `http://localhost:4321/projects` (Projects), plus the components reachable from them
@@ -87,7 +87,7 @@ implements::[[TASK-122]]
 - **Expected Result**: All listed surfaces switch to the dark palette with the single toggle — no component required its own separate dark-mode styling.
 - **Known, documented gap (do not fail the case for these — confirm they're visually as expected and move on)**: TASK-122 Step 2 already found and recorded these as intentionally out of scope — they bypass the token system via hardcoded hex/rgba and will **not** re-theme: `AgentList.tsx`'s `STATUS_CONFIG`/role-color maps (~lines 80-92, 152-153, 168-173, 1062-1160) and several `bg-[#f1f2f4]`/`text-[#...]` arbitrary-value classes (lines 222, 310, 324, 329, 337, 353, 690, 699, 749, 952, 982); `LogTail.tsx`'s xterm.js theme object and `bg-[#0b0b0d]`/`border-[#e0901a]` arbitrary classes (lines 276, 667-758); one hardcoded `bg-white`/`rgb(...)` literal each in `FolderPickerModal.tsx`, `AddAgentForm.tsx`, `AddProjectForm.tsx`, `AddBgProcessForm.tsx`.
 - **Repeatable Unit Test**: Not applicable: this is a visual check of compiled Tailwind CSS cascading across many rendered components in a real browser — component unit tests run in jsdom without the compiled stylesheet loaded, so they cannot observe computed colors.
-- [FAIL: auto-judge: prerequisite not satisfied — `make dev` not running (host-server :8788 and frontend :4321 both unreachable)] <!-- 2026-08-21 -->
+- [FAIL: auto-judge: UI test requires human verification — use /uat-walk] <!-- 2026-08-22 -->
 
 ### UAT-UI-005: Status/accent colors remain legible against the dark canvas
 - **Page**: `http://localhost:4321/`
@@ -98,7 +98,7 @@ implements::[[TASK-122]]
   2. Inspect the `StatusBadge`/`AgentTypeBadge`/`RoleBadge`/`UsageBadge` pills on agent cards (hardcoded colors, not token-driven per UAT-UI-004). Confirm they remain legible even though untouched by the dark palette — each badge paints its own low-opacity tinted background rather than relying on `canvas`, so contrast is expected to hold, but confirm visually rather than assuming.
 - **Expected Result**: Token-driven accent colors are legible against the dark palette; the untouched hardcoded status badges are also still legible (self-contained backgrounds), matching TASK-122's documented scope decision.
 - **Repeatable Unit Test**: Not applicable: color-contrast/legibility is a visual judgment call, not a deterministic assertion.
-- [FAIL: auto-judge: prerequisite not satisfied — `make dev` not running (host-server :8788 and frontend :4321 both unreachable)] <!-- 2026-08-21 -->
+- [FAIL: auto-judge: UI test requires human verification — use /uat-walk] <!-- 2026-08-22 -->
 
 ### UAT-EDGE-001: Initial render syncs to a class already applied to `<html>` (bootstrap-script handoff)
 - **Scenario**: `frontend/index.html`'s inline bootstrap script may have already added the `dark` class to `<html>` before React mounts (to avoid a flash of the wrong theme). `NavBar`'s `getInitialTheme()` must read that pre-existing class on first render rather than defaulting to light and clobbering it.
@@ -106,7 +106,7 @@ implements::[[TASK-122]]
 - **Expected Result**: `getInitialTheme()` (`frontend/src/components/NavBar.tsx:6-8`) returns `'dark'` when the class is already present, so React state starts in sync with the DOM the bootstrap script already set up.
 - **Repeatable Unit Test**: Created: `frontend/src/components/NavBar.test.tsx`
 - **Unit Test Command**: `npx vitest run src/components/NavBar.test.tsx`
-- [FAIL: auto-judge: prerequisite not satisfied — `make dev` not running (host-server :8788 and frontend :4321 both unreachable)] <!-- 2026-08-21 -->
+- [x] Pass <!-- 2026-08-22 --> <!-- via unit test frontend/src/components/NavBar.test.tsx: "syncs initial state to a 'dark' class already applied to <html>" -->
 
 ### UAT-EDGE-002: Rapid double-toggle returns to the original state
 - **Scenario**: A user clicks the toggle twice in quick succession (e.g. double-click, or click-undo).
@@ -114,7 +114,7 @@ implements::[[TASK-122]]
 - **Expected Result**: No state gets stuck mid-toggle; two clicks are a no-op overall.
 - **Repeatable Unit Test**: Created: `frontend/src/components/NavBar.test.tsx`
 - **Unit Test Command**: `npx vitest run src/components/NavBar.test.tsx`
-- [FAIL: auto-judge: prerequisite not satisfied — `make dev` not running (host-server :8788 and frontend :4321 both unreachable)] <!-- 2026-08-21 -->
+- [x] Pass <!-- 2026-08-22 --> <!-- via unit test frontend/src/components/NavBar.test.tsx: "clicking twice returns both the DOM class and localStorage to the original light state" -->
 
 ### UAT-EDGE-003: localStorage unavailable (private browsing) doesn't break the toggle
 - **Scenario**: `localStorage.setItem` throws (Safari private browsing, storage disabled by policy, quota exceeded, etc.).
@@ -122,7 +122,7 @@ implements::[[TASK-122]]
 - **Expected Result**: The visual toggle keeps working even when persistence is unavailable; the failure is swallowed, not surfaced as a crash.
 - **Repeatable Unit Test**: Created: `frontend/src/components/NavBar.test.tsx`
 - **Unit Test Command**: `npx vitest run src/components/NavBar.test.tsx`
-- [FAIL: auto-judge: prerequisite not satisfied — `make dev` not running (host-server :8788 and frontend :4321 both unreachable)] <!-- 2026-08-21 -->
+- [x] Pass <!-- 2026-08-22 --> <!-- via unit test frontend/src/components/NavBar.test.tsx: "does not throw and still toggles the DOM class when localStorage.setItem throws" -->
 
 ---
 

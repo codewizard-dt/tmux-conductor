@@ -93,7 +93,7 @@ implements::[[TASK-123]]
   3. Observe the dialog.
 - **Expected Result**: The styled `ConfirmDialog` appears (not a native browser confirm box) with message `Remove agent "<name>"? This kills its tmux window, deletes it from conductor.conf, and drops its queued tasks.` and a "Remove" confirm button. Cancel/Escape/overlay-click all dismiss with no side effect (agent still present); Confirm removes the agent.
 - **Repeatable Unit Test**: Not applicable: requires the real component tree, real navigation, and a real agent — browser-only.
-- [FAIL: auto-judge: prerequisite not satisfied — host-server (:8788) and frontend dev server (:4321) not running] <!-- 2026-08-21 -->
+- [FAIL: auto-judge: UI test requires human verification — use /uat-walk] <!-- 2026-08-22 -->
 
 ### UAT-UI-002: Closing an agent's window shows the styled confirm dialog, preserving the original message
 - **Page**: `http://localhost:4321/` — agent detail modal
@@ -104,7 +104,7 @@ implements::[[TASK-123]]
   3. Observe the dialog.
 - **Expected Result**: Styled dialog with message `Close agent "<name>"'s window? The agent stays registered and can be relaunched with "Create window".` and a "Close" confirm button. Cancel/Escape/overlay-click dismiss with no side effect; Confirm closes the window (agent stays registered).
 - **Repeatable Unit Test**: Not applicable: browser-only.
-- [FAIL: auto-judge: prerequisite not satisfied — host-server (:8788) and frontend dev server (:4321) not running] <!-- 2026-08-21 -->
+- [FAIL: auto-judge: UI test requires human verification — use /uat-walk] <!-- 2026-08-22 -->
 
 ### UAT-UI-003: Removing a background process shows the styled confirm dialog, preserving the original message
 - **Page**: `http://localhost:4321/` — background process row
@@ -115,7 +115,7 @@ implements::[[TASK-123]]
   3. Observe the dialog.
 - **Expected Result**: Styled dialog with message `Remove background process "<name>"? This kills its tmux window (if any) and removes it from the conductor registry.` and a "Remove" confirm button. Same dismiss-path guarantees as UAT-UI-001.
 - **Repeatable Unit Test**: Not applicable: browser-only.
-- [FAIL: auto-judge: prerequisite not satisfied — host-server (:8788) and frontend dev server (:4321) not running] <!-- 2026-08-21 -->
+- [FAIL: auto-judge: UI test requires human verification — use /uat-walk] <!-- 2026-08-22 -->
 
 ### UAT-UI-004: Closing a background process's window shows the styled confirm dialog, preserving the original message
 - **Page**: `http://localhost:4321/` — background process row
@@ -126,7 +126,7 @@ implements::[[TASK-123]]
   3. Observe the dialog.
 - **Expected Result**: Styled dialog with message `Close "<name>"'s window? The process stays registered and can be relaunched with "Open window".` and a "Close" confirm button.
 - **Repeatable Unit Test**: Not applicable: browser-only.
-- [FAIL: auto-judge: prerequisite not satisfied — host-server (:8788) and frontend dev server (:4321) not running] <!-- 2026-08-21 -->
+- [FAIL: auto-judge: UI test requires human verification — use /uat-walk] <!-- 2026-08-22 -->
 
 ### UAT-UI-005: Removing an inactive agent shows the styled confirm dialog, preserving the original message
 - **Page**: `http://localhost:4321/` — inactive agents panel
@@ -137,7 +137,7 @@ implements::[[TASK-123]]
   3. Observe the dialog.
 - **Expected Result**: Styled dialog with message `Remove agent "<name>"? This deletes it from conductor.conf and drops its queued tasks.` and a "Remove" confirm button.
 - **Repeatable Unit Test**: Not applicable: browser-only.
-- [FAIL: auto-judge: prerequisite not satisfied — host-server (:8788) and frontend dev server (:4321) not running] <!-- 2026-08-21 -->
+- [FAIL: auto-judge: UI test requires human verification — use /uat-walk] <!-- 2026-08-22 -->
 
 ### UAT-UI-006: Rolling back a checkpoint shows the styled confirm dialog with the uncommitted-work warning
 - **Page**: `http://localhost:4321/` — agent detail modal, Checkpoints section
@@ -148,7 +148,7 @@ implements::[[TASK-123]]
   3. Observe the dialog; test Cancel first, then re-open and Confirm.
 - **Expected Result**: Styled dialog reads `Roll back to this checkpoint? This will overwrite uncommitted work in the worktree.` with a "Roll back" confirm button. Cancel dismisses with no API call (verify via Network tab — no `POST .../rollback`). Confirm issues `POST /api/agents/:id/rollback` and, on success, the checkpoint list and diff panel refresh.
 - **Repeatable Unit Test**: Not applicable: the dialog text itself is pinned browser-free by UAT-EDGE-007; this case is specifically about the real button → real API call → real refresh chain, which needs a browser and a live backend.
-- [FAIL: auto-judge: prerequisite not satisfied — host-server (:8788) and frontend dev server (:4321) not running] <!-- 2026-08-21 -->
+- [FAIL: auto-judge: UI test requires human verification — use /uat-walk] <!-- 2026-08-22 -->
 
 ---
 

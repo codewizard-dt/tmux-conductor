@@ -57,7 +57,7 @@ implements::[[TASK-121]]
   ```
 - **Expected Result**: Exactly one matching JSON line, with `detection == "idle-transition-poll"` (the host-server's trigger). No second matching line ever appears, regardless of wait time — `monitor.sh` no longer has any code path that can emit one (its `emit_dispatch_jsonl` call sites were deleted). The command appears exactly once in the agent's tmux pane.
 - **Repeatable Unit Test**: Not applicable — requires a live host-server, real tmux pane, and a real `monitor.sh` process running against the same `STATE_DIR`; there is no injectable entrypoint or shell-test harness to isolate this in.
-- [FAIL: auto-judge: prerequisite not satisfied — host-server not reachable on http://localhost:8788 and no tmux session running] <!-- 2026-08-21 -->
+- [x] Pass <!-- 2026-08-22 -->
 
 ### UAT-INT-002: With the host-server stopped, monitor.sh alone no longer dispatches a queued task on an idle transition
 - **Endpoint**: none — this isolates `monitor.sh`'s bash loop by removing the host-server from the race entirely, proving the redundant path is truly gone rather than merely losing every race.
@@ -75,7 +75,7 @@ implements::[[TASK-121]]
   ```
 - **Expected Result**: Prints nothing — no dispatch record exists for the task while only `monitor.sh` was running, across 35+ seconds and 2+ ticks. The task remains queued in the `tasks` table for the agent throughout. This is the direct evidence that `monitor.sh`'s pop/dispatch code path no longer exists (not just that it loses races).
 - **Repeatable Unit Test**: Not applicable — requires stopping a live process and observing absence of behavior over real wall-clock time against a real tmux pane; no harness in this repo can simulate that.
-- [FAIL: auto-judge: prerequisite not satisfied — host-server not reachable on http://localhost:8788 and no tmux session running] <!-- 2026-08-21 -->
+- [x] Pass <!-- 2026-08-22 -->
 
 ### UAT-INT-003: A checkpoint is still recorded via the sole surviving (host-server) dispatch path after monitor.sh's block is deleted
 - **Endpoint**: `GET /api/agents/:id/checkpoints`
@@ -91,7 +91,7 @@ implements::[[TASK-121]]
   ```
 - **Expected Result**: The count returned is strictly greater than the count recorded in Step 2 (at least one new checkpoint row), with the newest checkpoint's `ts` close to the idle-transition dispatch time from Step 3.
 - **Repeatable Unit Test**: Not applicable: requires a real git worktree, a live host-server, and a real tmux pane transition. `stashCheckpoint`/`insertCheckpoint` themselves are already covered by `host-server/git.test.ts` and `host-server/db.migration.test.ts` — this case is about the surviving *caller* remaining correct post-deletion, not the checkpoint primitives.
-- [FAIL: auto-judge: prerequisite not satisfied — host-server not reachable on http://localhost:8788 and no tmux session running] <!-- 2026-08-21 -->
+- [x] Pass <!-- 2026-08-22 -->
 
 ### UAT-EDGE-001: The fleet-wide usage-limited marker still gates dispatch correctly after monitor.sh's dispatch block is deleted
 - **Scenario**: `monitor.sh`'s `all_usage_hit` bookkeeping and the `touch/rm "${STATE_DIR}/usage-limited"` marker write (both outside the deleted block, per Step 3 of the task) must still run every tick, and the host-server's idle-transition trigger must still honor that marker.
@@ -109,7 +109,7 @@ implements::[[TASK-121]]
   ```
 - **Expected Result**: Prints nothing while the marker is present — no dispatch occurred. The task remains visibly queued (`GET /api/status` → agent's `queuedTasks >= 1`) throughout Steps 5-6, before cleanup removes the marker.
 - **Repeatable Unit Test**: Not applicable: `existsSync(...)` gate and the bash marker-write logic are both unchanged by this task and were already the subject of UAT-120's UAT-EDGE-001; this case only re-confirms no regression after the deletion, via a live check.
-- [FAIL: auto-judge: prerequisite not satisfied — host-server not reachable on http://localhost:8788 and no tmux session running] <!-- 2026-08-21 -->
+- [x] Pass <!-- 2026-08-22 -->
 
 ### UAT-EDGE-002: Fleet-wide "all agents idle + usage hit → teardown" still fires after monitor.sh's dispatch block is deleted
 - **Scenario**: `scripts/monitor.sh`'s end-of-loop auto-teardown block (`if $all_usage_hit && $all_idle; then ... teardown.sh ...`, now at lines 483-488) is unrelated to and untouched by this task's deletion, but shares the same per-agent loop whose `all_idle`/`all_usage_hit` bookkeeping now runs without the dispatch block interleaved — worth a live re-run rather than code-reading alone.
@@ -120,7 +120,7 @@ implements::[[TASK-121]]
   4. Observe the `conductor` tmux session.
 - **Expected Result**: `monitor.sh` logs "All agents idle + usage limit hit. Shutting down.", `teardown.sh` runs, and the tmux session is torn down — identical to pre-task behavior, since this code path is untouched by the deletion (only the earlier per-agent block, which sits before this end-of-loop check, was modified).
 - **Repeatable Unit Test**: Not applicable: exercises real process teardown and a real tmux session lifecycle; no harness exists for this in the repo, and simulating it destroys the test session by design.
-- [FAIL: auto-judge: prerequisite not satisfied — host-server not reachable on http://localhost:8788 and no tmux session running] <!-- 2026-08-21 -->
+- [FAIL: auto-judge: prerequisite not satisfied — no disposable/test `conductor` tmux session available; the only running `conductor` session is the shared live one (6 real registered agents), and this case explicitly forbids running against a shared dev session since it tears the session down] <!-- 2026-08-22 -->
 
 ### UAT-STATIC-001: monitor.sh's pop/mark_busy/checkpoint_agent/dispatch call sites are gone from the main loop, and the script is still syntactically valid
 - **Scenario**: Task acceptance criterion — `monitor.sh` no longer pops tasks or dispatches. Statically verifiable without any live environment.
