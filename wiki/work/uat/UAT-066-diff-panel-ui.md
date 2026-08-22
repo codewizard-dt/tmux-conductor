@@ -5,7 +5,7 @@ title: "UAT: Diff panel UI — unified diff in AgentDetailModal (colour-coded ad
 status: pending
 task: TASK-066
 created: 2026-07-06
-updated: 2026-07-06
+updated: 2026-08-22
 ---
 
 # UAT-066 — UAT: Diff panel UI — unified diff in AgentDetailModal (colour-coded additions/deletions)
@@ -65,7 +65,7 @@ implements::[[TASK-066]]
   6. Teardown: `curl -sS -X DELETE "http://127.0.0.1:8788/api/agents/$DID"`
 - **Expected Result**: A "Changes" `<summary>` is present and expandable. Once expanded, the `<pre>` block renders one `<div>` per diff line. The `@@ -1,3 +1,4 @@` hunk header line has class `text-accent-blue`. The `-line2` line has class `text-accent-red`. The `+line2-changed` and `+line4` lines have class `text-accent-green`. The unchanged `line1`/`line3` context lines and the `--- a/file.txt`/`+++ b/file.txt` header lines have class `text-ink`. No "No changes yet" placeholder is shown.
 - **Repeatable Unit Test**: Blocked: `frontend/` has no test runner configured (no vitest/jest in `frontend/package.json` — only `tsc`/`eslint`/`vite`); unit-testing `DiffPanel`'s internal `lineClass` classification would require introducing new frontend test infrastructure, which this task does not call for.
-- [FAIL: auto-judge: prerequisite not satisfied — conductor tmux session not running (POST /api/agents returned 409 {"error":"session not running","sessionAlive":false})] <!-- 2026-08-22 -->
+- [x] Pass <!-- 2026-08-22, verified live via Playwright: created uat066-diff agent against the fixture, opened AgentDetailModal, expanded "Changes", and confirmed the rendered <pre> DOM directly (outerHTML dump): @@ -1,3 +1,4 @@ has class text-accent-blue, -line2 has text-accent-red, +line2-changed and +line4 have text-accent-green, and the diff/index/---/+++ header lines plus line1/line3 context lines have text-ink. No "No changes yet" placeholder shown. Screenshot captured. Fixture agent torn down afterward. -->
 
 ### UAT-UI-002: "No changes yet" placeholder shown for an empty diff
 - **Page**: `http://localhost:4321/`
@@ -80,7 +80,7 @@ implements::[[TASK-066]]
   4. Teardown: `curl -sS -X DELETE "http://127.0.0.1:8788/api/agents/$EID"`
 - **Expected Result**: The "Changes" section is present (the agent is a git repo, so the panel is not hidden). Expanding it shows the italic text "No changes yet" and no `<pre>` block. The "Refresh" button is still visible.
 - **Repeatable Unit Test**: Blocked: no frontend test runner configured (see UAT-UI-001).
-- [FAIL: auto-judge: prerequisite not satisfied — conductor tmux session not running (POST /api/agents returned 409 {"error":"session not running","sessionAlive":false})] <!-- 2026-08-22 -->
+- [x] Pass <!-- 2026-08-22, verified live via Playwright once the tmux session was restored: created uat066-empty agent against the empty-diff fixture (git repo, no divergent commits), opened AgentDetailModal, expanded "Changes", and confirmed via DOM inspection (details.open=true, innerHTML) that it renders the italic "No changes yet" placeholder with no <pre> block, and the Refresh button remains visible. Screenshot captured (./uat066-ui002-empty-diff.png). Fixture agent and directory torn down afterward. -->
 
 ### UAT-UI-003: "Changes" section is absent for a non-git-workdir agent
 - **Page**: `http://localhost:4321/`
@@ -97,7 +97,7 @@ implements::[[TASK-066]]
   6. Teardown: `curl -sS -X DELETE "http://127.0.0.1:8788/api/agents/$NID"`
 - **Expected Result**: Step 3's curl confirms `diff: null, base: null`. In the modal, no "Changes" summary/section is rendered at all (not collapsed, not empty — absent from the DOM), consistent with `DiffPanel` returning `null` once `loaded && diff === null && base === null`.
 - **Repeatable Unit Test**: Blocked: no frontend test runner configured (see UAT-UI-001).
-- [FAIL: auto-judge: prerequisite not satisfied — conductor tmux session not running (POST /api/agents returned 409 {"error":"session not running","sessionAlive":false})] <!-- 2026-08-22 -->
+- [BLOCKED: fixture-design flaw, not a code bug — reproduced live with the tmux session healthy. `tmp/uat066-fixture-nogit` (created per this file's own Prerequisites section, nested inside the tmux-conductor repo per this repo's mandatory `./tmp/` scratch-directory convention) cannot actually exercise the "non-git workdir" path: `git -C tmp/uat066-fixture-nogit rev-parse --is-inside-work-tree` returns `true` and `--show-toplevel` resolves to the tmux-conductor repo root, because git walks up to the nearest ancestor `.git` regardless of whether the immediate directory has its own. `host-server/git.ts`'s `isGitRepo()` uses exactly this check, so `GET /api/agents/:id/diff` for this fixture returns `{"diff":"","base":"main"}`, not the expected `{diff:null,base:null}` — meaning the "Changes" section would actually render (with the empty-diff placeholder) rather than being absent. This is a flaw in the UAT fixture's location, not in `DiffPanel`/the endpoint: a directory that is genuinely outside any git work tree cannot exist under `./tmp/` while `./tmp/` itself lives inside this git-tracked repo. Confirmed via direct `git rev-parse` and via the live endpoint response; not fixed here per instruction to record rather than resolve.] <!-- 2026-08-22 -->
 
 ### UAT-UI-004: Diff panel is scrollable and capped at a fixed max-height for a large diff
 - **Page**: `http://localhost:4321/`
@@ -112,7 +112,7 @@ implements::[[TASK-066]]
   4. Scroll within the `<pre>` block and confirm the modal itself does not grow or get pushed off-screen — only the inner diff block scrolls.
 - **Expected Result**: The `<pre>` has `max-h-[400px] overflow-y-auto` applied (Tailwind classes present on the element, and computed style confirms `max-height: 400px`); scrolling reveals the additional lines without resizing the modal.
 - **Repeatable Unit Test**: Blocked: no frontend test runner configured; layout/overflow behavior is a rendering concern requiring a real browser (see UAT-UI-001).
-- [FAIL: auto-judge: prerequisite not satisfied — conductor tmux session not running (POST /api/agents returned 409 {"error":"session not running","sessionAlive":false})] <!-- 2026-08-22 -->
+- [x] Pass <!-- 2026-08-22, verified live via Playwright: extended the diff fixture with a "bulk lines" commit (seq 1 60 appended to file.txt) and clicked the actual Refresh button. Inspected the rendered <pre> via getComputedStyle: max-height 400px, overflow-y auto (matches the max-h-[400px] overflow-y-auto Tailwind classes present on the element), 72 rendered diff-line divs, scrollHeight 1090px vs clientHeight 398px (confirms real overflow). Set pre.scrollTop=500 and confirmed the enclosing dialog's bounding-rect height was unchanged (762px before and after) — only the inner diff block scrolled, the modal did not grow or get pushed off-screen. Screenshot captured mid-scroll (./uat066-ui004-scroll.png). Fixture agent and directory torn down afterward. -->
 
 ### UAT-UI-005: "Refresh" button re-fetches the diff and reflects new commits without closing the modal
 - **Page**: `http://localhost:4321/`
@@ -127,7 +127,7 @@ implements::[[TASK-066]]
   4. Observe the diff content.
 - **Expected Result**: After clicking Refresh, the rendered diff includes the new `+line5` (green) line that was not present before the commit — confirming the panel re-fetched rather than showing stale/cached content. No page reload or modal close/reopen was needed.
 - **Repeatable Unit Test**: Blocked: no frontend test runner configured; this is a live-fetch/DOM-update behavior requiring a real browser session (see UAT-UI-001).
-- [FAIL: auto-judge: prerequisite not satisfied — conductor tmux session not running (POST /api/agents returned 409 {"error":"session not running","sessionAlive":false})] <!-- 2026-08-22 -->
+- [x] Pass <!-- 2026-08-22, verified live via Playwright: created uat066-refresh agent against the base diff fixture (feature change only), opened "Changes", confirmed the baseline diff (-line2/+line2-changed/+line4) was showing. Without closing the modal, committed a new "refresh check" commit (+line5) to the fixture from a separate shell, then clicked the actual Refresh button in the still-open Changes section. Confirmed via DOM inspection that the rendered <pre> text now includes +line5 and the diff's index hash changed (83db48f..1759b65), and that the dialog element was still present throughout (modalStillOpen: true) — no reload or close/reopen occurred. Screenshot captured post-refresh (./uat066-ui005-refresh.png). Fixture agent torn down afterward. -->
 
 ### UAT-STATIC-001: `tsc --noEmit` and `npm run build` pass cleanly in `frontend/`
 - **Description**: The task's static-gate acceptance criterion, re-verified independently of `/tackle`'s own run.
@@ -147,7 +147,7 @@ implements::[[TASK-066]]
 
 | Acceptance criterion | Covered by |
 |---|---|
-| "Changes" section appears only for agents where the diff endpoint reports non-null (documented deviation from `agent.branch`, which doesn't exist on the frontend type yet) | UAT-UI-001, UAT-UI-002 (present), UAT-UI-003 (absent) |
+| "Changes" section appears only for agents where the diff endpoint reports non-null (documented deviation from `agent.branch`, which doesn't exist on the frontend type yet) | UAT-UI-001, UAT-UI-002 (present); UAT-UI-003 (absent) is Blocked — its fixture cannot produce a genuinely non-git `workdir` while nested under this repo's mandatory `./tmp/` convention, see UAT-UI-003 for detail |
 | Diff lines are colour-coded: `+` green, `-` red, `@@` muted/blue, context neutral | UAT-UI-001 |
 | Diff panel is scrollable and capped at a fixed max-height | UAT-UI-004 |
 | "No changes yet" placeholder shown for an empty diff | UAT-UI-002 |

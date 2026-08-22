@@ -21,7 +21,7 @@ Close the highest-value gaps identified by the 2026-07-06 competitive audit agai
 
 - [ ] [TASK-120](../tasks/TASK-120-collapse-dispatch-into-status-poll.md) Collapse `monitor.sh`'s 15s `POLL_INTERVAL` dispatch loop into the host-server's existing 2s status-poll loop, triggering dispatch on the idle transition instead of running a second independent poll
 - [ ] [TASK-121](../tasks/TASK-121-remove-redundant-monitor-dispatch.md) Reuse the existing `mark_busy` pre-dispatch marker pattern to prevent double-dispatch races between the collapsed loop and any remaining monitor.sh polling
-- [ ] [TASK-116](../tasks/TASK-116-verify-dispatch-latency.md) Verify real task-start latency drops from ~15s worst-case to ~2s under a live agent session
+- [x] [TASK-116](../tasks/archive/TASK-116-verify-dispatch-latency.md) Verify real task-start latency drops from ~15s worst-case to ~2s under a live agent session — measured 2026-08-22: before median 12380.5ms/max 12722ms → after median 837.5ms/max 1895ms (10 trials each, protocol + full results in the task file); bar met
 
 ## Phase 2: Perf Budget Calibration
 
