@@ -31,7 +31,7 @@ Surface per-agent token cost, full session history, and role-based system prompt
 - [x] [[TASK-107: Append terminal output to agent_terminal_log during SSE pane polling]]
 - [x] [[TASK-108: GET /api/agents/:id/log endpoint — retrieve full persisted terminal-log history]]
 - [x] [[TASK-109: History toggle — switch LogTail between live SSE and persisted terminal log]]
-- [ ] [[TASK-110: Session boundary markers — per-chunk timestamp dividers in LogTail history view]]
+- [x] [[TASK-110: Session boundary markers — per-chunk timestamp dividers in LogTail history view]]
 
 ## Phase 3: Role Templates
 

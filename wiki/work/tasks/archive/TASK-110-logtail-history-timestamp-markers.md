@@ -2,9 +2,9 @@
 id: TASK-110
 aliases: [TASK-110]
 title: "Session boundary markers — per-chunk timestamp dividers in LogTail history view"
-status: pending-uat
+status: done
 created: 2026-07-06
-updated: 2026-07-06
+updated: 2026-08-24
 depends_on: [TASK-109]
 blocks: []
 parallel_safe_with: [TASK-001, TASK-011, TASK-050, TASK-061, TASK-062, TASK-063, TASK-066, TASK-069, TASK-070, TASK-071, TASK-072, TASK-074, TASK-076, TASK-106, TASK-107, TASK-108]

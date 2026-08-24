@@ -2,10 +2,10 @@
 id: UAT-110
 aliases: [UAT-110]
 title: "UAT: Session boundary markers — per-chunk timestamp dividers in LogTail history view"
-status: pending
+status: passed
 task: TASK-110
 created: 2026-08-15
-updated: 2026-08-15
+updated: 2026-08-24
 ---
 
 # UAT-110 — UAT: Session boundary markers — per-chunk timestamp dividers in LogTail history view
@@ -129,7 +129,7 @@ implements::[[TASK-110]]
   7. Cleanup: close the modal, then `curl -sS -X DELETE "http://localhost:8788/api/agents/$UID"` for this fixture's id.
 - **Expected Result**: Exactly 3 chunk blocks are visible in History mode, each with its own timestamp label directly above it, in oldest-first order. No chunk renders without a label; no label renders without a corresponding chunk. No `entry.ts` raw ISO string is shown verbatim (it is always passed through `formatChunkTs`, never rendered raw) unless the fixture's seeded timestamp happens to be unparseable (not the case here).
 - **Repeatable Unit Test**: Not applicable: verifies browser rendering, DOM ordering, and count of a React component's output; the frontend has no component test harness (no vitest/jsdom present in this repo). The underlying label-derivation and ordering/count *data* are pinned browser-free in UAT-EDGE-001 and UAT-API-001 respectively — this case confirms they actually reach the screen.
-- [FAIL: auto-judge: UI test requires human verification — use /uat-walk] <!-- 2026-08-22 -->
+- [x] Pass <!-- 2026-08-24, verified live via Playwright: fixture agent uat110uihappy (id 15) created via `POST /api/agents` (launchCmd `bash`) so it appeared in the live AgentList, seeded with the same 3 out-of-order rows as UAT-API-001. Opened its detail modal, clicked History, and observed via `browser_snapshot`/screenshot exactly 3 timestamp labels ("Aug 15, 04:00 AM" / "05:00 AM" / "06:00 AM" — local-time rendering of the seeded 09:00/10:00/11:00Z ts values) each directly above its chunk (chunk-first/chunk-mid/chunk-last), oldest-first, no raw ISO strings, no unlabeled/extra chunks. Fixture deleted after verification. -->
 
 ### UAT-UI-002: Zero-row history shows the existing empty state with no stray marker; Live mode is unaffected
 - **Page**: `http://localhost:4321/`
@@ -143,7 +143,7 @@ implements::[[TASK-110]]
   5. Cleanup: close the modal, then `curl -sS -X DELETE "http://localhost:8788/api/agents/$ZID"` for this fixture's id.
 - **Expected Result**: History mode shows exactly the "No persisted history yet." message and nothing else; Live mode toggling behaves identically to TASK-109's landed behaviour (unaffected by this task).
 - **Repeatable Unit Test**: Not applicable: verifies absence of a rendered DOM element and Live-mode toggle timing in the actual browser; no frontend component test harness exists.
-- [FAIL: auto-judge: UI test requires human verification — use /uat-walk] <!-- 2026-08-22 -->
+- [x] Pass <!-- 2026-08-24, verified live via Playwright: a live-window fixture is auto-captured into agent_terminal_log within ~1-2s of spawn by the pre-existing `tailPollLoop` (TERMINAL_POLL_MS=2000ms; every agent with a live tmux window gets its pane text appended on the first poll tick where it differs from the unset previous-tail map, which is always true immediately after spawn) — so a plain no-window DB row can't reach this branch either (it short-circuits on the earlier, pre-existing `!windowPresent` → "Window not present." gate in LogTail.tsx before ever reaching the History-specific empty-state branch). Used the same `POST /agents/:id/focus` mechanism the frontend itself calls on modal-open (which the tailPollLoop's own agent filter already excludes from capture) immediately after agent creation via a single non-interactive script to close the race, confirmed via `GET /api/agents/:id/log` returning `{"log":[]}` before touching the browser. Opened fixture uat110uizero3 (id 17, live bash window, windowPresent true) in the dashboard, clicked History, and observed via snapshot/screenshot exactly "No persisted history yet." with no timestamp label and no stray divider. Clicked Live and observed the real xterm terminal (actual bash shell output) and the Direct Input form reappear immediately, confirming Live mode is unaffected. Fixture deleted after verification. -->
 
 ---
 
