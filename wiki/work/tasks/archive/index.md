@@ -5,6 +5,7 @@ Terminal task files (`done` or `trashed`) moved here by `/wiki-archive` to reduc
 | ID | Title | Final Status | Archived |
 |----|-------|--------------|----------|
 | [[TASK-002]] | Add better-sqlite3 dependency, data/ gitignore entry, and DB_PATH setting | done | 2026-06-14 |
+| [[TASK-076]] | Per-session usage breakdown — GET /agents/:id/usage endpoint + session table in AgentDetailModal | done | 2026-08-24 |
 | [[TASK-062]] | Branch badge — display branch name on agent card in dashboard | done | 2026-08-15 |
 | [[TASK-003]] | Create backend/db.ts — schema migrations and typed query helpers | done | 2026-06-14 |
 | [[TASK-004]] | Verify Phase 1 foundation — seed import correctness and restart idempotency | done | 2026-06-14 |

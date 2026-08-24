@@ -23,7 +23,7 @@ Surface per-agent token cost, full session history, and role-based system prompt
 - [x] [[TASK-073: Per-agent usage extraction — parse Claude Code transcript JSONL each poll (supersedes pane-tail regex)]]
 - [x] [[TASK-075: Accumulate rolling token totals per agent in agent_usage — usage-store + pricing table + snapshot exposure]]
 - [ ] [[TASK-074: Token/cost badge — compact usage badge on agent card header in dashboard]]
-- [ ] [[TASK-076: Per-session usage breakdown — GET /agents/:id/usage endpoint + session table in AgentDetailModal]]
+- [x] [[TASK-076: Per-session usage breakdown — GET /agents/:id/usage endpoint + session table in AgentDetailModal]]
 
 ## Phase 2: Session Recording
 

@@ -5,6 +5,7 @@ Terminal UAT files (`passed`, `skipped`, or `trashed`) moved here by `/wiki-arch
 | ID | Title | Final Status | Archived |
 |----|-------|--------------|----------|
 | [[UAT-004]] | UAT: Phase 1 foundation — SQLite startup, seed import, and idempotency | passed | 2026-06-14 |
+| [[UAT-076]] | UAT: Per-session usage breakdown — GET /agents/:id/usage endpoint + session table in AgentDetailModal | passed | 2026-08-24 |
 | [[UAT-062]] | UAT: Branch badge — display branch name on agent card in dashboard | passed | 2026-08-15 |
 | [[UAT-009]] | UAT: Create scripts/lib/db.sh — sql wrapper, load_agents, load_bg, pop_task_sql | passed | 2026-06-14 |
 | [[UAT-010]] | UAT: Rewrite monitor.sh pop_task as atomic SQL pop and move_to_backlog as status flip | passed | 2026-06-14 |

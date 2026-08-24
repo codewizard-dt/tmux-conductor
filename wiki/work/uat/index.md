@@ -17,7 +17,6 @@ Entry format: `- [UAT-NNN — Title](UAT-NNN-slug.md) — verifies TASK-NNN · s
 - [UAT-066 — UAT: Diff panel UI — unified diff in AgentDetailModal (colour-coded additions/deletions)](UAT-066-diff-panel-ui.md) — verifies TASK-066 · pending
 - [UAT-071 — UAT: Checkpoint UI — AgentDetailModal checkpoint list with timestamps + per-checkpoint rollback button](UAT-071-checkpoint-ui.md) — verifies TASK-071 · pending
 - [UAT-074 — UAT: Token/cost badge — compact usage badge on agent card header in dashboard](UAT-074-usage-badge-ui.md) — verifies TASK-074 · pending
-- [UAT-076 — UAT: Per-session usage breakdown — GET /agents/:id/usage endpoint + session table in AgentDetailModal](UAT-076-usage-session-breakdown-ui.md) — verifies TASK-076 · pending
 - [UAT-109 — UAT: History toggle — switch LogTail between live SSE and persisted terminal log](UAT-109-logtail-history-toggle.md) — verifies TASK-109 · pending
 - [UAT-110 — UAT: Session boundary markers — per-chunk timestamp dividers in LogTail history view](UAT-110-logtail-history-timestamp-markers.md) — verifies TASK-110 · pending
 - [UAT-114 — UAT: Role badge — colour-coded role badge on the agent card in the dashboard](UAT-114-role-badge-ui.md) — verifies TASK-114 · pending

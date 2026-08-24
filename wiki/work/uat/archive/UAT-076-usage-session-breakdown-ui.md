@@ -2,10 +2,10 @@
 id: UAT-076
 aliases: [UAT-076]
 title: "UAT: Per-session usage breakdown — GET /agents/:id/usage endpoint + session table in AgentDetailModal"
-status: pending
+status: passed
 task: TASK-076
 created: 2026-08-15
-updated: 2026-08-21
+updated: 2026-08-24
 ---
 
 # UAT-076 — UAT: Per-session usage breakdown — GET /agents/:id/usage endpoint + session table in `AgentDetailModal`
@@ -119,7 +119,7 @@ implements::[[TASK-076]]
   10. Cleanup: close the modal, then `curl -sS -X DELETE "http://localhost:8788/api/agents/$UID"` for this fixture's id.
 - **Expected Result**: The `Usage (2 sessions)` section expands to a 7-column table with exactly 2 rows in the order described, a bold totals footer row, and disappears entirely (not just collapses) while `logExpanded` is true, reappearing unchanged once the log is collapsed again. No console errors.
 - **Repeatable Unit Test**: Not applicable: verifies browser rendering, DOM ordering, and conditional-visibility of a React component; the frontend has no component test harness (no vitest/jsdom present in this repo).
-- [FAIL: auto-judge: prerequisite not satisfied — conductor tmux session not running (no server on /private/tmp/tmux-501/default); POST /api/agents would 409] <!-- 2026-08-22 -->
+- [x] Pass <!-- 2026-08-24, verified live via Playwright: created fixture agent uat076uihappy (id 15, launchCmd bash), seeded 2 agent_usage rows via sqlite3 matching UAT-API-001, opened AgentDetailModal, expanded "Usage (2 sessions)" — table showed 2 rows in newest-first order (Jul 6 05:00 AM / Jul 6 04:00 AM, corresponding to session_start 10:00Z/09:00Z), 7 columns (Session/In/Out/Cache W/Cache R/Total/Cost), bold Total footer row with correct sums (2k/5k/600/340k/348k/$0.53). Clicked "Expand log" — Details/Skills/Usage groups fully unmounted from DOM (verified via browser_find returning no matches inside the dialog and via accessibility snapshot). Clicked "Collapse log" — Usage (2 sessions) section reappeared, re-expanded it and confirmed identical 2 rows/totals. No console errors or warnings. Cleaned up: deleted agent 15. -->
 
 ### UAT-UI-002: No Usage section renders for an agent with zero usage rows
 - **Page**: `http://localhost:4321/`
@@ -133,7 +133,7 @@ implements::[[TASK-076]]
   5. Cleanup: close the modal, then `curl -sS -X DELETE "http://localhost:8788/api/agents/$ZID"` for this fixture's id.
 - **Expected Result**: No "Usage" text, `<details>` element, or table appears anywhere in the modal for this agent. The rest of the modal (name, status, Skills section if applicable, log panel) renders normally.
 - **Repeatable Unit Test**: Not applicable: verifies absence of a rendered DOM element in the browser; no frontend component test harness exists.
-- [FAIL: auto-judge: prerequisite not satisfied — conductor tmux session not running (no server on /private/tmp/tmux-501/default); POST /api/agents would 409] <!-- 2026-08-22 -->
+- [x] Pass <!-- 2026-08-24, verified live via Playwright: created fixture agent uat076uizero (id 15, launchCmd bash, no usage seeded), confirmed via GET /api/agents/15/usage that sessions==[] before opening the UI. Opened AgentDetailModal and searched the rendered dialog for "Usage" text — zero matches; screenshot confirms nothing renders below the "Skills (61)" collapsible (no heading, no <details>, no table). Rest of modal (name, status badge, log panel) rendered normally. Cleaned up: deleted agent 15. -->
 
 ### UAT-EDGE-001: `formatSessionStart` truncation branch and the updatedAt-DESC sort comparator
 - **Scenario**: TASK-075's accumulator keys a session by the first assistant record's ISO timestamp, falling back to the raw `sessionId` UUID when unavailable. `formatSessionStart` (`frontend/src/components/AgentList.tsx:217-223`) does `new Date(s)`; when `Number.isNaN(d.getTime())` it must return `` `${s.slice(0, 8)}…` `` instead of a parsed date string. Separately, `UsageBreakdown`'s row ordering (`AgentList.tsx:317-318`) sorts by `updatedAt` DESC — explicitly *not* `sessionStart` — because a UUID fallback key sorts lexicographically ahead of any ISO date string, which would silently misorder rows if the code sorted on `sessionStart` instead. Both are pure, deterministic functions (no DOM, no fetch); the source is reproduced verbatim below.
@@ -194,7 +194,7 @@ implements::[[TASK-076]]
   6. Cleanup: close the modal, then `curl -sS -X DELETE "http://localhost:8788/api/agents/$EID"`.
 - **Expected Result**: The Session cell renders `a1b2c3d4…` in a visibly monospace font (never `Invalid Date` or a blank cell), and hovering it shows the full UUID (`a1b2c3d4-5678-90ab-cdef-1234567890ab`) as a tooltip.
 - **Repeatable Unit Test**: Not applicable: verifies rendered CSS (monospace font) and a browser tooltip in the actual DOM; no frontend component test harness exists. The underlying string value is pinned browser-free in UAT-EDGE-001.
-- [FAIL: auto-judge: prerequisite not satisfied — conductor tmux session not running (no server on /private/tmp/tmux-501/default); POST /api/agents would 409] <!-- 2026-08-22 -->
+- [x] Pass <!-- 2026-08-24, verified live via Playwright: created fixture agent uat076edge (id 15, launchCmd bash), seeded 1 agent_usage row via sqlite3 with session_start='a1b2c3d4-5678-90ab-cdef-1234567890ab' (UUID, not ISO). Opened AgentDetailModal, confirmed heading reads "Usage (1 session)" (correct singular), expanded it — Session cell rendered exactly "a1b2c3d4…" (never "Invalid Date", never blank). Verified programmatically via browser_evaluate: cell className includes "font-mono", computed font-family is "ui-monospace, SFMono-Regular, Menlo, monospace", and the cell's title attribute equals the full UUID "a1b2c3d4-5678-90ab-cdef-1234567890ab". Screenshot confirms the cell is visibly monospace vs. the rest of the sans-serif table. Cleaned up: deleted agent 15. -->
 
 ---
 
