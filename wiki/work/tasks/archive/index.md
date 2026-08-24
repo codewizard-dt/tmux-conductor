@@ -117,3 +117,4 @@ Terminal task files (`done` or `trashed`) moved here by `/wiki-archive` to reduc
 | [[TASK-125]] | Soft-delete task pop — status flip to 'done'/completed_at instead of hard DELETE (schema v8) | done | 2026-08-15 |
 | [[TASK-131]] | AgentDetailModal terminal-first redesign — collapse Details/Queued Tasks, default Direct Input, double-click fullscreen | done | 2026-08-15 |
 | [[TASK-116]] | Verify real task-start latency drops from ~15s worst-case to ~2s under a live agent session | done | 2026-08-22 |
+| [[TASK-109]] | History toggle — switch LogTail between live SSE and persisted terminal log | done | 2026-08-24 |

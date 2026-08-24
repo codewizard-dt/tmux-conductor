@@ -2,10 +2,10 @@
 id: UAT-109
 aliases: [UAT-109]
 title: "UAT: History toggle — switch LogTail between live SSE and persisted terminal log"
-status: pending
+status: passed
 task: TASK-109
 created: 2026-08-15
-updated: 2026-08-21
+updated: 2026-08-24
 ---
 
 # UAT-109 — UAT: History toggle — switch `LogTail` between live SSE and persisted terminal log
@@ -154,7 +154,7 @@ implements::[[TASK-109]]
   5. Teardown: `curl -sS -X DELETE "http://localhost:8788/api/agents/<FID>"` (cascades any `agent_terminal_log` rows automatically).
 - **Expected Result**: Toggle present and correctly styled; populated case renders real chunks oldest-first, no timestamps; empty case (after the DB-clear technique above) shows exactly "No persisted history yet." with no error and no blank panel.
 - **Repeatable Unit Test**: Not applicable: verifies browser rendering / fetch-triggered DOM updates; `frontend/` has no component test harness. The render-branch selection logic itself is pinned browser-free in UAT-EDGE-001.
-- [FAIL: auto-judge: UI test requires human verification — use /uat-walk] <!-- 2026-08-22 -->
+- [x] Pass <!-- 2026-08-24, verified live via Playwright: opened agent 10 (bootstrap-1) detail modal, confirmed the Live/History segmented toggle between the "Log output" label and the expand-log button, "Live" active by default; clicked History and observed 134 real persisted chunks rendered oldest-first (Jul 6 first) as plain monospace text with no ANSI codes; created fixture agent uat109-empty (id 15, launchCmd `bash`), cleared its one auto-written row via sqlite3, and confirmed its History tab showed exactly "No persisted history yet." with no error/blank panel. Fixture agent + scratch dir deleted after. Screenshots: tmp/uat109-ui001-live-state.png, tmp/uat109-ui001-history-state.png, tmp/uat109-ui001-empty-state.png -->
 
 ### UAT-UI-002: The live xterm terminal is never disposed by toggling — switching back to Live is instant with scrollback/cursor state intact
 - **Page**: `http://localhost:4321/`
@@ -168,7 +168,7 @@ implements::[[TASK-109]]
   5. Toggle back and forth 3-4 more times in quick succession. Confirm the terminal never flashes blank and scrollback is never wiped between toggles.
 - **Expected Result**: Every switch back to Live is instant with no blank flash and no `/tail` re-fetch (check the Network tab if in doubt — no new `GET .../tail` request should fire on a toggle, only on the initial mount). Scrollback position and content survive every toggle, confirming the `Terminal` instance was never disposed/recreated.
 - **Repeatable Unit Test**: Not applicable: verifies that a specific React `useEffect`'s dependency array excludes `viewMode` in a running browser DOM, and that no `xterm.js` `Terminal.dispose()` call fires — there is no frontend component test harness to assert against a live `Terminal` instance, and authoring a headless script whose pass condition requires introspecting the xterm instance is out of scope for this run. The static fact (dependency array shape) was confirmed by source inspection at generation time; only the resulting browser behavior needs a human eye.
-- [FAIL: auto-judge: UI test requires human verification — use /uat-walk] <!-- 2026-08-22 -->
+- [x] Pass <!-- 2026-08-24, verified live via Playwright: on agent 10 (bootstrap-1) with an active session, recorded network requests before toggling (two `/agents/10/tail` requests from initial mount only). Toggled History→Live→History→Live→History→Live (6 total toggles) and confirmed via `browser_network_requests` that no additional `/tail` request ever fired. Via `browser_evaluate`, confirmed the `.xterm` DOM node's grandparent-wrapper class was `... rounded-[10px] border-line outline-none hidden` (computed `display: none`) while in History mode — the trailing `hidden` class, not unmount — and `.xterm-rows` still contained 26 live rows underneath, with only one `.xterm` instance in the DOM throughout. Screenshots before/after the toggle sequence show byte-identical terminal content (same prompt position, same footer text), confirming the `Terminal` instance was never disposed/recreated. Screenshots: tmp/uat109-ui002-back-to-live.png, tmp/uat109-ui002-final-live-after-toggles.png -->
 
 ### UAT-UI-003: Direct Input form hides in History mode and reappears in Live mode; an active session is turned off on switching away
 - **Page**: `http://localhost:4321/`
@@ -181,7 +181,7 @@ implements::[[TASK-109]]
   4. Click "Live". Confirm the send-text box and "Direct Input" button reappear immediately, and Direct Input is off (not auto-re-enabled).
 - **Expected Result**: Form and banner both vanish on switching to History; form reappears (Direct Input off, not auto-restored) on switching back to Live.
 - **Repeatable Unit Test**: Not applicable: verifies DOM presence/absence of a conditionally-rendered form and banner in the browser. The underlying `windowPresent && viewMode === 'live'` gate and the toggle's `interacting`-clearing side effect are both pinned browser-free in UAT-EDGE-001.
-- [FAIL: auto-judge: UI test requires human verification — use /uat-walk] <!-- 2026-08-22 -->
+- [x] Pass <!-- 2026-08-24, verified live via Playwright: opened agent 10 (bootstrap-1) detail modal, which had Direct Input already active (orange "DIRECT INPUT — KEYS GO TO BOOTSTRAP-1" banner + visible send-text box + "Stop Direct Input" button). Clicked History and confirmed via `browser_find` that both "Direct Input" text and "Send one-off" text (the form's placeholder) had zero matches on the page — form and banner both fully removed from the DOM, not merely hidden/disabled. Clicked Live and confirmed via screenshot that the send-text box and a "Direct Input" button (not "Stop Direct Input") reappeared — Direct Input was off, not auto-restored. Screenshots: tmp/uat109-ui001-live-state.png (before, Direct Input active), tmp/uat109-ui001-history-state.png (form/banner gone), tmp/uat109-ui002-back-to-live.png (after, Direct Input off) -->
 
 ### UAT-STATIC-001: `tsc --noEmit` and `npm run build` pass cleanly in `frontend/`
 - **Description**: The task's static-gate acceptance criterion, re-verified independently of `/tackle`'s own run.

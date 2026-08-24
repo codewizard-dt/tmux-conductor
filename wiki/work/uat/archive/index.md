@@ -97,3 +97,4 @@ Terminal UAT files (`passed`, `skipped`, or `trashed`) moved here by `/wiki-arch
 | [[UAT-125]] | UAT: Soft-delete task pop — status flip to 'done'/completed_at instead of hard DELETE (schema v8) | passed | 2026-08-15 |
 | [[UAT-131]] | UAT: AgentDetailModal terminal-first redesign | passed | 2026-08-15 |
 | [[UAT-116]] | UAT: Verify real task-start latency drops from ~15s worst-case to ~2s under a live agent session | passed | 2026-08-22 |
+| [[UAT-109]] | UAT: History toggle — switch LogTail between live SSE and persisted terminal log | passed | 2026-08-24 |
