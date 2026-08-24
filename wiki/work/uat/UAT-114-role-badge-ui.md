@@ -182,7 +182,7 @@ implements::[[TASK-114]]
   6. Teardown: `curl -sS -X DELETE "http://localhost:8788/api/agents/<RID>"`.
 - **Expected Result**: A lime-coloured "security" pill with a leading dot appears in the documented position on both the card and the modal header, with an accurate tooltip. No layout shift or overflow on either surface.
 - **Repeatable Unit Test**: Not applicable: verifies browser rendering, colour, and DOM positioning of a React component; `frontend/` has no component test harness. The underlying colour-mapping and null-guard logic are pinned browser-free in UAT-EDGE-001.
-- [FAIL: auto-judge: UI test requires human verification — use /uat-walk] <!-- 2026-08-22 -->
+- [FAIL: verified live via Playwright — role badge never renders, on either surface, for a non-generic-role agent. Root cause: the SSE `agent-update` payload the live dashboard actually renders from omits the `role` field entirely, both in `host-server/index.ts`'s initial-connect resend (`~line 2168-2184`) and its periodic diff-tick broadcast (`~line 2398-2422`) — `role` is present on the internal `buildSnapshot()` object (`~line 2305`) and correctly served by `GET /api/status` (confirmed live: `curl .../api/status` returned `"role":"security"` for the fixture agent, id 15), but neither SSE payload's field allowlist includes it. `frontend/src/components/AgentList.tsx`'s own fetch-plus-SSE wiring (`~line 1300-1332`) compounds this: a `hasReceivedSSEStateRef` guard discards the initial `GET /status` fetch result entirely once any SSE `agent-update` event has arrived, and in practice the SSE connect-resend (a synchronous send of the cached snapshot) almost always beats the `/status` GET (which does live per-agent `capture-pane` calls) — so the dashboard's live agent state ends up built purely from the SSE payload and `role` stays `undefined` for the life of the page. Confirmed via a full-page DOM scan (every `span.rounded-pill` on the page) immediately after opening both the fixture agent's card and its detail modal: no "security" text, no `bg-lime-100`/`text-lime-700` classes, and no `title="Role: security"` anywhere. Not fixed — reported to the coordinator per instructions.] <!-- 2026-08-24, verified live via Playwright -->
 
 ### UAT-UI-002: No role badge appears for a `generic`-role agent, on either surface
 - **Page**: `http://localhost:4321/`
@@ -194,7 +194,7 @@ implements::[[TASK-114]]
   3. Open its detail modal: confirm the header row between the agent-type badge and the context meter shows no role pill either.
 - **Expected Result**: No role badge is rendered anywhere for a `generic`-role agent, on either surface, and no layout gap is left behind.
 - **Repeatable Unit Test**: Not applicable: verifies absence of a rendered DOM element in the browser. The `role == null || role === 'generic' → null` guard itself is pinned browser-free in UAT-EDGE-001's first case.
-- [FAIL: auto-judge: UI test requires human verification — use /uat-walk] <!-- 2026-08-22 -->
+- [x] Pass <!-- 2026-08-24, verified live via Playwright: checked an existing generic-role agent (bootstrap-1) on both the card row and detail modal header — AgentTypeBadge (CLAUDE) sits directly against StatusBadge/ContextMeter with no role pill and no layout gap; a full-page scan of every `span.rounded-pill` on the page found no role-badge text/classes for any generic-role agent -->
 
 ---
 
