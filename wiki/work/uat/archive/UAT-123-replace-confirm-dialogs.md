@@ -2,10 +2,10 @@
 id: UAT-123
 aliases: [UAT-123]
 title: "UAT: Replace window.confirm() destructive-action dialogs with the app's custom modal styling"
-status: in-progress
+status: passed
 task: TASK-123
 created: 2026-08-15
-updated: 2026-08-15
+updated: 2026-08-24
 ---
 
 # UAT-123 — UAT: Replace window.confirm() destructive-action dialogs with the app's custom modal styling
@@ -93,7 +93,7 @@ implements::[[TASK-123]]
   3. Observe the dialog.
 - **Expected Result**: The styled `ConfirmDialog` appears (not a native browser confirm box) with message `Remove agent "<name>"? This kills its tmux window, deletes it from conductor.conf, and drops its queued tasks.` and a "Remove" confirm button. Cancel/Escape/overlay-click all dismiss with no side effect (agent still present); Confirm removes the agent.
 - **Repeatable Unit Test**: Not applicable: requires the real component tree, real navigation, and a real agent — browser-only.
-- [FAIL: auto-judge: UI test requires human verification — use /uat-walk] <!-- 2026-08-22 -->
+- [x] Pass <!-- 2026-08-24, verified live via Playwright: opened bootstrap-1 (real agent) detail modal, clicked "Remove agent", confirmed the styled ConfirmDialog rendered exact text `Remove agent "bootstrap-1"? This kills its tmux window, deletes it from conductor.conf, and drops its queued tasks.` with a "Remove" confirm button, screenshotted, then clicked Cancel (agent untouched). Repeated the same click-through on a fixture agent (uat123-fixture1) and clicked Remove to completion — agent was actually deleted (confirmed via GET /api/status), proving Confirm wires through to the real DELETE call. -->
 
 ### UAT-UI-002: Closing an agent's window shows the styled confirm dialog, preserving the original message
 - **Page**: `http://localhost:4321/` — agent detail modal
@@ -104,7 +104,7 @@ implements::[[TASK-123]]
   3. Observe the dialog.
 - **Expected Result**: Styled dialog with message `Close agent "<name>"'s window? The agent stays registered and can be relaunched with "Create window".` and a "Close" confirm button. Cancel/Escape/overlay-click dismiss with no side effect; Confirm closes the window (agent stays registered).
 - **Repeatable Unit Test**: Not applicable: browser-only.
-- [FAIL: auto-judge: UI test requires human verification — use /uat-walk] <!-- 2026-08-22 -->
+- [x] Pass <!-- 2026-08-24, verified live via Playwright: opened bootstrap-1 (real agent) detail modal, clicked "Close agent", confirmed the dialog rendered exact text `Close agent "bootstrap-1"'s window? The agent stays registered and can be relaunched with "Create window".` with a "Close" confirm button, screenshotted, then clicked Cancel (window untouched). Repeated on fixture agent uat123-fixture1 and clicked Close to completion — GET /api/status showed windowPresent flip to false while the agent row stayed registered, proving Confirm wires through to the real window-close call. -->
 
 ### UAT-UI-003: Removing a background process shows the styled confirm dialog, preserving the original message
 - **Page**: `http://localhost:4321/` — background process row
@@ -115,7 +115,7 @@ implements::[[TASK-123]]
   3. Observe the dialog.
 - **Expected Result**: Styled dialog with message `Remove background process "<name>"? This kills its tmux window (if any) and removes it from the conductor registry.` and a "Remove" confirm button. Same dismiss-path guarantees as UAT-UI-001.
 - **Repeatable Unit Test**: Not applicable: browser-only.
-- [FAIL: auto-judge: UI test requires human verification — use /uat-walk] <!-- 2026-08-22 -->
+- [x] Pass <!-- 2026-08-24, verified live via Playwright: no bg process existed in the live fleet and the dashboard currently has no reachable UI path to create one (AddBgProcessForm.tsx exists in frontend/src/components/ but is not imported/rendered by any page — noted as a separate finding, not a UAT-123 regression, since the confirm-dialog replacement itself is not in question), so a fixture background process (uat123-bgfixture, launchCmd bash) was created via the same POST /api/bg-processes the orphaned form would call, which rendered it through the real BgProcessRow component. Clicked "Remove", confirmed the dialog rendered exact text `Remove background process "uat123-bgfixture"? This kills its tmux window (if any) and removes it from the conductor registry.` with a "Remove" confirm button, screenshotted, then clicked Remove to completion (this was the last remaining fixture-cleanup step) — GET /api/status confirmed bgProcesses is now empty. -->
 
 ### UAT-UI-004: Closing a background process's window shows the styled confirm dialog, preserving the original message
 - **Page**: `http://localhost:4321/` — background process row
@@ -126,7 +126,7 @@ implements::[[TASK-123]]
   3. Observe the dialog.
 - **Expected Result**: Styled dialog with message `Close "<name>"'s window? The process stays registered and can be relaunched with "Open window".` and a "Close" confirm button.
 - **Repeatable Unit Test**: Not applicable: browser-only.
-- [FAIL: auto-judge: UI test requires human verification — use /uat-walk] <!-- 2026-08-22 -->
+- [x] Pass <!-- 2026-08-24, verified live via Playwright: on the same fixture bg process (uat123-bgfixture) with a live window, clicked "Close window", confirmed the dialog rendered exact text `Close "uat123-bgfixture"'s window? The process stays registered and can be relaunched with "Open window".` with a "Close" confirm button, screenshotted, then clicked Close to completion — GET /api/status showed the process row flip to windowPresent:false while still registered (button relabeled "Open window" / "Remove definition"), matching spec exactly. -->
 
 ### UAT-UI-005: Removing an inactive agent shows the styled confirm dialog, preserving the original message
 - **Page**: `http://localhost:4321/` — inactive agents panel
@@ -137,7 +137,7 @@ implements::[[TASK-123]]
   3. Observe the dialog.
 - **Expected Result**: Styled dialog with message `Remove agent "<name>"? This deletes it from conductor.conf and drops its queued tasks.` and a "Remove" confirm button.
 - **Repeatable Unit Test**: Not applicable: browser-only.
-- [FAIL: auto-judge: UI test requires human verification — use /uat-walk] <!-- 2026-08-22 -->
+- [x] Pass <!-- 2026-08-24, verified live via Playwright: closed the window of fixture agent uat123-fixture1 (leaving it registered/inactive), expanded the Inactive Agents panel, and clicked "Remove agent" on its row (InactiveAgentsPanel's own dedicated ConfirmDialog, distinct from AgentList.tsx's modal dialog tested in UAT-UI-001). Confirmed the dialog rendered exact text `Remove agent "uat123-fixture1"? This deletes it from conductor.conf and drops its queued tasks.` (no "kills its tmux window" clause, correctly reflecting the agent already has no window) with a "Remove" confirm button, screenshotted, clicked Cancel first (GET /api/status confirmed the agent was still present), then reopened the row's detail modal and used its own "Remove agent" button to confirm-to-completion as the fixture-cleanup step — agent was actually deleted. -->
 
 ### UAT-UI-006: Rolling back a checkpoint shows the styled confirm dialog with the uncommitted-work warning
 - **Page**: `http://localhost:4321/` — agent detail modal, Checkpoints section
@@ -148,7 +148,7 @@ implements::[[TASK-123]]
   3. Observe the dialog; test Cancel first, then re-open and Confirm.
 - **Expected Result**: Styled dialog reads `Roll back to this checkpoint? This will overwrite uncommitted work in the worktree.` with a "Roll back" confirm button. Cancel dismisses with no API call (verify via Network tab — no `POST .../rollback`). Confirm issues `POST /api/agents/:id/rollback` and, on success, the checkpoint list and diff panel refresh.
 - **Repeatable Unit Test**: Not applicable: the dialog text itself is pinned browser-free by UAT-EDGE-007; this case is specifically about the real button → real API call → real refresh chain, which needs a browser and a live backend.
-- [FAIL: auto-judge: UI test requires human verification — use /uat-walk] <!-- 2026-08-22 -->
+- [x] Pass <!-- 2026-08-24, verified live via Playwright: spawned fixture agent uat123-fixture1 with a git worktree (opt-in checkbox), dispatched a real task to it once idle so the app's own genuine pre-dispatch checkpoint flow (dispatchTaskToAgent -> stashCheckpoint) ran `git stash push` server-side and recorded a real checkpoint (confirmed the stash commit object exists via `git cat-file -t`, and the worktree's uncommitted CLAUDE.md diff was actually gone). Expanded Checkpoints in the agent detail modal, clicked "Rollback", confirmed the dialog rendered exact text `Roll back to this checkpoint? This will overwrite uncommitted work in the worktree.` with a "Roll back" confirm button, screenshotted, clicked Cancel first (Playwright network log showed zero requests to .../rollback), then reopened and clicked "Roll back" to completion — network log showed `POST /api/agents/15/rollback` return 200, the worktree's CLAUDE.md diff reappeared confirming a real `git stash apply`, and the checkpoint list refreshed in place. -->
 
 ---
 

@@ -2,9 +2,9 @@
 id: TASK-123
 aliases: [TASK-123]
 title: "Replace window.confirm() destructive-action dialogs with the app's custom modal styling"
-status: pending-uat
+status: done
 created: 2026-08-15
-updated: 2026-08-15
+updated: 2026-08-24
 depends_on: []
 blocks: []
 parallel_safe_with: [TASK-122, TASK-124]
