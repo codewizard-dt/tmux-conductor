@@ -18,7 +18,6 @@ Entry format: `- [UAT-NNN — Title](UAT-NNN-slug.md) — verifies TASK-NNN · s
 - [UAT-071 — UAT: Checkpoint UI — AgentDetailModal checkpoint list with timestamps + per-checkpoint rollback button](UAT-071-checkpoint-ui.md) — verifies TASK-071 · pending
 - [UAT-074 — UAT: Token/cost badge — compact usage badge on agent card header in dashboard](UAT-074-usage-badge-ui.md) — verifies TASK-074 · pending
 - [UAT-114 — UAT: Role badge — colour-coded role badge on the agent card in the dashboard](UAT-114-role-badge-ui.md) — verifies TASK-114 · pending
-- [UAT-115 — UAT: Role selector — dropdown in AddAgentForm and the project-spawn UI in ProjectList](UAT-115-role-selector-ui.md) — verifies TASK-115 · pending
 - [UAT-119 — UAT: Persist periodic liveUpdateMetrics snapshots to observability.jsonl so metrics survive a host-server restart](UAT-119-persist-metrics-snapshots.md) — verifies TASK-119 · pending
 - [UAT-120 — UAT: Collapse monitor.sh's 15s dispatch loop into the host-server's 2s status-poll loop](UAT-120-collapse-dispatch-into-status-poll.md) — verifies TASK-120 · pending
 - [UAT-121 — UAT: Remove monitor.sh's now-redundant dispatch block, reusing mark_busy to prevent double-dispatch races](UAT-121-remove-redundant-monitor-dispatch.md) — verifies TASK-121 · pending

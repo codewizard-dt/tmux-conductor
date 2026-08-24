@@ -39,6 +39,6 @@ Surface per-agent token cost, full session history, and role-based system prompt
 - [x] [[TASK-112: Role presets — presets.json config with a per-role CLAUDE.md fragment]]
 - [x] [[TASK-113: Write role fragment into the agent's worktree CLAUDE.md on spawn]]
 - [ ] [[TASK-114: Role badge — colour-coded role badge on the agent card in the dashboard]]
-- [ ] [[TASK-115: Role selector — dropdown in AddAgentForm and the project-spawn UI in ProjectList]]
+- [x] [[TASK-115: Role selector — dropdown in AddAgentForm and the project-spawn UI in ProjectList]]
 
 ## Notes

@@ -119,3 +119,4 @@ Terminal task files (`done` or `trashed`) moved here by `/wiki-archive` to reduc
 | [[TASK-116]] | Verify real task-start latency drops from ~15s worst-case to ~2s under a live agent session | done | 2026-08-22 |
 | [[TASK-109]] | History toggle — switch LogTail between live SSE and persisted terminal log | done | 2026-08-24 |
 | [[TASK-110]] | Session boundary markers — per-chunk timestamp dividers in LogTail history view | done | 2026-08-24 |
+| [[TASK-115]] | Role selector — dropdown in AddAgentForm and the project-spawn UI in ProjectList | done | 2026-08-24 |

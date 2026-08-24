@@ -99,3 +99,4 @@ Terminal UAT files (`passed`, `skipped`, or `trashed`) moved here by `/wiki-arch
 | [[UAT-116]] | UAT: Verify real task-start latency drops from ~15s worst-case to ~2s under a live agent session | passed | 2026-08-22 |
 | [[UAT-109]] | UAT: History toggle — switch LogTail between live SSE and persisted terminal log | passed | 2026-08-24 |
 | [[UAT-110]] | UAT: Session boundary markers — per-chunk timestamp dividers in LogTail history view | passed | 2026-08-24 |
+| [[UAT-115]] | UAT: Role selector — dropdown in AddAgentForm and the project-spawn UI in ProjectList | passed | 2026-08-24 |
