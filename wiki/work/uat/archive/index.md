@@ -101,3 +101,4 @@ Terminal UAT files (`passed`, `skipped`, or `trashed`) moved here by `/wiki-arch
 | [[UAT-110]] | UAT: Session boundary markers — per-chunk timestamp dividers in LogTail history view | passed | 2026-08-24 |
 | [[UAT-115]] | UAT: Role selector — dropdown in AddAgentForm and the project-spawn UI in ProjectList | passed | 2026-08-24 |
 | [[UAT-123]] | UAT: Replace window.confirm() destructive-action dialogs with the app's custom modal styling | passed | 2026-08-24 |
+| [[UAT-126]] | UAT: Task history view — dashboard page reading completed tasks | passed | 2026-08-24 |

@@ -2,7 +2,7 @@
 id: TASK-126
 aliases: [TASK-126]
 title: "Task history view — dashboard page reading completed tasks"
-status: pending-uat
+status: done
 created: 2026-08-15
 updated: 2026-08-21
 depends_on: [TASK-125]

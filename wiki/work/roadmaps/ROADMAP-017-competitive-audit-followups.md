@@ -35,7 +35,7 @@ Close the highest-value gaps identified by the 2026-07-06 competitive audit agai
 - [x] [TASK-123](../tasks/archive/TASK-123-replace-confirm-dialogs.md) Replace `window.confirm()` destructive-action dialogs (remove/close agent) with the app's existing custom modal styling
 - [ ] [TASK-124](../tasks/TASK-124-agentlist-text-filter.md) Add a text filter to `AgentList` for scaling past small agent counts
 - [x] [TASK-125](../tasks/TASK-125-soft-delete-task-pop.md) Change task pop from hard-`DELETE` to a soft status flip (`status='done'`, `completed_at`) in the `tasks` table
-- [ ] [TASK-126](../tasks/TASK-126-task-history-view.md) Add a task history view in the dashboard reading completed tasks
+- [x] [TASK-126](../tasks/archive/TASK-126-task-history-view.md) Add a task history view in the dashboard reading completed tasks
 
 ## Notes
 

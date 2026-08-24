@@ -24,4 +24,3 @@ Entry format: `- [UAT-NNN — Title](UAT-NNN-slug.md) — verifies TASK-NNN · s
 - [UAT-122 — UAT: Dashboard dark mode — theme toggle over the Tailwind color tokens](UAT-122-dashboard-dark-mode.md) — verifies TASK-122 · pending
 - [UAT-124 — UAT: AgentList text filter — scale the dashboard past small agent counts](UAT-124-agentlist-text-filter.md) — verifies TASK-124 · pending
 - [UAT-130 — UAT: Dynamic tmux pane sizing from the browser terminal's full-width probe](UAT-130-dynamic-terminal-pane-sizing.md) — verifies TASK-130 · pending
-- [UAT-126 — UAT: Task history view — dashboard page reading completed tasks](UAT-126-task-history-view.md) — verifies TASK-126 · pending

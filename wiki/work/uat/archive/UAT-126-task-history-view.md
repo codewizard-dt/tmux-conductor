@@ -2,7 +2,7 @@
 id: UAT-126
 aliases: [UAT-126]
 title: "UAT: Task history view — dashboard page reading completed tasks"
-status: pending
+status: passed
 task: TASK-126
 created: 2026-08-21
 updated: 2026-08-21
@@ -108,7 +108,7 @@ implements::[[TASK-126]]
   4. For each completed task, confirm its row shows: the command text (monospace), `Agent: <agent name>` (or `#<id>` if the agent no longer resolves by name, or `—` if `agentId` is null), `Project: <project name>` (same fallback rules), and `Completed: <formatted timestamp>` (via the reused `formatSessionStart` helper).
   5. If no completed tasks exist, confirm the empty state "No completed tasks yet" renders instead of an empty list.
 - **Expected Result**: The **History** nav link is visible without any extra discovery step, clicking it navigates to `/history`, and the page lists every completed task with command/agent/project/completion-time — or shows the empty-state message when there are none.
-- [FAIL: auto-judge: UI test requires human verification — use /uat-walk] <!-- 2026-08-22 -->
+- [x] Pass <!-- 2026-08-24, verified live via Playwright -->
 - **Repeatable Unit Test**: Not applicable: real DOM/browser navigation and rendering verification, not deterministic business logic.
 
 ---

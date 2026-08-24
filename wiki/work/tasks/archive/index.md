@@ -121,3 +121,4 @@ Terminal task files (`done` or `trashed`) moved here by `/wiki-archive` to reduc
 | [[TASK-110]] | Session boundary markers — per-chunk timestamp dividers in LogTail history view | done | 2026-08-24 |
 | [[TASK-115]] | Role selector — dropdown in AddAgentForm and the project-spawn UI in ProjectList | done | 2026-08-24 |
 | [[TASK-123]] | Replace window.confirm() destructive-action dialogs with the app's custom modal styling | done | 2026-08-24 |
+| [[TASK-126]] | Task history view — dashboard page reading completed tasks | done | 2026-08-24 |
