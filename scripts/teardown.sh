@@ -8,6 +8,11 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # AGENT_NAMES/BG_NAMES). db.sh sources conductor.conf only in a subshell, so the
 # explicit conf source below is still required for SESSION_NAME etc.
 source "$SCRIPT_DIR/../conductor.conf"
+# Allow CONDUCTOR_SESSION_NAME env var to override the conf value (used by test suite),
+# matching the same override conductor.sh already supports.
+if [[ -n "${CONDUCTOR_SESSION_NAME:-}" ]]; then
+  SESSION_NAME="$CONDUCTOR_SESSION_NAME"
+fi
 source "$SCRIPT_DIR/lib/db.sh"
 load_agents
 load_bg
@@ -18,8 +23,9 @@ echo ""
 
 # Send /exit to each agent pane (ignore errors — pane may already be gone)
 for name in "${AGENT_NAMES[@]}"; do
+  window_name="${AGENT_WINDOW_NAMES[$name]:-$name}"
   echo "[$(date +%H:%M:%S)] Sending /exit to $name..."
-  "$SCRIPT_DIR/dispatch.sh" "$SESSION_NAME:$name" "/exit" || true
+  "$SCRIPT_DIR/dispatch.sh" "$SESSION_NAME:$window_name" "/exit" || true
 done
 
 # Send C-c to each bg-process window (ignore errors — window may already be gone)
