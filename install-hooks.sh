@@ -5,15 +5,16 @@
 #   ./install-hooks.sh [--hook-dir <path>] [--settings-file <path>] [--install-dir <path>]
 #                      [--codex-hooks-file <path>] [--codex-install-dir <path>]
 #
-# Copies the four per-event Node.js hook scripts (plus the shared
+# Copies the five per-event Node.js hook scripts (plus the shared
 # lib/write-state.js helper) to a stable install dir under
 # $HOME/.claude/hooks/tmux-conductor/ and merge-registers them in
 # $HOME/.claude/settings.json and registers the supported Codex lifecycle
 # events in $HOME/.codex/hooks.json. Uses dedup-by-command jq filters that preserve
 # foreign hook entries while replacing any prior tmux-conductor registrations
 # (including stale repo-path entries and legacy .sh registrations from older
-# installs). Also cleans up deprecated PreToolUse and Notification entries
-# from earlier versions.
+# installs). Also cleans up deprecated PreToolUse entries from earlier
+# versions. (Notification was deprecated and removed in April 2026, then
+# reintroduced narrowly by BUG-0001's fix — see hooks/on-notification.js.)
 #
 # Idempotent: running twice produces byte-identical hook config files.
 
@@ -85,7 +86,7 @@ done
 # re-chmod +x because `cp` preserves source perms but we can't assume the
 # working tree is executable (e.g. after a tarball extract).
 mkdir -p "$INSTALL_DIR"
-for script in on-session-start.js on-prompt-submit.js on-stop.js on-stop-failure.js; do
+for script in on-session-start.js on-prompt-submit.js on-stop.js on-stop-failure.js on-notification.js; do
   cp "$HOOK_DIR/$script" "$INSTALL_DIR/$script"
   chmod +x "$INSTALL_DIR/$script"
 done

@@ -90,3 +90,41 @@ void test('METRICS_SNAPSHOT_INTERVAL_MS falls back to the default for a non-posi
   const conf = readConductorConf(confPath);
   assert.equal(conf.metricsSnapshotIntervalMs, 60000);
 });
+
+// BUG-0001: PENDING_AGENT_STALE_S follows the identical three-part pattern
+// (declare -p list, parsePositiveIntSetting call, ConductorConf interface +
+// cache field) as TERMINAL_LOG_MAX_ROWS_PER_AGENT/METRICS_SNAPSHOT_INTERVAL_MS
+// above — same regression these tests guard against: an omitted variable
+// name in the declare -p list silently falls back to the default even when
+// the conf sets it. Unlike the other two, this setting is seconds in the
+// conf but milliseconds on ConductorConf (compared against Date.now()), so
+// the conversion itself is asserted too.
+void test('PENDING_AGENT_STALE_S defaults to 3600s (3600000ms) when absent from conductor.conf', () => {
+  const confPath = writeTempConf(
+    'config-test-pending-agent-stale-default.conf',
+    'SESSION_NAME="bug0001-default"\n',
+  );
+  clearConfCache();
+  const conf = readConductorConf(confPath);
+  assert.equal(conf.pendingAgentStaleMs, 3_600_000);
+});
+
+void test('PENDING_AGENT_STALE_S honors an explicit positive value from conductor.conf, converted from seconds to ms', () => {
+  const confPath = writeTempConf(
+    'config-test-pending-agent-stale-custom.conf',
+    'SESSION_NAME="bug0001-custom"\nPENDING_AGENT_STALE_S=120\n',
+  );
+  clearConfCache();
+  const conf = readConductorConf(confPath);
+  assert.equal(conf.pendingAgentStaleMs, 120_000);
+});
+
+void test('PENDING_AGENT_STALE_S falls back to the default for a non-positive value', () => {
+  const confPath = writeTempConf(
+    'config-test-pending-agent-stale-invalid.conf',
+    'SESSION_NAME="bug0001-invalid"\nPENDING_AGENT_STALE_S=0\n',
+  );
+  clearConfCache();
+  const conf = readConductorConf(confPath);
+  assert.equal(conf.pendingAgentStaleMs, 3_600_000);
+});

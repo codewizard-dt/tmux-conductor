@@ -20,6 +20,8 @@ import { isGitRepo, detectBaseBranch, getGitRoot, removeWorktree, deleteBranch, 
 import { ROLE_VALUES } from './rolePresets.ts';
 import { extractUsageDeltas, resetUsageMemo } from './usage.ts';
 import { recordUsageDeltas, resetUsageStore } from './usage-store.ts';
+import { hasPendingBackgroundAgents } from './pendingAgents.ts';
+import { LIVE_UPDATE_PERF_BUDGETS } from './perfBudgets.ts';
 
 
 const envPath = new URL('../.env', import.meta.url);
@@ -616,10 +618,15 @@ async function sendDirectInput(agentId: number, payload: DirectInputPayload): Pr
   return { keys: keyList?.length ?? 0, textChars: textStr?.length ?? 0, enter: enter === true };
 }
 
+// BUG-0006: the frontend's initial-load race lets the SSE `agent-update` connect-resend
+// permanently win over the REST GET /api/status fetch, so any field present here but
+// missing from one of the two SSE payload builders below (search "agent-update") silently
+// never reaches the dashboard. Keep every field in this per-agent shape mirrored in BOTH
+// SSE builders — there is no other parity check.
 interface Snapshot {
   sessionAlive: boolean;
   sessionExists: boolean;
-  agents: Array<{ id: number; name: string; projectId: number | null; projectName: string | null; state: AgentRunState; status: AgentStatusContract; mode: AgentMode; agentType: AgentType; windowPresent: boolean; queuedTasks: number; launchCmd: string; workdir: string; worktreePath: string | null; branch: string | null; activeTask: string | null; label: string | null; linkedBg: string | null; usage: AgentUsageTotals | null } & AgentContext>;
+  agents: Array<{ id: number; name: string; projectId: number | null; projectName: string | null; state: AgentRunState; status: AgentStatusContract; mode: AgentMode; agentType: AgentType; windowPresent: boolean; queuedTasks: number; launchCmd: string; workdir: string; worktreePath: string | null; branch: string | null; role: string; activeTask: string | null; label: string | null; linkedBg: string | null; usage: AgentUsageTotals | null } & AgentContext>;
   bgProcesses: BgStatus[];
 }
 
@@ -909,10 +916,19 @@ await fastify.register((api) => {
       listTasksForAgentId(db, foundAgent.id, foundAgent.projectId).length === 0
     ) {
       const conf = readConductorConf();
-      const cmdText = command.trim();
-      dispatchTaskToAgent(db, conf, foundAgent, cmdText, 'immediate-enqueue');
-      broadcastSSE('snapshot', buildSnapshot());
-      return reply.status(200).send({ ok: true, dispatched: true });
+      const win = agentWindowName(foundAgent);
+      // BUG-0001: the agent's idle/busy state file can read idle while it is
+      // still genuinely occupied waiting on a background sub-agent it
+      // spawned (Claude Code's Stop hook fires — and writes idle — before
+      // that background work resolves). Skip the immediate dispatch in that
+      // case; the task still gets queued normally below and will dispatch
+      // once the sentinel clears. See host-server/pendingAgents.ts.
+      if (!hasPendingBackgroundAgents(conf.stateDir, win, conf.pendingAgentStaleMs)) {
+        const cmdText = command.trim();
+        dispatchTaskToAgent(db, conf, foundAgent, cmdText, 'immediate-enqueue');
+        broadcastSSE('snapshot', buildSnapshot());
+        return reply.status(200).send({ ok: true, dispatched: true });
+      }
     }
 
     const task = addTask(db, {
@@ -1449,8 +1465,15 @@ await fastify.register((api) => {
 
 
   // GET /agents/:id/diff — returns the git diff of the agent's workdir against
-  // its base branch (base..HEAD). Base-branch detection is shared via the
-  // detectBaseBranch helper in host-server/git.ts.
+  // its base branch. BUG-0010: deliberately `git diff <base>` (single ref, no
+  // `..HEAD`) rather than `git diff <base>..HEAD` — the two-ref form only ever
+  // compares committed history and can never show uncommitted working-tree
+  // changes, which is where virtually all of an in-progress agent's live edits
+  // (and everything the checkpoint/rollback feature stashes/restores) actually
+  // live. `git diff <base>` compares <base>'s tree against the current working
+  // tree, so it captures both committed divergence AND uncommitted changes in
+  // one diff — exactly what "review changes inline" needs. Base-branch
+  // detection is shared via the detectBaseBranch helper in host-server/git.ts.
   api.get<{ Params: { id: string } }>('/agents/:id/diff', (req, reply) => {
     const agentId = parseInt(req.params.id, 10);
     if (isNaN(agentId)) return reply.status(400).send({ error: 'invalid agent id' });
@@ -1459,7 +1482,9 @@ await fastify.register((api) => {
       return reply.status(404).send({ error: `agent ${String(agentId)} not found` });
     }
 
-    const workdir = entry.workdir;
+    // Worktree-backed agents keep their live changes in worktreePath, not
+    // workdir (the original repo root) — diff that directory when present.
+    const workdir = entry.worktreePath || entry.workdir;
 
     // Not a git repo (the "no worktree" case) → { diff: null, base: null }.
     if (!isGitRepo(workdir)) {
@@ -1468,7 +1493,7 @@ await fastify.register((api) => {
 
     const base = detectBaseBranch(workdir);
 
-    const r = spawnSync('git', ['-C', workdir, 'diff', `${base}..HEAD`], {
+    const r = spawnSync('git', ['-C', workdir, 'diff', base], {
       encoding: 'utf8',
       timeout: SHELL_SYNC_TIMEOUT_MS,
       maxBuffer: 1024 * 1024,
@@ -2177,6 +2202,7 @@ await fastify.register((api) => {
           queuedTasks: agent.queuedTasks, windowPresent: agent.windowPresent,
           launchCmd: agent.launchCmd, workdir: agent.workdir,
           worktreePath: agent.worktreePath, branch: agent.branch,
+          role: agent.role,
           activeTask: agent.activeTask,
           model: agent.model, modelId: agent.modelId,
           contextTokens: agent.contextTokens, contextPct: agent.contextPct, contextLimit: agent.contextLimit,
@@ -2388,9 +2414,20 @@ function pollAndDiff() {
       ) {
         const dbAgent = getAgentById(db, agent.id);
         if (dbAgent) {
-          const task = popTask(db, agent.name);
-          if (task) {
-            dispatchTaskToAgent(db, conf, dbAgent, task.command, 'idle-transition-poll', { clearFirst: task.kind === 'project' });
+          const win = agentWindowName(dbAgent);
+          // BUG-0001: an idle-transition here can be a false idle — Claude
+          // Code's Stop hook legitimately fires (and writes idle) while a
+          // background sub-agent the turn spawned (e.g. /power-mode's
+          // UAT-auto agents) is still running. hooks/on-notification.js
+          // tracks that outstanding work as a sentinel under
+          // `<window>.pending-agents/`; hold dispatch while one is fresh so
+          // the next queued task doesn't interleave into a pane that is
+          // still genuinely busy. See host-server/pendingAgents.ts.
+          if (!hasPendingBackgroundAgents(conf.stateDir, win, conf.pendingAgentStaleMs)) {
+            const task = popTask(db, agent.name);
+            if (task) {
+              dispatchTaskToAgent(db, conf, dbAgent, task.command, 'idle-transition-poll', { clearFirst: task.kind === 'project' });
+            }
           }
         }
       }
@@ -2410,6 +2447,7 @@ function pollAndDiff() {
         workdir: agent.workdir,
         worktreePath: agent.worktreePath,
         branch: agent.branch,
+        role: agent.role,
         activeTask: agent.activeTask,
         label: agent.label,
         linkedBg: agent.linkedBg,
@@ -2634,9 +2672,9 @@ await listenWithRetry();
 
 refreshAgentContextCache(readConductorConf());
 startManagedLoop('context refresh', CONTEXT_REFRESH_MS, () => { refreshAgentContextCache(readConductorConf()); }, { warnAfterMs: 4000, backoffMs: 15_000 });
-startManagedLoop('status poll', () => readConductorConf().statusPollMs, () => { timeSync('statusTicks', pollAndDiff); }, { warnAfterMs: 1500, backoffMs: 5000 });
-startManagedLoop('tail poll', () => readConductorConf().terminalPollMs, () => { timeSync('terminalTicks', tailPollLoop); }, { warnAfterMs: 1500, backoffMs: 5000 });
-startManagedLoop('focused tail poll', () => readConductorConf().focusedTerminalPollMs, () => { timeSync('focusedTerminalTicks', tailPollLoopFocus); }, { warnAfterMs: 150, backoffMs: 1000 });
+startManagedLoop('status poll', () => readConductorConf().statusPollMs, () => { timeSync('statusTicks', pollAndDiff); }, { warnAfterMs: LIVE_UPDATE_PERF_BUDGETS.maxStatusTickMs, backoffMs: 5000 });
+startManagedLoop('tail poll', () => readConductorConf().terminalPollMs, () => { timeSync('terminalTicks', tailPollLoop); }, { warnAfterMs: LIVE_UPDATE_PERF_BUDGETS.maxTerminalTickMs, backoffMs: 5000 });
+startManagedLoop('focused tail poll', () => readConductorConf().focusedTerminalPollMs, () => { timeSync('focusedTerminalTicks', tailPollLoopFocus); }, { warnAfterMs: LIVE_UPDATE_PERF_BUDGETS.maxFocusedTerminalTickMs, backoffMs: 1000 });
 // TASK-119: liveUpdateMetrics resets to zero on every host-server restart —
 // periodically snapshot the full object (plus event-loop metrics) to
 // observability.jsonl so historical metrics survive a restart. Each line's

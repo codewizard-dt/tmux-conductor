@@ -20,7 +20,7 @@ interface ApiErrorBody {
 const fieldCls = 'flex flex-col gap-1.5';
 const labelCls = 'text-[10px] font-semibold uppercase tracking-[0.08em] text-muted';
 const inputCls = [
-  'w-full rounded-[8px] border border-line bg-white px-3 py-1.5',
+  'w-full rounded-[8px] border border-line bg-card px-3 py-1.5',
   'font-mono text-[12px] text-ink placeholder:text-muted-2',
   'outline-none transition',
   'focus:border-accent focus:ring-2 focus:ring-accent/10',
@@ -168,7 +168,7 @@ export default function AddAgentForm() {
       />
     )}
     <div
-      className="animate-riseIn rounded-card border border-line bg-white px-5 py-4 shadow-card cursor-pointer"
+      className="animate-riseIn rounded-card border border-line bg-card px-5 py-4 shadow-card cursor-pointer"
       onClick={() => { setCollapsed((v) => !v); }}
     >
       <button
@@ -260,7 +260,7 @@ export default function AddAgentForm() {
                       <button
                         type="button"
                         onClick={() => { setShowProjPicker(true); }}
-                        className="inline-flex flex-shrink-0 items-center rounded-[6px] border border-line bg-white px-2.5 text-[12px] font-medium text-muted hover:text-ink hover:border-ink/30 transition cursor-pointer"
+                        className="inline-flex flex-shrink-0 items-center rounded-[6px] border border-line bg-card px-2.5 text-[12px] font-medium text-muted hover:text-ink hover:border-ink/30 transition cursor-pointer"
                       >
                         Browse
                       </button>
@@ -352,7 +352,7 @@ export default function AddAgentForm() {
                   <button
                     type="button"
                     onClick={() => { setWorkdir(gitRoot.gitRoot ?? '') }}
-                    className="ml-auto cursor-pointer rounded border border-amber-300 bg-white px-2 py-0.5 text-[10px] font-medium hover:bg-amber-100"
+                    className="ml-auto cursor-pointer rounded border border-amber-300 bg-card px-2 py-0.5 text-[10px] font-medium hover:bg-amber-100"
                   >
                     Use this path ↑
                   </button>

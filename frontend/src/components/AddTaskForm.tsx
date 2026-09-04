@@ -128,7 +128,7 @@ export default function AddTaskForm({ agentId, onAdded, projectId, projectName }
             onClick={() => { setScope('agent'); }}
             className={`inline-flex gap-1 h-6 cursor-pointer items-center rounded-[7px] px-2.5 text-[11px] font-medium transition active:scale-[0.985] ${scope === 'agent'
               ? 'bg-accent-blue text-white'
-              : 'border border-line bg-white text-ink-2 hover:bg-canvas'
+              : 'border border-line bg-card text-ink-2 hover:bg-canvas'
               }`}
           >
             <b>this agent</b> <span className="opacity-50">(local)</span>
@@ -138,7 +138,7 @@ export default function AddTaskForm({ agentId, onAdded, projectId, projectName }
             onClick={() => { setScope('project'); }}
             className={`inline-flex gap-1 h-6 cursor-pointer items-center rounded-[7px] px-2.5 text-[11px] font-medium transition active:scale-[0.985] ${scope === 'project'
               ? 'bg-accent-blue text-white'
-              : 'border border-line bg-white text-ink-2 hover:bg-canvas'
+              : 'border border-line bg-card text-ink-2 hover:bg-canvas'
               }`}
           >
             <b>{projectName}</b> <span className="opacity-50">(project)</span>
@@ -170,7 +170,7 @@ export default function AddTaskForm({ agentId, onAdded, projectId, projectName }
               }
             }}
             onPaste={handlePaste}
-            className="flex-1 resize-none overflow-hidden rounded-[7px] border border-line bg-white px-2.5 py-1 font-mono text-[12px] text-ink placeholder:text-muted-2 outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/10 disabled:opacity-40"
+            className="flex-1 resize-none overflow-hidden rounded-[7px] border border-line bg-card px-2.5 py-1 font-mono text-[12px] text-ink placeholder:text-muted-2 outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/10 disabled:opacity-40"
             disabled={busy}
             aria-label="New task text"
           />

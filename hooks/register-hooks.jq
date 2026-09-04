@@ -3,7 +3,7 @@
 # Invoked as: jq --arg install_dir "$INSTALL_DIR" -f hooks/register-hooks.jq
 #
 # Given an existing Claude Code settings.json on stdin, emits a new document
-# with tmux-conductor's four per-event hooks registered under .hooks, deduped
+# with tmux-conductor's five per-event hooks registered under .hooks, deduped
 # against prior registrations (including stale repo-path entries and legacy
 # .sh registrations from pre-task-011 installs). Foreign hook entries are
 # preserved untouched.
@@ -14,18 +14,18 @@
 #   (a) Exact duplicate of the command we are about to add — dedup so
 #       repeated runs of install-hooks.sh produce byte-identical output.
 #   (b) Looks like one of our per-event scripts (path ends in
-#       on-session-start / on-prompt-submit / on-stop / on-stop-failure
-#       with a .sh or .js extension) but is NOT under the current
-#       $install_dir — i.e. a stale registration pointing at an older
-#       install location (e.g. the repo checkout from a prior version, or
-#       a pre-task-011 Bash install). Purging these keeps us from leaving
-#       dangling commands when users move/delete the repo or migrate from
-#       the old .sh hooks to the new .js hooks.
+#       on-session-start / on-prompt-submit / on-stop / on-stop-failure /
+#       on-notification with a .sh or .js extension) but is NOT under the
+#       current $install_dir — i.e. a stale registration pointing at an
+#       older install location (e.g. the repo checkout from a prior
+#       version, or a pre-task-011 Bash install). Purging these keeps us
+#       from leaving dangling commands when users move/delete the repo or
+#       migrate from the old .sh hooks to the new .js hooks.
 # Foreign hooks (anything not matching the regex) are untouched.
 def stale_cmd($new_cmd):
   (.command == $new_cmd)
   or (
-    (.command | test("/hooks/on-(session-start|prompt-submit|stop|stop-failure)\\.(sh|js)$"))
+    (.command | test("/hooks/on-(session-start|prompt-submit|stop|stop-failure|notification)\\.(sh|js)$"))
     and ((.command | startswith($install_dir + "/")) | not)
   );
 
@@ -60,10 +60,13 @@ def register($event; $new_cmd):
       "hooks": [{ "type": "command", "command": $new_cmd }]
     }];
 
-# Pipeline: register each of the four events in turn.
+# Pipeline: register each of the five events in turn.
 # $install_dir_cmd uses ~ so registered commands are portable across users/machines.
 # $install_dir (absolute) is used only for the stale-entry startswith check above.
 register_with_matcher("SessionStart"; "startup|resume|clear"; $install_dir_cmd + "/on-session-start.js")
 | register("UserPromptSubmit"; $install_dir_cmd + "/on-prompt-submit.js")
 | register("Stop"; $install_dir_cmd + "/on-stop.js")
 | register("StopFailure"; $install_dir_cmd + "/on-stop-failure.js")
+# BUG-0001: tracks outstanding background/async sub-agents (Notification's
+# agent_needs_input/agent_completed) that Stop's idle write can't see.
+| register("Notification"; $install_dir_cmd + "/on-notification.js")

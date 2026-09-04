@@ -85,7 +85,7 @@ function DiffPanel({ agentId }: { agentId: number }) {
         <button
           type="button"
           onClick={() => { load({ cancelled: false }) }}
-          className="inline-flex h-6 cursor-pointer items-center rounded-[6px] border border-line bg-white px-2 text-[11px] font-medium text-muted transition hover:bg-canvas active:scale-[0.985]"
+          className="inline-flex h-6 cursor-pointer items-center rounded-[6px] border border-line bg-card px-2 text-[11px] font-medium text-muted transition hover:bg-canvas active:scale-[0.985]"
         >
           Refresh
         </button>

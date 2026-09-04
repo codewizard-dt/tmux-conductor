@@ -38,7 +38,7 @@ export default function TaskHistoryPage() {
 
   return (
     <main className="mx-auto flex max-w-[1280px] flex-col gap-6 px-6 py-8">
-      <div className="animate-riseIn rounded-card border border-line bg-white px-5 py-4 shadow-card">
+      <div className="animate-riseIn rounded-card border border-line bg-card px-5 py-4 shadow-card">
         <h2 className="mb-4 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted">
           Task History
         </h2>

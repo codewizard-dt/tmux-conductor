@@ -8,8 +8,8 @@ import ConfirmDialog from './ConfirmDialog'
  * helpers inside ScheduleList.tsx. Rather than import a private helper from a sibling component
  * or add a new shared module for one caller, this mirrors that same local-helper convention.
  */
-function formatRelativeTimestamp(tsSeconds: number): string {
-  const deltaMs = Date.now() - tsSeconds * 1000
+function formatRelativeTimestamp(tsMs: number): string {
+  const deltaMs = Date.now() - tsMs
   if (deltaMs < 0) return 'just now'
   const seconds = Math.round(deltaMs / 1000)
   if (seconds < 60) return `${seconds.toString()}s ago`
@@ -93,7 +93,7 @@ function CheckpointList({ agentId }: { agentId: number }) {
         <button
           type="button"
           onClick={() => { load({ cancelled: false }) }}
-          className="inline-flex h-6 cursor-pointer items-center rounded-[6px] border border-line bg-white px-2 text-[11px] font-medium text-muted transition hover:bg-canvas active:scale-[0.985]"
+          className="inline-flex h-6 cursor-pointer items-center rounded-[6px] border border-line bg-card px-2 text-[11px] font-medium text-muted transition hover:bg-canvas active:scale-[0.985]"
         >
           Refresh
         </button>
@@ -116,7 +116,7 @@ function CheckpointList({ agentId }: { agentId: number }) {
               <button
                 type="button"
                 onClick={() => { setPendingRollback(cp.id) }}
-                className="inline-flex h-6 flex-shrink-0 cursor-pointer items-center rounded-[6px] border border-line bg-white px-2 text-[11px] font-medium text-muted transition hover:bg-canvas active:scale-[0.985]"
+                className="inline-flex h-6 flex-shrink-0 cursor-pointer items-center rounded-[6px] border border-line bg-card px-2 text-[11px] font-medium text-muted transition hover:bg-canvas active:scale-[0.985]"
               >
                 Rollback
               </button>

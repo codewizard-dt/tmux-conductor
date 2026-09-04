@@ -133,7 +133,7 @@ export default function ScheduleList() {
           {schedules.map((schedule) => (
             <li
               key={schedule.id}
-              className={`mb-1 flex flex-col gap-1 rounded-[6px] border px-2 py-1.5 transition-colors ${schedule.id === flashingId ? 'border-accent/40 bg-accent/10' : 'border-line bg-white'}`}
+              className={`mb-1 flex flex-col gap-1 rounded-[6px] border px-2 py-1.5 transition-colors ${schedule.id === flashingId ? 'border-accent/40 bg-accent/10' : 'border-line bg-card'}`}
             >
               <div className="flex items-center gap-2">
                 <span className="flex-1 font-mono text-[11px] text-ink-2">{schedule.command}</span>

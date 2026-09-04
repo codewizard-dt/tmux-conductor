@@ -188,4 +188,44 @@ describe('window.confirm elimination — UAT-123 regression guard', () => {
     expect(offenders).toEqual([])
   })
 })
+
+describe('bg-white elimination — TASK-135 regression guard', () => {
+  it('no file under frontend/src has an unaccounted-for hardcoded bg-white class', () => {
+    // TASK-135 swapped 41 hardcoded `bg-white` surface literals to the bg-card
+    // theme token so they re-theme correctly in dark mode (same defect class as
+    // BUG-0007/BUG-0008). One instance is intentionally NOT a themeable surface:
+    // LogTail.tsx's live-indicator dot is a white dot rendered on top of a fixed
+    // amber banner (white-on-color styling, not a re-themeable card/panel
+    // background) and stays bg-white on purpose. Any other reappearance of
+    // bg-white anywhere else under src/ is a regression of this sweep.
+    const srcDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
+    const ALLOWED = new Set(['components/LogTail.tsx'])
+    const offenders: string[] = []
+
+    function walk(dir: string): void {
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        const full = path.join(dir, entry.name)
+        if (entry.isDirectory()) {
+          walk(full)
+        } else if (/\.(ts|tsx)$/.test(entry.name) && !/\.test\.tsx?$/.test(entry.name)) {
+          const content = fs.readFileSync(full, 'utf8')
+          if (/bg-white\b/.test(content)) {
+            const rel = path.relative(srcDir, full)
+            if (!ALLOWED.has(rel)) offenders.push(rel)
+          }
+        }
+      }
+    }
+    walk(srcDir)
+
+    expect(offenders).toEqual([])
+  })
+
+  it('LogTail.tsx retains exactly the one intentional bg-white (the live-indicator dot), not a reintroduced surface', () => {
+    const filePath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), 'LogTail.tsx')
+    const content = fs.readFileSync(filePath, 'utf8')
+    const matches = content.match(/bg-white\b/g) ?? []
+    expect(matches.length).toBe(1)
+  })
+})
 })

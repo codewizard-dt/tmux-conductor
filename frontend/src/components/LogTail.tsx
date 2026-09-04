@@ -600,7 +600,7 @@ export default function LogTail({ agentId, agentName, maxHeightClass, focused, f
                 aria-pressed={active}
                 className={`inline-flex h-5 cursor-pointer items-center rounded-[5px] px-1.5 text-[11px] font-medium transition active:scale-[0.985] ${active
                   ? 'bg-accent-blue text-white'
-                  : 'border border-line bg-white text-ink-2 hover:bg-canvas'}`}
+                  : 'border border-line bg-card text-ink-2 hover:bg-canvas'}`}
               >
                 {label}
               </button>
@@ -742,7 +742,7 @@ export default function LogTail({ agentId, agentName, maxHeightClass, focused, f
               }
             }}
             placeholder={`Send one-off text commands to ${agentName}…`}
-            className="min-h-7 min-w-0 flex-1 resize-none overflow-hidden rounded-[7px] border border-line bg-white px-2 py-1 font-mono text-[11px] text-ink placeholder:text-muted-2"
+            className="min-h-7 min-w-0 flex-1 resize-none overflow-hidden rounded-[7px] border border-line bg-card px-2 py-1 font-mono text-[11px] text-ink placeholder:text-muted-2"
             aria-label={`Send one-off text commands to ${agentName}`}
           />
           <button
@@ -756,7 +756,7 @@ export default function LogTail({ agentId, agentName, maxHeightClass, focused, f
             onClick={() => { setInteracting((prev) => !prev) }}
             className={interacting
               ? 'inline-flex h-7 cursor-pointer items-center gap-1.5 rounded-[7px] bg-[#e0901a] px-3 text-[12px] font-semibold text-white transition hover:opacity-85 active:scale-[0.985]'
-              : 'inline-flex h-7 cursor-pointer items-center gap-1.5 rounded-[7px] border border-[#e0901a]/40 bg-white px-3 text-[12px] font-semibold text-[#c07a10] transition hover:bg-[#e0901a]/10 active:scale-[0.985]'}
+              : 'inline-flex h-7 cursor-pointer items-center gap-1.5 rounded-[7px] border border-[#e0901a]/40 bg-card px-3 text-[12px] font-semibold text-[#c07a10] transition hover:bg-[#e0901a]/10 active:scale-[0.985]'}
             aria-pressed={interacting}
           >
             <span aria-hidden="true">⌨</span>

@@ -64,7 +64,7 @@ export default function FolderPickerModal({ initialPath, onSelect, onClose }: Fo
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
       onClick={handleOverlayClick}
     >
-      <div className="flex w-[540px] max-h-[520px] flex-col rounded-[12px] border border-line bg-white shadow-[0_8px_32px_0_rgb(16_17_26/0.18)]">
+      <div className="flex w-[540px] max-h-[520px] flex-col rounded-[12px] border border-line bg-card shadow-[0_8px_32px_0_rgb(16_17_26/0.18)]">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-line px-4 py-3">
           <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted">
@@ -148,7 +148,7 @@ export default function FolderPickerModal({ initialPath, onSelect, onClose }: Fo
             <button
               type="button"
               onClick={onClose}
-              className="cursor-pointer rounded-[6px] border border-line bg-white px-3 py-1.5 text-[12px] font-medium text-muted hover:text-ink hover:border-ink/30 transition"
+              className="cursor-pointer rounded-[6px] border border-line bg-card px-3 py-1.5 text-[12px] font-medium text-muted hover:text-ink hover:border-ink/30 transition"
             >
               Cancel
             </button>

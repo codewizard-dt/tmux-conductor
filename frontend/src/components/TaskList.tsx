@@ -31,7 +31,7 @@ function SortableItem({ id, text, isProject, onDelete, onJumpHead }: SortableIte
   return (
     <li
       ref={setNodeRef}
-      className={`mb-1 flex items-center gap-2 rounded-[6px] border px-2 py-1.5 select-none transition-opacity ${isDragging ? 'border-accent/20 bg-surface opacity-80' : 'border-line bg-white'}`}
+      className={`mb-1 flex items-center gap-2 rounded-[6px] border px-2 py-1.5 select-none transition-opacity ${isDragging ? 'border-accent/20 bg-surface opacity-80' : 'border-line bg-card'}`}
       style={{ transform: CSS.Transform.toString(transform), transition }}
     >
       <span

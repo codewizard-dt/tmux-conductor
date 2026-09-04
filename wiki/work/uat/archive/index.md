@@ -4,6 +4,13 @@ Terminal UAT files (`passed`, `skipped`, or `trashed`) moved here by `/wiki-arch
 
 | ID | Title | Final Status | Archived |
 |----|-------|--------------|----------|
+| [[UAT-071]] | UAT: Checkpoint UI — AgentDetailModal checkpoint list with timestamps + per-checkpoint rollback button | passed | 2026-09-02 |
+| [[UAT-074]] | UAT: Token/cost badge — compact usage badge on agent card header in dashboard | passed | 2026-09-02 |
+| [[UAT-114]] | UAT: Role badge — colour-coded role badge on the agent card in the dashboard | passed | 2026-09-02 |
+| [[UAT-119]] | UAT: Persist periodic liveUpdateMetrics snapshots to observability.jsonl so metrics survive a host-server restart | passed | 2026-09-02 |
+| [[UAT-118]] | UAT: Calibrate host-server/perfBudgets.ts regression thresholds from captured baseline data | passed | 2026-09-02 |
+| [[UAT-124]] | UAT: AgentList text filter — scale the dashboard past small agent counts | passed | 2026-09-02 |
+| [[UAT-121]] | UAT: Remove monitor.sh's now-redundant dispatch block, reusing mark_busy to prevent double-dispatch races | passed | 2026-09-01 |
 | [[UAT-004]] | UAT: Phase 1 foundation — SQLite startup, seed import, and idempotency | passed | 2026-06-14 |
 | [[UAT-076]] | UAT: Per-session usage breakdown — GET /agents/:id/usage endpoint + session table in AgentDetailModal | passed | 2026-08-24 |
 | [[UAT-062]] | UAT: Branch badge — display branch name on agent card in dashboard | passed | 2026-08-15 |
@@ -102,3 +109,7 @@ Terminal UAT files (`passed`, `skipped`, or `trashed`) moved here by `/wiki-arch
 | [[UAT-115]] | UAT: Role selector — dropdown in AddAgentForm and the project-spawn UI in ProjectList | passed | 2026-08-24 |
 | [[UAT-123]] | UAT: Replace window.confirm() destructive-action dialogs with the app's custom modal styling | passed | 2026-08-24 |
 | [[UAT-126]] | UAT: Task history view — dashboard page reading completed tasks | passed | 2026-08-24 |
+| [[UAT-122]] | UAT: Dashboard dark mode — theme toggle over the Tailwind color tokens | passed | 2026-09-01 |
+| [[UAT-120]] | UAT: Collapse monitor.sh's 15s dispatch loop into the host-server's 2s status-poll loop | passed | 2026-09-02 |
+| [[UAT-066]] | UAT: Diff panel UI — unified diff in AgentDetailModal (colour-coded additions/deletions) | passed | 2026-09-02 |
+| [[UAT-117]] | UAT: Capture a representative period of real liveUpdateMetrics data from /api/perf/live-updates | passed | 2026-09-02 |

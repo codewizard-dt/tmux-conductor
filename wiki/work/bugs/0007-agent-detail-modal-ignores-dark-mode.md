@@ -2,11 +2,11 @@
 id: BUG-0007
 aliases: [BUG-0007]
 title: "AgentDetailModal ignores dark mode (hardcoded bg-white on the outer container)"
-status: open
+status: closed
 severity: high
 priority: "—"
 created: 2026-08-24
-updated: 2026-08-24
+updated: 2026-08-26
 reporter: David Taylor
 assignee: "—"
 tags: "—"
@@ -49,11 +49,18 @@ Found during live Playwright-driven verification of UAT-122 (dashboard dark mode
 
 ## Root Cause Analysis
 
-> _(filled at `/bug-close`)_
+Confirmed exactly as filed: `AgentList.tsx:686` (now shifted slightly with unrelated edits, still the `AgentDetailModal` outer container div) hardcoded the literal Tailwind utility `bg-white`, which always resolves to `#ffffff` — unlike this app's theme tokens (`bg-card`, `bg-surface`, etc. in `tailwind.config.js`), which resolve through CSS custom properties (`var(--color-card, #ffffff)`) that `frontend/src/styles/global.css`'s `.dark` block overrides (`--color-card: #21232b`). `bg-white` structurally cannot pick up those overrides regardless of `.dark` being active on `<html>`.
 
 ## Resolution
 
-> _(filled at `/bug-close`)_
+Replaced `bg-white` with `bg-card` on the modal's outer container (`AgentList.tsx`, the `AgentDetailModal` function's root `div`) — the same token already used correctly elsewhere in the app for card/panel surfaces.
+
+### Verification performed
+
+- Playwright against the live dev server: forced `document.documentElement.classList.add('dark')`, opened a real agent's detail modal, and read `getComputedStyle` on the container — `backgroundColor: rgb(33, 35, 43)` (matches `--color-card` dark value exactly), confirmed visually via screenshot `tmp/bug0007-0008-dark-mode-modal.png`.
+- `cd frontend && npm run typecheck && npm test` — clean, 65/65 pass.
+
+Note (out of scope for this bug, flagged for awareness): `bg-white` is used as a literal-color pattern pervasively across many other components in this app (`AgentItem`'s own card, `ConfirmDialog`, `ProjectList`, `ScheduleForm`, `FolderPickerModal`, etc.) — this fix only touches the specific element BUG-0007 named (the detail-modal container). The wider pattern is the same defect family but a much larger sweep than this bug's scope.
 
 ## Related
 

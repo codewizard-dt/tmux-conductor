@@ -14,7 +14,7 @@ const NAME_PATTERN = /^[A-Za-z0-9_-]+$/;
 const fieldCls = 'flex flex-col gap-1.5';
 const labelCls = 'text-[10px] font-semibold uppercase tracking-[0.08em] text-muted';
 const inputCls = [
-  'w-full rounded-[8px] border border-line bg-white px-3 py-1.5',
+  'w-full rounded-[8px] border border-line bg-card px-3 py-1.5',
   'font-mono text-[12px] text-ink placeholder:text-muted-2',
   'outline-none transition',
   'focus:border-accent focus:ring-2 focus:ring-accent/10',
@@ -70,7 +70,7 @@ export default function AddProjectForm() {
         onClose={() => { setShowPicker(false); }}
       />
     )}
-    <div className="animate-riseIn rounded-card border border-line bg-white px-5 py-4 shadow-card">
+    <div className="animate-riseIn rounded-card border border-line bg-card px-5 py-4 shadow-card">
       <h2 className="mb-4 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted">
         Add Project
       </h2>

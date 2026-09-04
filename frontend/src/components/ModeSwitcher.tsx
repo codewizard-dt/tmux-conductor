@@ -55,7 +55,7 @@ export default function ModeSwitcher({ agentId, mode, windowPresent }: {
                 className={`inline-flex h-6 cursor-pointer items-center rounded-[7px] px-2.5 text-[11px] font-medium transition active:scale-[0.985] disabled:pointer-events-none disabled:opacity-40 ${
                   active
                     ? 'bg-accent-blue text-white'
-                    : 'border border-line bg-white text-ink-2 hover:bg-canvas'
+                    : 'border border-line bg-card text-ink-2 hover:bg-canvas'
                 } ${pending === key ? 'animate-pulse' : ''}`}
               >
                 {pending === key ? `${label}…` : label}

@@ -115,7 +115,7 @@ export default function ProjectDetailPage() {
       <Link to="/projects" className="w-fit text-[12px] text-muted hover:text-ink">← Projects</Link>
 
       {/* Header card */}
-      <section className="rounded-card border border-line bg-white px-5 py-4 shadow-card">
+      <section className="rounded-card border border-line bg-card px-5 py-4 shadow-card">
         <h1 className="font-mono text-[18px] font-semibold text-ink">{project.name}</h1>
         <div className="mt-4 flex flex-col gap-3">
           <div>
@@ -134,7 +134,7 @@ export default function ProjectDetailPage() {
       </section>
 
       {/* Agents card */}
-      <section className="rounded-card border border-line bg-white px-5 py-4 shadow-card">
+      <section className="rounded-card border border-line bg-card px-5 py-4 shadow-card">
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted">Agents</h2>
           <button
@@ -165,7 +165,7 @@ export default function ProjectDetailPage() {
       </section>
 
       {/* Task queue card */}
-      <section className="rounded-card border border-line bg-white px-5 py-4 shadow-card">
+      <section className="rounded-card border border-line bg-card px-5 py-4 shadow-card">
         <h2 className="mb-4 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted">Task queue</h2>
         <TaskList agentName="" tasks={tasks} onReorder={setTasks} />
         <form onSubmit={(e) => { void handleAddTask(e) }} className="mt-3 flex gap-2">

@@ -683,7 +683,7 @@ export function AgentDetailModal({ agent, project, projectId, status, onClose, a
           onClick={onClose}
           aria-hidden="true"
         />
-        <div className="absolute inset-4 flex flex-col overflow-hidden rounded-[14px] bg-white shadow-pop md:inset-8">
+        <div className="absolute inset-4 flex flex-col overflow-hidden rounded-[14px] bg-card shadow-pop md:inset-8">
           <div className="flex flex-shrink-0 items-center gap-3 border-b border-line px-5 py-3.5">
             <span className="flex min-w-0 flex-col">
               <span className="text-[15px] font-semibold tracking-tight text-ink leading-tight">{agent.name}</span>
@@ -722,7 +722,7 @@ export function AgentDetailModal({ agent, project, projectId, status, onClose, a
                       if (e.key === 'Enter') { void handleRename() }
                       if (e.key === 'Escape') { setShowRenameInput(false) }
                     }}
-                    className="h-7 w-36 rounded-[7px] border border-accent-blue/40 bg-white px-2 text-[12px] font-medium text-ink focus:outline-none focus:ring-1 focus:ring-accent-blue/50"
+                    className="h-7 w-36 rounded-[7px] border border-accent-blue/40 bg-card px-2 text-[12px] font-medium text-ink focus:outline-none focus:ring-1 focus:ring-accent-blue/50"
                     pattern="[A-Za-z0-9_-]+"
                   />
                   <button
@@ -736,7 +736,7 @@ export function AgentDetailModal({ agent, project, projectId, status, onClose, a
                   <button
                     type="button"
                     onClick={() => { setShowRenameInput(false) }}
-                    className="inline-flex h-7 cursor-pointer items-center rounded-[7px] border border-line bg-white px-3 text-[12px] font-medium text-ink transition hover:bg-canvas active:scale-[0.985]"
+                    className="inline-flex h-7 cursor-pointer items-center rounded-[7px] border border-line bg-card px-3 text-[12px] font-medium text-ink transition hover:bg-canvas active:scale-[0.985]"
                   >
                     Cancel
                   </button>
@@ -932,13 +932,15 @@ function AgentItem({ agent, project, onExpand }: {
       tabIndex={0}
       onClick={() => { onExpand(false) }}
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onExpand(false) } }}
-      className="mb-2 flex flex-col gap-1.5 animate-popIn cursor-pointer select-none rounded-[10px] border border-line bg-white px-3.5 py-2.5 shadow-card transition-shadow last:mb-0 hover:shadow-card-hover"
+      className="mb-2 flex flex-col gap-1.5 animate-popIn cursor-pointer select-none rounded-[10px] border border-line bg-card px-3.5 py-2.5 shadow-card transition-shadow last:mb-0 hover:shadow-card-hover"
       aria-label={`${agent.name} detail`}
     >
-      {/* Row 1 — project + name (left) / type + status (right) */}
-      <div className="flex items-center gap-2">
+      {/* Row 1 — project + name (left) / type + status (right). flex-wrap lets the
+          trailing pills flow onto a second line rather than squeezing the name span
+          below its min-width floor on narrow (real 3-column grid) card widths. */}
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
         <ProjectBadge name={project} />
-        <span className="min-w-0 flex-1 truncate text-[13px] font-semibold tracking-tight text-ink">{agent.name}</span>
+        <span className="min-w-[72px] flex-1 truncate text-[13px] font-semibold tracking-tight text-ink">{agent.name}</span>
         <UsageBadge agent={agent} />
         <AgentTypeBadge agent={agent} />
         <RoleBadge role={agent.role} />
@@ -1135,7 +1137,7 @@ function BgProcessRow({ bg }: { bg: BgProcess }) {
             type="button"
             onClick={() => { setConfirmingClose(true) }}
             disabled={acting !== null}
-            className="inline-flex h-7 cursor-pointer items-center rounded-[7px] border border-line bg-white px-3 text-[12px] font-medium text-ink-2 transition hover:bg-canvas active:scale-[0.985] disabled:pointer-events-none disabled:opacity-40"
+            className="inline-flex h-7 cursor-pointer items-center rounded-[7px] border border-line bg-card px-3 text-[12px] font-medium text-ink-2 transition hover:bg-canvas active:scale-[0.985] disabled:pointer-events-none disabled:opacity-40"
           >
             {acting === 'close' ? 'Closing…' : 'Close window'}
           </button>
@@ -1153,7 +1155,7 @@ function BgProcessRow({ bg }: { bg: BgProcess }) {
           type="button"
           onClick={() => { setConfirmingRemove(true) }}
           disabled={acting !== null}
-          className="inline-flex h-7 cursor-pointer items-center rounded-[7px] border border-line bg-white px-3 text-[12px] font-medium text-accent-red transition hover:border-accent-red/30 hover:bg-accent-red/5 active:scale-[0.985] disabled:pointer-events-none disabled:opacity-40"
+          className="inline-flex h-7 cursor-pointer items-center rounded-[7px] border border-line bg-card px-3 text-[12px] font-medium text-accent-red transition hover:border-accent-red/30 hover:bg-accent-red/5 active:scale-[0.985] disabled:pointer-events-none disabled:opacity-40"
         >
           {acting === 'remove' ? 'Removing…' : (bg.windowPresent ? 'Remove' : 'Remove definition')}
         </button>
@@ -1429,7 +1431,7 @@ export default function AgentList() {
       <div>
         <h1 className={sectionLabelCls}>tmux Conductor — Agents</h1>
         {isNotConnected ? (
-          <div className="rounded-[10px] border border-line bg-white px-5 py-5 shadow-card">
+          <div className="rounded-[10px] border border-line bg-card px-5 py-5 shadow-card">
             <p className="mb-1 text-[15px] font-semibold text-ink">Conductor host-server not reachable</p>
             <p className="text-[13px] leading-relaxed text-muted">
               Can&apos;t reach the conductor host-server. Make sure it&apos;s running on
@@ -1518,7 +1520,7 @@ export default function AgentList() {
           onChange={(e) => { setFilterText(e.target.value) }}
           placeholder="Filter agents by name, project, role, or branch…"
           aria-label="Filter agents"
-          className="mb-4 max-w-xs rounded-[8px] border border-line bg-white px-3 py-1.5 font-mono text-[12px] text-ink placeholder:text-muted-2 outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/10 disabled:opacity-40"
+          className="mb-4 max-w-xs rounded-[8px] border border-line bg-card px-3 py-1.5 font-mono text-[12px] text-ink placeholder:text-muted-2 outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/10 disabled:opacity-40"
         />
       )}
       {agents.length === 0 ? (

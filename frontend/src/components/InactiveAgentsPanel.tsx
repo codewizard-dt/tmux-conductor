@@ -73,7 +73,7 @@ export default function InactiveAgentsPanel() {
 
   return (
     <div
-      className="animate-riseIn rounded-card border border-line bg-white px-5 py-4 shadow-card cursor-pointer"
+      className="animate-riseIn rounded-card border border-line bg-card px-5 py-4 shadow-card cursor-pointer"
       onClick={() => { setCollapsed((v) => !v); }}
     >
       <button
@@ -125,7 +125,7 @@ export default function InactiveAgentsPanel() {
                         type="button"
                         onClick={(e) => { e.stopPropagation(); setPendingRemove(a); }}
                         disabled={busy}
-                        className="inline-flex h-7 flex-shrink-0 cursor-pointer items-center rounded-[7px] border border-line bg-white px-3 text-[12px] font-medium text-accent-red transition hover:border-accent-red/30 hover:bg-accent-red/5 active:scale-[0.985] disabled:pointer-events-none disabled:opacity-40"
+                        className="inline-flex h-7 flex-shrink-0 cursor-pointer items-center rounded-[7px] border border-line bg-card px-3 text-[12px] font-medium text-accent-red transition hover:border-accent-red/30 hover:bg-accent-red/5 active:scale-[0.985] disabled:pointer-events-none disabled:opacity-40"
                       >
                         Remove agent
                       </button>

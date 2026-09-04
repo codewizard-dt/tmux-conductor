@@ -1,0 +1,43 @@
+---
+id: ROADMAP-007
+aliases: [ROADMAP-007]
+title: Git workflow — worktree isolation, diff review, checkpoint & rollback
+status: done
+created: 2026-06-13
+updated: 2026-09-02
+owner: David Taylor
+linked_requirements: []
+linked_decisions: []
+tags: [git, workflow, isolation]
+---
+
+# Roadmap 007: Git workflow — worktree isolation, diff review, checkpoint & rollback
+
+## Goal
+
+Let an agent optionally run in its own isolated git worktree and branch so parallel agents never clobber each other, add a diff panel to the dashboard so changes are reviewable inline, and add checkpoint/rollback so every dispatch is reversible without leaving the UI.
+
+## Phase 1: Isolation
+
+- [x] [TASK-060](../tasks/TASK-060-agents-worktree-schema.md) Add `worktree_path` and `branch` columns to the `agents` SQLite table
+- [x] [TASK-061](../tasks/TASK-061-worktree-spawn.md) ~~On agent spawn from a project, detect if `workdir` is a git repo and call `git worktree add <path> -b <agent-branch>`; store path and branch in the `agents` row; skip silently for non-git workdirs~~ **Amended 2026-08-15**: this ran unconditionally for every agent whose workdir sat inside a git repo, with no way to opt out — it kept creating worktrees the user never asked for. Worktree creation is now **opt-in only**: a checkbox on `AddAgentForm` at agent-creation time, or a "Create worktree" button in the `AgentDetailModal` Details panel for an agent that already exists (`POST /agents/:id/worktree`, `host-server/db.ts#addWorktreeToAgent`). The path also moved from nested (`<gitRoot>/worktrees/<id>`) to a **sibling** of the repo root (`<parent-of-gitRoot>/<repo-name>-worktrees/<id>`, `git.ts#siblingWorktreePath`) so the source repo's own working tree stays clean.
+- [x] [TASK-062](../tasks/archive/TASK-062-branch-badge-ui.md) Display branch name badge on agent card in the dashboard
+- [x] [TASK-063](../tasks/TASK-063-worktree-teardown.md) On agent delete, run `git worktree remove --force <path>` to clean up
+
+## Phase 2: Review
+
+- [x] [TASK-064](../tasks/TASK-064-diff-endpoint.md) Add `GET /api/agents/:agent/diff` endpoint that runs `git -C <workdir> diff <base-branch>..HEAD`
+- [x] [TASK-065](../tasks/TASK-065-base-branch-endpoint.md) Add `GET /api/agents/:agent/base-branch` to auto-detect the default branch
+- [x] [TASK-066](../tasks/archive/TASK-066-diff-panel-ui.md) Render a unified diff panel in the `AgentDetailModal` (colour-coded additions/deletions)
+
+## Phase 3: Checkpoint & Rollback
+
+- [x] [TASK-067](../tasks/TASK-067-agent-checkpoints-table.md) Add `agent_checkpoints` table to SQLite (`agent_id`, `ts`, `stash_ref`)
+- [x] [TASK-068](../tasks/TASK-068-pre-dispatch-checkpoint.md) Before each task dispatch, take a git snapshot: `git stash push -m "conductor-checkpoint-<ts>"`
+- [x] [TASK-069](../tasks/TASK-069-checkpoints-list-endpoint.md) Expose `GET /api/agents/:agent/checkpoints` to list snapshots with timestamps
+- [x] [TASK-070](../tasks/TASK-070-rollback-endpoint.md) Add `POST /api/agents/:agent/rollback` endpoint to apply a selected checkpoint
+- [x] [TASK-071](../tasks/archive/TASK-071-checkpoint-ui.md) Display checkpoint list in `AgentDetailModal` with timestamps and per-checkpoint rollback button
+
+## Notes
+
+- **2026-08-15**: Worktrees made opt-in only (previously automatic on every git-repo agent spawn) and relocated to a sibling directory outside the repo root (previously nested at `<repo>/worktrees/<id>`, which showed up as untracked/embedded-repo content in `git status`). Two pre-existing nested worktrees (`worktrees/1` on `conductor/1`, `worktrees/12` on `conductor/12`) predate this change and were left in place rather than moved, since moving a live worktree out from under a running agent risks breaking its pane; `worktrees/` was added to `.gitignore` as a safety net. New opt-in worktrees always land in the sibling location.

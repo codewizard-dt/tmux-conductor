@@ -4,6 +4,13 @@ Terminal task files (`done` or `trashed`) moved here by `/wiki-archive` to reduc
 
 | ID | Title | Final Status | Archived |
 |----|-------|--------------|----------|
+| [[TASK-071]] | Checkpoint UI — AgentDetailModal checkpoint list with timestamps + per-checkpoint rollback button | done | 2026-09-02 |
+| [[TASK-074]] | Token/cost badge — compact usage badge on agent card header in dashboard | done | 2026-09-02 |
+| [[TASK-114]] | Role badge — colour-coded role badge on the agent card in the dashboard | done | 2026-09-02 |
+| [[TASK-119]] | Persist periodic liveUpdateMetrics snapshots to observability.jsonl so metrics survive a host-server restart | done | 2026-09-02 |
+| [[TASK-118]] | Calibrate host-server/perfBudgets.ts regression thresholds from captured baseline data | done | 2026-09-02 |
+| [[TASK-124]] | AgentList text filter — scale the dashboard past small agent counts | done | 2026-09-02 |
+| [[TASK-121]] | Remove monitor.sh's now-redundant dispatch block, reusing mark_busy to prevent double-dispatch races | done | 2026-09-01 |
 | [[TASK-002]] | Add better-sqlite3 dependency, data/ gitignore entry, and DB_PATH setting | done | 2026-06-14 |
 | [[TASK-076]] | Per-session usage breakdown — GET /agents/:id/usage endpoint + session table in AgentDetailModal | done | 2026-08-24 |
 | [[TASK-062]] | Branch badge — display branch name on agent card in dashboard | done | 2026-08-15 |
@@ -122,3 +129,7 @@ Terminal task files (`done` or `trashed`) moved here by `/wiki-archive` to reduc
 | [[TASK-115]] | Role selector — dropdown in AddAgentForm and the project-spawn UI in ProjectList | done | 2026-08-24 |
 | [[TASK-123]] | Replace window.confirm() destructive-action dialogs with the app's custom modal styling | done | 2026-08-24 |
 | [[TASK-126]] | Task history view — dashboard page reading completed tasks | done | 2026-08-24 |
+| [[TASK-122]] | Dashboard dark mode — theme toggle over the Tailwind color tokens | done | 2026-09-01 |
+| [[TASK-120]] | Collapse monitor.sh's 15s dispatch loop into the host-server's 2s status-poll loop | done | 2026-09-02 |
+| [[TASK-066]] | Diff panel UI — unified diff in AgentDetailModal (colour-coded additions/deletions) | done | 2026-09-02 |
+| [[TASK-117]] | Capture a representative period of real liveUpdateMetrics data from /api/perf/live-updates | done | 2026-09-02 |

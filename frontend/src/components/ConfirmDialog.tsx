@@ -31,7 +31,7 @@ export default function ConfirmDialog({ open, title, message, confirmLabel, canc
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
       onClick={handleOverlayClick}
     >
-      <div className="flex w-[420px] flex-col rounded-card border border-line bg-white shadow-pop">
+      <div className="flex w-[420px] flex-col rounded-card border border-line bg-card shadow-pop">
         <div className="px-5 py-4">
           {title && (
             <p className="mb-1.5 text-[13px] font-semibold tracking-tight text-ink">{title}</p>
@@ -42,7 +42,7 @@ export default function ConfirmDialog({ open, title, message, confirmLabel, canc
           <button
             type="button"
             onClick={onCancel}
-            className="cursor-pointer rounded-[6px] border border-line bg-white px-3 py-1.5 text-[12px] font-medium text-muted hover:text-ink hover:border-ink/30 transition"
+            className="cursor-pointer rounded-[6px] border border-line bg-card px-3 py-1.5 text-[12px] font-medium text-muted hover:text-ink hover:border-ink/30 transition"
           >
             {cancelLabel}
           </button>
