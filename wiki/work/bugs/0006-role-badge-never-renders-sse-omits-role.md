@@ -2,11 +2,11 @@
 id: BUG-0006
 aliases: [BUG-0006]
 title: "Role badge never renders — SSE agent-update payloads omit role, and SSE always wins the initial-load race"
-status: open
+status: closed
 severity: high
 priority: "—"
 created: 2026-08-24
-updated: 2026-08-24
+updated: 2026-09-03
 reporter: David Taylor
 assignee: "—"
 tags: "—"
@@ -54,11 +54,37 @@ Found during live Playwright-driven verification of UAT-114 (role badge UI) on 2
 
 ## Root Cause Analysis
 
-> _(filled at `/bug-close`)_
+Confirmed issue 1 exactly as filed, plus its underlying cause: `buildSnapshot()` (`host-server/index.ts:2251-2313`) sets `role: agent.role` in its per-agent object literal, and the `Snapshot` interface's inline agent type (`host-server/index.ts:621`, previously) never declared a `role` field at all — the object satisfied the type only because `agentStatuses` is built via `.map()` (not an inline literal assigned to `Snapshot`, so TypeScript's excess-property check never ran). That type gap is almost certainly *why* `role` was missed when the two SSE payload builders were written by hand: there was no compiler signal that a field existed on the runtime object but not on the type.
+
+Did a field-by-field diff of `buildSnapshot()`'s 24-field object literal (`id, name, projectId, projectName, state, status, mode, agentType, windowPresent, queuedTasks, launchCmd, workdir, worktreePath, branch, role, activeTask, label, linkedBg, usage` plus the 5 spread `AgentContext` fields `model, modelId, contextTokens, contextPct, contextLimit`) against both SSE builders:
+- Initial-connect resend (`host-server/index.ts:2168-2184` before fix): had all 24 fields except `role`.
+- Periodic diff-tick broadcast (`host-server/index.ts:2398-2422` before fix): had all 24 fields except `role`.
+
+`role` was the only field dropped at either site — no other silent omissions found.
+
+Issue 2 (`AgentList.tsx`'s `hasReceivedSSEStateRef` guard permanently discarding the correct initial REST fetch once SSE wins the race) is real but, on closer read, not actually load-bearing for this symptom: the initial-connect SSE resend (`GET /api/events`) sources its per-agent payload from `prevSnapshot`, which is itself built by `buildSnapshot()` — the exact same function that serves REST `GET /api/status`. Once the SSE builder carries every field `buildSnapshot()` sets (fixed below), "SSE wins the race" means the client gets the *same* correct data `buildSnapshot()` would have served over REST, not stale or different data. The race is only harmful when a field exists in `buildSnapshot()`'s per-agent shape but was forgotten in one of the two hand-maintained SSE builders — exactly what happened to `role` here.
 
 ## Resolution
 
-> _(filled at `/bug-close`)_
+1. Added `role: agent.role,` to the initial-connect SSE builder (`host-server/index.ts`, in the `for (const agent of prevSnapshot.agents)` loop inside `GET /api/events`) and to the periodic `broadcastSSE('agent-update', ...)` builder in `pollAndDiff`'s diff loop — both now source `role` the same way `buildSnapshot()` does, directly off the `Agent`-derived snapshot entry.
+2. Added the missing `role: string` field to the `Snapshot` interface's inline agent type (`host-server/index.ts:621`) so the type now matches what `buildSnapshot()` actually returns — this was required for `npm run typecheck` to pass once the SSE builders started reading `agent.role`, and closes the type gap that let the original omission go uncaught.
+3. Added a comment directly above the `Snapshot` interface (`host-server/index.ts`) flagging that every field in the per-agent shape must be mirrored in both SSE builders, since that field-parity gap — not the race itself — is the actual root cause class. This is a lightweight guardrail, not a race-guard refactor: `AgentList.tsx`'s `hasReceivedSSEStateRef` logic was deliberately left untouched (see analysis above — it's not a functional defect for this bug, and reworking a "discard vs. merge" state-sync pattern on the strength of one field-parity bug would be over-scoped for this fix).
+4. Confirmed `RoleBadge` (`frontend/src/components/AgentList.tsx:196-199`, rendered at lines 696 and 943) reads `agent.role` straight from component state with no additional gating — so once `role` is present on whichever payload (REST or SSE) wins the initial-load race, the badge renders. No frontend code change was needed for the reported symptom itself.
+
+Verification: `cd host-server && npm run typecheck` (clean) and `npm test` (89/89 pass, no regressions). Not verified live in a browser/Playwright (would require spinning up a real tmux session with a non-generic-role agent) — verification here is by code-path tracing: `buildSnapshot()` → `prevSnapshot` → SSE connect-resend → `AgentList.tsx` state → `RoleBadge`, confirmed field-complete at every hop.
+
+Root cause (field-parity gap, not the race) confirmed and fixed at the source, with a guardrail added against recurrence.
+
+### Regression tests
+
+Two sites needed covering, and each fires under different conditions, so each got a differently-shaped test:
+
+- **Initial-connect resend** (`GET /api/events`) — deterministically triggerable (fires synchronously on connect), so covered live: `scripts/verify-sse-role-payload.sh` boots a real host-server on a scratch `BACKEND_PORT` (never touches the live dev server's 8788) against a scratch DB, seeds a `role: 'security'` agent, connects to `/api/events` with `curl -sN`, and asserts the captured `agent-update` payload carries `"role":"security"`.
+- **Periodic diff-tick broadcast** (`pollAndDiff`) — fires on an internal polling interval this repo has no harness to trigger deterministically, so pinned statically instead: `host-server/sseRolePayloadParity.test.ts` regex-matches both hand-maintained `agent-update` object literals in `index.ts` and asserts each still contains `role: agent.role,` — the same "read the source, pin a specific call site" pattern already used by `perfBudgets.test.ts` (TASK-118) for an analogous field-parity guardrail.
+
+Confirmed both are meaningful, not tautological: reverted `role: agent.role,` from each site in turn and re-ran its corresponding test — the live SSE script failed with the payload missing `"role":"security"` (reproducing this bug's exact symptom), and the static test's regex match failed cleanly. Restored both, re-ran — all green. Full `npx tsc --noEmit`, `npx eslint .`, and `npm test` (111/111, up from 109 — the two new static test cases) clean throughout; live dev server on 8788 confirmed unaffected after each temporary edit.
+
+Closing per the lifecycle gate (root cause + fix + regression test) now that genuine regression tests exist for both sites, matching BUG-0004/0009/0010's precedent of building self-contained tests rather than waiting on an in-process Fastify harness.
 
 ## Related
 
