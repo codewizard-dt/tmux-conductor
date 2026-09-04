@@ -4,7 +4,7 @@ title: "BUG-0001 Background-Agent Detection: Payload Shape and Implementation Op
 updated: 2026-09-04
 sources:
   - ../../raw/research/bug-0001-background-agent-detection/index.md
-confidence: extracted
+confidence: ambiguous
 tags: [claude-code, hooks, subagents, dispatch, bug-0001]
 ---
 
@@ -18,7 +18,9 @@ Follow-up to `relates_to::[[stop-hook-subagent-detection]]` (2026-08-15), which 
 
 **New finding: the interactive prompt footer is a documented, more precisely-scoped alternative signal.** `← N agents` (N need input), `← for agents` (agents active, none need input — the exact missing case), `← N done` (transient). This is pane-observable, the same class of signal `uses::[[tmux-conductor]]`'s existing `AWAITING_PATTERN` mechanism already relies on for a structurally identical problem (Claude Code exposes no hook for "waiting on a human" either). The one gap: whether `← for agents` appears with zero background agents ever dispatched is not confirmed by documentation, and would need one live look (no global config required) before a pattern is safe to ship — a wrong assumption here would permanently block dispatch, worse than the original bug.
 
-Recommendation: build a pane-text heuristic off the footer hint as the primary mechanism (mirroring `AWAITING_PATTERN`'s existing design), keep the hook-based sentinel as a secondary signal for the narrower "needs input" case it already covers correctly, and defer live Notification-payload capture (which requires installing hooks into `~/.claude/settings.json`, a machine-wide change outside this repo) since it wouldn't resolve the actual gap even if it succeeded.
+Recommendation (as of this research): build a pane-text heuristic off the footer hint as the primary mechanism (mirroring `AWAITING_PATTERN`'s existing design), keep the hook-based sentinel as a secondary signal for the narrower "needs input" case it already covers correctly, and defer live Notification-payload capture (which requires installing hooks into `~/.claude/settings.json`, a machine-wide change outside this repo) since it wouldn't resolve the actual gap even if it succeeded.
+
+> **Contradiction / superseded (2026-09-04):** the footer-hint recommendation above is **disqualified**. A live read-only check (`tmux capture-pane` against 4 unrelated live agent panes) showed the `←` hint is **global/account-wide**, not scoped to the specific pane displaying it — all 4 panes showed an identical count reflecting one unrelated background sub-agent from an entirely different session. Matching on it per-agent would gate dispatch on unrelated machine-wide activity. While investigating why, found `~/.claude/jobs/<id>/state.json` — Claude Code's own internal per-background-job state, with a `state` field, a `linkScanPath` correlatable to a specific project, and a `fan` array of sub-tasks with `startedAt`/`doneAt` — structurally a much better signal, but undocumented private internal state with no stability contract (a materially different risk class than either option originally weighed). See `wiki/work/bugs/0001-false-idle-during-subagent-wait.md`'s 2026-09-04 update for the full finding. No option has been implemented; awaiting a user decision.
 
 relates_to::[[stop-hook-subagent-detection]]
 relates_to::[[idle-detection-vs-async-background-work]]
