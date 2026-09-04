@@ -1,6 +1,6 @@
 ---
 title: Wiki Index
-updated: 2026-08-15
+updated: 2026-09-04
 ---
 
 # Wiki Index — Home Map
@@ -29,6 +29,7 @@ The wiki is split into two domains with opposite organizing laws:
 - [AgentDetail Modal Redesign Research](knowledge/sources/agent-detail-modal-redesign.md) — terminal-first modal redesign: collapse the always-expanded Details+Queued-Tasks grid into the same `<details>` pattern used elsewhere, default Direct Input on open, double-click terminal to reuse the existing ⌥F fullscreen toggle
 - [Ensuring the Dashboard's Context-Window Percentage Is Always Correct](knowledge/sources/context-window-accuracy.md) — Sonnet 5 is 1M tokens unconditionally, not 200k; root-caused to `context.ts`'s family-substring `modelContextLimit()`; no live API exists to query context-window size
 - [Stop Hook Payload, Sub-Agent Detection, and a Sentinel-File Design for BUG-0001](knowledge/sources/stop-hook-subagent-detection.md) — Stop's payload has no outstanding-work signal; Claude Code's v2.1.198 background agents legitimately end the turn while work continues, resumed via new `Notification` subtypes `agent_needs_input`/`agent_completed`
+- [BUG-0001 Background-Agent Detection: Payload Shape and Implementation Options](knowledge/sources/bug-0001-background-agent-detection.md) — confirmed `agent_needs_input` only fires when input is genuinely needed, so BUG-0001's shipped sentinel fix misses autonomous no-input-needed agents; discovered the prompt-footer `← for agents` hint as a better-targeted pane-observable signal
 - [Agent Status Notification Banners Research](knowledge/sources/agent-status-notifications.md) — `awaiting`/`empty` statuses already labeled "waiting"/"no tasks"; reuses the existing `prevStatusRef` SSE transition tracking and `armInteract`/`interactSignal` modal-focus mechanism; no toast library needed
 
 ### Concepts

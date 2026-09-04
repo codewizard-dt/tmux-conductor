@@ -2,22 +2,27 @@
 id: claude-code-hooks
 title: Claude Code Hooks
 aliases: [hooks/, tmux-conductor hooks]
-updated: 2026-08-15
+updated: 2026-09-04
 sources:
   - ../../../raw/research/stop-hook-subagent-detection/index.md
+  - ../../../raw/research/bug-0001-background-agent-detection/index.md
 confidence: extracted
 tags: [hooks, claude-code, state-tracking]
 ---
 
 # Claude Code Hooks
 
-`hooks/` — the per-event Node.js scripts (`on-session-start.js`, `on-prompt-submit.js`, `on-stop.js`, `on-stop-failure.js`) that `uses::[[tmux-conductor]]` registers globally into `~/.claude/settings.json` via the repo-root `install-hooks.sh` + `hooks/register-hooks.jq`. All four delegate to the shared `hooks/lib/write-state.js`, which resolves the agent name (`CONDUCTOR_AGENT_NAME` env var, falling back to the tmux window name), drains stdin, and writes `idle`/`busy` to `$STATE_DIR/<agent>.state` — unconditionally, based only on which script ran. It also persists `transcript_path`/`session_id`/`model` into a `.meta.json` sidecar for the dashboard's context meter.
+`hooks/` — the per-event Node.js scripts (`on-session-start.js`, `on-prompt-submit.js`, `on-stop.js`, `on-stop-failure.js`, and — since the `derived_from::[[BUG-0001]]` fix, see below — `on-notification.js`) that `uses::[[tmux-conductor]]` registers globally into `~/.claude/settings.json` via the repo-root `install-hooks.sh` + `hooks/register-hooks.jq`. The first four delegate to the shared `hooks/lib/write-state.js`, which resolves the agent name (`CONDUCTOR_AGENT_NAME` env var, falling back to the tmux window name), drains stdin, and writes `idle`/`busy` to `$STATE_DIR/<agent>.state` — unconditionally, based only on which script ran. It also persists `transcript_path`/`session_id`/`model` into a `.meta.json` sidecar for the dashboard's context meter.
 
-`write-state.js` never inspects the hook JSON payload's `agent_id`/`agent_type` fields, and `on-stop.js` is registered under the `Stop` event only — never `SubagentStop` or `Notification`.
+`write-state.js` never inspects the hook JSON payload's `agent_id`/`agent_type` fields, and `on-stop.js` is registered under the `Stop` event only — never `SubagentStop`.
 
-## History: the removed Notification hook
+## History: the removed, then re-added, Notification hook
 
-A `Notification` hook (`on-notification.sh`) existed briefly (added 2026-04-16, commit `1f55cfe`) and routed `notification_type` (`idle_prompt→done`, `permission_prompt|elicitation_dialog→wait`, `auth_success→nop`, unknown→log-only) into the state file. It was deleted one day later (commit `a17ef24`) as part of a deliberate simplification collapsing the state vocabulary from four values (`done`/`working`/`wait`/`dispatching`) to two (`idle`/`busy`). The task doc driving that change gives vocabulary simplification as the sole rationale — it does not mention background-agent tracking, and predates Claude Code's background/async-agent `Notification` subtypes (`agent_needs_input`, `agent_completed`, shipped v2.1.198, ~July 2026) by about 2.5 months. See `relates_to::[[stop-hook-subagent-detection]]` — that research recommends resurrecting a narrow, purpose-built `Notification` hook scoped only to these two subtypes to fix `relates_to::[[BUG-0001]]`, without reopening the full vocabulary TASK-009 deliberately removed.
+A `Notification` hook (`on-notification.sh`) existed briefly (added 2026-04-16, commit `1f55cfe`) and routed `notification_type` (`idle_prompt→done`, `permission_prompt|elicitation_dialog→wait`, `auth_success→nop`, unknown→log-only) into the state file. It was deleted one day later (commit `a17ef24`) as part of a deliberate simplification collapsing the state vocabulary from four values (`done`/`working`/`wait`/`dispatching`) to two (`idle`/`busy`). The task doc driving that change gives vocabulary simplification as the sole rationale — it does not mention background-agent tracking, and predates Claude Code's background/async-agent `Notification` subtypes (`agent_needs_input`, `agent_completed`, shipped v2.1.198, ~July 2026) by about 2.5 months.
+
+**`hooks/on-notification.js` (Node.js, not the earlier `.sh`) was re-added** as part of the `derived_from::[[BUG-0001]]` fix, scoped narrowly to just `agent_needs_input` (writes a sentinel file under `$STATE_DIR/<agent>.pending-agents/`) and `agent_completed` (FIFO-removes the oldest sentinel) — every other `notification_type` stays a no-op, so the full `done`/`working`/`wait`/`dispatching` vocabulary TASK-009 removed stays collapsed. `host-server/pendingAgents.ts::hasPendingBackgroundAgents()` gates two dispatch call sites in `host-server/index.ts` on this sentinel directory being empty/stale.
+
+**As of 2026-09-04, this fix is confirmed incomplete for its primary case**: current Claude Code docs establish `agent_needs_input` fires *only* when a background agent needs a decision, never as a general "still running" signal — so an autonomous background agent that never needs input never gets a sentinel written for it. See `relates_to::[[bug-0001-background-agent-detection]]` for the full finding and a proposed pane-text-based complementary fix (mirroring `AWAITING_PATTERN`).
 
 ## Debugging
 

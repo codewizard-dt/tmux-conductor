@@ -1,42 +1,31 @@
 ---
 title: Hot Cache
-updated: 2026-08-15
+updated: 2026-09-04
 ---
 
 # Hot Cache
 
 Always-read-first summary of what changed most recently in this wiki. Regenerated in full on every wiki write — never appended.
 
-_Last updated: 2026-08-15_
+_Last updated: 2026-09-04_
 
 ## Key Recent Facts
 
-- **Agent status notification banners — research done, roadmap in progress.** New dashboard feature: dismissible top-right banners when an agent transitions into `awaiting` ("waiting") or `empty` ("no tasks") status, grace-period debounced against flicker, auto-dismiss on status-exit, click opens the agent's modal with the terminal focused for input. Both target statuses already exist and are already labeled exactly this way in `frontend/src/components/AgentList.tsx::STATUS_CONFIG`. Reuses two existing mechanisms directly: (1) the `agent-update` SSE handler's `prevStatusRef` transition tracker (currently drives the doorbell/chime sounds; `needsAttention()` = `awaiting || stalled` does NOT include `empty`, so the new feature needs its own transition predicate), and (2) `AgentDetailModal`'s `armInteract`→`interactSignal` mechanism for click-to-focus (`setExpandedAgent({ id, armInteract: true })` — same call the existing needs-attention card CTA makes). No toast library warranted — bespoke component, matches the codebase's hand-rolled-overlay convention (`ConfirmDialog`). Full report: `raw/research/agent-status-notifications/index.md`; wiki source page: `wiki/knowledge/sources/agent-status-notifications.md`.
-- **TASK-134 created (`todo`, 2026-08-15)** — user-requested "Clone" button in `AgentDetailModal`'s header row (alongside Rename/Close agent/Remove agent). New `POST /agents/:id/clone` loads the source agent, derives a unique `<name>-copy` name (bumping on collision, scoped like the existing `idx_agents_project_name`/`idx_agents_null_name` uniqueness), and calls the existing `createAgent()` with `useWorktree` mirroring whether the source agent has a `worktreePath` — so a worktree-backed agent clones into a fresh worktree + `conductor/<id>` branch, a plain agent clones into the shared workdir. No confirmation dialog (non-destructive), no new modal. No dependencies on other active tasks; not linked to a decision or roadmap. Next step `/tackle wiki/work/tasks/TASK-134-clone-agent-button.md`.
-- **TASK-133 (`todo`)** — BUG-0001's fix task, behaviorally confirmed via a 3-screenshot live repro: a `/power-mode roadmap 7` agent legitimately goes idle mid-run while its own background `/uat-auto` sub-agents are still running, and the conductor dispatches the next queued task into the **same pane**, interleaving two roadmap runs. Scope: (1) narrow `hooks/on-notification.js`, log-only first, to confirm live `agent_needs_input`/`agent_completed` payload shapes; (2) per-outstanding-agent sentinel file under `$STATE_DIR/<agent>.pending-agents/`; (3) gate `scripts/monitor.sh`'s dispatch call site (`monitor.sh:425-447`) on it, generous staleness fallback — explicitly not a fixed grace period. No hard dependency on TASK-120/121. Next step `/tackle wiki/work/tasks/TASK-133-sentinel-gate-background-agent-dispatch.md`.
-- **BUG-0001**: `in-progress`, P1/critical. Root cause: Claude Code's background/async agents (v2.1.198+) legitimately end the outer turn while spawned work continues. Do not `/bug-close` until TASK-133's UAT verifies the fix.
-- **TASK-132 (`todo`)**: context-window badge false "333k/200k" overflow for Sonnet 5 (actually 1M unconditionally) — `host-server/context.ts`'s `modelContextLimit()` only special-cases `"opus"`. Next step `/tackle wiki/work/tasks/TASK-132-context-window-limit-accuracy.md`.
-- **Agent record shape** (`host-server/db.ts` `Agent` interface): `id, name, workdir, launchCmd, projectId, projectName, worktreePath, branch, role, createdAt`. No existing clone/duplicate concept anywhere in the codebase before TASK-134.
-- **User preference learned**: when a small bug is reported alongside a `/tackle` invocation, add it as a task step rather than reflexively running `/bug-file`.
-- **No `*.test.tsx` files exist anywhere in this repo yet.**
-- **`Cmd+←`/`→`** reserved for previous/next agent; **`Alt+F`** reserved for expand/collapse.
-- **DEC-0001 (Conductor Usage-Check Hardening)** fully `accepted`/archived — `USAGE_CHECK_CMD='true'` is correct.
-- **Filed but not implemented**: TASK-128 (monitor.sh single-instance lock), TASK-129 (verify-sqlite-migration.sh port 8788 hazard).
-- **ROADMAP-010 Phase 3** nearly closed — only TASK-114/115 UATs remain.
-- Hot-file discipline: `host-server/index.ts`, `host-server/db.ts`, `frontend/src/components/AgentList.tsx`, `frontend/src/lib/api.ts`, `host-server/context.ts`, `scripts/monitor.sh`, and `hooks/` — re-read immediately before every edit.
+- **All bugs closed except BUG-0001.** BUG-0009 (teardown.sh window-name mapping), BUG-0004 + BUG-0010 (diff endpoint worktreePath + uncommitted-changes fixes, shared one regression test), and BUG-0006 (SSE role-payload, two regression tests for its two call sites) all closed with real regression tests this session, following a pattern of building self-contained `scripts/verify-*.sh` live-subprocess tests (booting a real host-server on a scratch port, never the live dev server's 8788) rather than waiting on an in-process Fastify HTTP-route harness that doesn't exist.
+- **BUG-0001 is the sole active bug, `in-progress`, P1** — and its shipped fix (event-driven sentinel on the `Notification` hook's `agent_needs_input`/`agent_completed`) is now confirmed (via current docs, not just inference) to miss the scenario that motivated the bug report: `agent_needs_input` fires only when a background agent genuinely needs input, never as a "still running" ping, so an autonomous background sub-agent that never needs input gets no sentinel. See `wiki/knowledge/sources/bug-0001-background-agent-detection.md` for the full research and `wiki/work/bugs/0001-false-idle-during-subagent-wait.md`'s dated Update section.
+- **New candidate signal found for BUG-0001**: the interactive prompt footer's `←` hint (`← N agents` / `← for agents` / `← N done`) — pane-observable, same class of mechanism as this repo's existing `AWAITING_PATTERN`. Its behavior with zero background agents ever dispatched isn't confirmed by docs; one live look (no global config needed) is the next step before writing a pattern. User is deciding next steps — not yet implemented.
+- **Repo-wide pre-commit hook is a recurring friction point**: `npm run lint`/`typecheck` runs across the *entire* working tree at commit time, not just staged files — any pre-existing error anywhere blocks every commit. Hit this closing BUG-0009 (had to fix 15 lint + 2 typecheck errors in unrelated untracked files first). Flagged as worth scoping to staged-only (e.g. lint-staged) but not yet done.
+- **Large pre-existing uncommitted backlog remains** in the repo from sessions well before this one (most `frontend/src/components/*.tsx`, `host-server/index.ts`, `config.ts`, `conductor.conf`, several `wiki/work/*` files, loose screenshot PNGs at repo root) — this session's commits were deliberately scoped to touch only the specific files each fix needed, never swept up in that backlog.
 
 ## Recent Changes
 
-- Created: `raw/research/agent-status-notifications/index.md` + `sources.md`, `wiki/knowledge/sources/agent-status-notifications.md`.
-- Updated: `wiki/knowledge/entities/components/agent-detail-modal.md` (cross-link to the new research), `wiki/index.md`, `wiki/log.md`.
-- Earlier today: TASK-134 created (Clone button); TASK-133 created (BUG-0001 fix); `wiki/work/bugs/0001-false-idle-during-subagent-wait.md` filed + triaged; `raw/research/stop-hook-subagent-detection/` + its wiki pages added; TASK-132 created; context-window-accuracy research/wiki pages added; TASK-131/UAT-131 archived.
+- **Fixed & committed**: `scripts/teardown.sh` (`e770dfe`), `host-server/index.ts` diff endpoint + SSE builders (`602f996`, `502bb72`), `wiki/work/bugs/0001-*.md` docs-only update (`ed424f7`).
+- **Created**: `scripts/verify-teardown-window-mapping.sh`, `scripts/verify-diff-endpoint-worktree-and-uncommitted.sh`, `scripts/verify-sse-role-payload.sh`, `host-server/sseRolePayloadParity.test.ts` — all committed. `raw/research/bug-0001-background-agent-detection/` (index.md + sources.md) — new research, just ingested.
+- **Updated (this ingest)**: `wiki/knowledge/sources/bug-0001-background-agent-detection.md` (new), `wiki/knowledge/entities/tools/claude-code-cli.md`, `wiki/knowledge/entities/components/claude-code-hooks.md` (fixed staleness: `on-notification.js` was re-added, page still said only 4 hooks exist), `wiki/knowledge/concepts/idle-detection-vs-async-background-work.md` (contradiction/refinement flagged, `confidence: ambiguous`).
+- **Bug bookkeeping**: `wiki/work/bugs/index.md` now lists only BUG-0001; BUG-0004/0006/0009/0010 all flipped to `closed`.
 
 ## Active Threads
 
-- **Agent status notification banners**: research complete (`wiki/knowledge/sources/agent-status-notifications.md`), roadmap creation in progress via `/roadmap-create` — no roadmap file written yet as of this hot-cache refresh.
-- **TASK-134**: `todo` — Clone button in AgentDetailModal. Next step `/tackle wiki/work/tasks/TASK-134-clone-agent-button.md`.
-- **TASK-133**: `todo` — BUG-0001's fix (investigation + sentinel gate). Next step `/tackle wiki/work/tasks/TASK-133-sentinel-gate-background-agent-dispatch.md`. Do not run `/bug-close BUG-0001` until this task's UAT verifies the fix.
-- **TASK-132**: `todo` — context-window limit accuracy fix. Next step `/tackle wiki/work/tasks/TASK-132-context-window-limit-accuracy.md`.
-- **Interact-mode input fix**: root-caused in `raw/research/terminal-keyboard-clipboard/index.md`; no task filed yet.
-- **Dual-monitor race**: TASK-128 (`todo`). **verify-sqlite-migration.sh port hazard**: TASK-129 (`todo`).
-- **ROADMAP-010**: only TASK-114/115 UATs remain. **ROADMAP-007**: TASK-062/066/071 open. **ROADMAP-017**: Phase 1/2 pending, TASK-122/124/126 `todo`.
+- **BUG-0001** (`in-progress`, P1): waiting on the user's decision — pane-text heuristic (footer hint), live payload capture (needs global `~/.claude/settings.json` hook install, explicit go-ahead required), or both. See the source page above for the full comparison.
+- **Pre-commit hook scoping**: unresolved friction, worth a future task (lint-staged or equivalent) — not yet filed as a task or bug.
+- Carried forward, not touched this session: **TASK-135** (dark-mode surface-literal sweep, `todo`), **TASK-134** (Clone button in AgentDetailModal, `todo`), **TASK-132** (context-window limit accuracy, `todo`), **TASK-128/129** (monitor.sh single-instance lock; verify-sqlite-migration.sh port hazard, `todo`) — status not re-verified this session, may be stale.

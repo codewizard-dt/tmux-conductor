@@ -2,12 +2,13 @@
 id: claude-code-cli
 title: Claude Code CLI
 aliases: [claude, Claude Code]
-updated: 2026-08-15
+updated: 2026-09-04
 sources:
   - ../../../raw/research/claude-usage-quota-signal/index.md
   - ../../../raw/research/terminal-keyboard-clipboard/index.md
   - ../../../raw/research/context-window-accuracy/index.md
   - ../../../raw/research/stop-hook-subagent-detection/index.md
+  - ../../../raw/research/bug-0001-background-agent-detection/index.md
 confidence: extracted
 tags: [claude-code, cli]
 ---
@@ -45,4 +46,8 @@ As of this research: Claude Sonnet 5 has a 1M-token context window as its **only
 
 ## Background/async agents (shipped v2.1.198, ~July 2026)
 
-As of Claude Code v2.1.198, background agents run by default: a session can dispatch an agent that keeps running detached while the outer turn legitimately ends (a genuine `Stop`), then resumes the conversation later via Claude Code's own async task-notification machinery. The `Notification` hook event gained two new `notification_type` values for this: `agent_needs_input` (background agent needs input) and `agent_completed` (background agent finished) — alongside the pre-existing `permission_prompt`, `idle_prompt`, `auth_success`, `elicitation_dialog`, `elicitation_url_dialog`, `elicitation_complete`, `elicitation_response`. This is a **different mechanism** from the classic synchronous Task tool, whose `SubagentStart`/`SubagentStop` events nest inside the outer turn and only resolve before `Stop` ever fires — `Stop`'s own JSON payload has no field indicating outstanding background work either way. See `relates_to::[[stop-hook-subagent-detection]]` and `relates_to::[[Claude Code Hooks]]`.
+As of Claude Code v2.1.198, background agents run by default: a session can dispatch an agent that keeps running detached while the outer turn legitimately ends (a genuine `Stop`), then resumes the conversation later via Claude Code's own async task-notification machinery. The `Notification` hook event gained two new `notification_type` values for this: `agent_needs_input` (background agent needs input) and `agent_completed` (background agent finished **or failed**) — alongside the pre-existing `permission_prompt`, `idle_prompt`, `auth_success`, `elicitation_dialog`, `elicitation_url_dialog`, `elicitation_complete`, `elicitation_response`, and (as of this update) `quota_auto_resume_fired`/`quota_auto_resume_stale`/`quota_auto_resume_disabled`. This is a **different mechanism** from the classic synchronous Task tool, whose `SubagentStart`/`SubagentStop` events nest inside the outer turn and only resolve before `Stop` ever fires — `Stop`'s own JSON payload has no field indicating outstanding background work either way. See `relates_to::[[stop-hook-subagent-detection]]` and `relates_to::[[Claude Code Hooks]]`.
+
+**`agent_needs_input` fires only when a decision is genuinely needed — confirmed 2026-09-04, not a general "still running" ping.** A background agent that runs to completion without ever needing input never triggers it. `agent_id`/`agent_type` (the common hook fields) do **not** identify which background job a Notification refers to — they describe whether the current hook-firing process is itself a subagent. No per-background-job correlator field was found documented anywhere on the Notification payload.
+
+**The interactive prompt footer's `←` hint is a separate, more precisely-scoped background-agent signal**, independent of hooks entirely: `← N agents` (N need input), `← for agents` (agents active, none currently need input), `← N done` (transient, shown when agents complete while none need input). Background sessions also have a short ID (directory name under `~/.claude/jobs/<id>`) and a full `sessionId`, usable with `claude --resume`. See `relates_to::[[bug-0001-background-agent-detection]]`.
