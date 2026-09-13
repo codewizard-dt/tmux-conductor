@@ -6,6 +6,11 @@ import {
   createProject,
   addTask,
   listCompletedTasks,
+  deriveCloneName,
+  createBgProcess,
+  listBgProcesses,
+  deleteBgProcess,
+  deleteAgent,
 } from './db.ts';
 import type Database from 'better-sqlite3';
 
@@ -55,6 +60,93 @@ void test('TASK-126: listCompletedTasks returns only status=done rows ordered by
     // (d) limit caps the result count while preserving DESC order.
     const limited = listCompletedTasks(db, { limit: 2 });
     assert.deepEqual(limited.map(t => t.id), [t2.id, t3.id]);
+  } finally {
+    db.close();
+  }
+});
+
+// TASK-148: deriveCloneName derives a collision-avoided "<name>-copy",
+// "-copy-2", ... name for POST /agents/:id/clone, scoped by project_id the
+// same way agent-name uniqueness itself is scoped (idx_agents_project_name /
+// idx_agents_null_name).
+void test('TASK-148: deriveCloneName picks "<name>-copy", falls back to "-copy-2"/"-copy-3" on collision, and scopes collisions by project_id', () => {
+  const db = openDb(':memory:');
+  try {
+    // (a) No existing "<name>-copy" agent — base name is free.
+    const globalAgent = createAgent(db, { name: 'uat148-agent', workdir: '/tmp/uat148-a', launchCmd: 'claude' });
+    assert.equal(deriveCloneName(db, globalAgent), 'uat148-agent-copy');
+
+    // (b) "<name>-copy" already exists (globally scoped, projectId null) — falls back to "-copy-2".
+    createAgent(db, { name: 'uat148-agent-copy', workdir: '/tmp/uat148-a-copy', launchCmd: 'claude' });
+    assert.equal(deriveCloneName(db, globalAgent), 'uat148-agent-copy-2');
+
+    // (c) "<name>-copy-2" also taken — falls back to "-copy-3".
+    createAgent(db, { name: 'uat148-agent-copy-2', workdir: '/tmp/uat148-a-copy-2', launchCmd: 'claude' });
+    assert.equal(deriveCloneName(db, globalAgent), 'uat148-agent-copy-3');
+
+    // (d) Project scoping: a same-named "<name>-copy" agent in a DIFFERENT
+    // project must not count as a collision for a project-scoped source agent.
+    const projectX = createProject(db, { name: 'uat148-project-x', workdir: '/tmp/uat148-proj-x' });
+    const projectY = createProject(db, { name: 'uat148-project-y', workdir: '/tmp/uat148-proj-y' });
+    const agentInX = createAgent(db, { name: 'uat148-scoped', workdir: '/tmp/uat148-x', launchCmd: 'claude', projectId: projectX.id });
+    createAgent(db, { name: 'uat148-scoped-copy', workdir: '/tmp/uat148-y-copy', launchCmd: 'claude', projectId: projectY.id });
+    assert.equal(deriveCloneName(db, agentInX), 'uat148-scoped-copy', 'a same-name collision in a different project must not affect this project-scoped agent');
+
+    // (e) Project scoping: a same-named "<name>-copy" agent in the SAME
+    // project DOES collide and forces "-copy-2".
+    createAgent(db, { name: 'uat148-scoped-copy', workdir: '/tmp/uat148-x-copy', launchCmd: 'claude', projectId: projectX.id });
+    assert.equal(deriveCloneName(db, agentInX), 'uat148-scoped-copy-2');
+  } finally {
+    db.close();
+  }
+});
+
+// TASK-159: createBgProcess, listBgProcesses, and deleteBgProcess CRUD operations
+// are now the sole source of truth for bg-process definitions (replacing conductor.conf).
+void test('TASK-159: createBgProcess, listBgProcesses, deleteBgProcess provide full CRUD for bg processes with linked agent support', () => {
+  const db = openDb(':memory:');
+  try {
+    // (a) listBgProcesses returns empty list initially.
+    assert.deepEqual(listBgProcesses(db), []);
+
+    // (b) createBgProcess without linkedAgentId returns a row with null linkedAgentId.
+    const bg1 = createBgProcess(db, { name: 'bg-test-1', workdir: '/tmp/bg1', launchCmd: 'npm run dev' });
+    assert.equal(bg1.name, 'bg-test-1');
+    assert.equal(bg1.workdir, '/tmp/bg1');
+    assert.equal(bg1.launchCmd, 'npm run dev');
+    assert.equal(bg1.linkedAgentId, null);
+
+    // (c) listBgProcesses returns the created row ordered by name.
+    const list1 = listBgProcesses(db);
+    assert.equal(list1.length, 1);
+    assert.deepEqual(list1[0], bg1);
+
+    // (d) createBgProcess with linkedAgentId set correctly.
+    const agent = createAgent(db, { name: 'test-agent', workdir: '/tmp/agent', launchCmd: 'claude' });
+    const bg2 = createBgProcess(db, { name: 'bg-test-2', workdir: '/tmp/bg2', launchCmd: 'npm run server', linkedAgentId: agent.id });
+    assert.equal(bg2.name, 'bg-test-2');
+    assert.equal(bg2.linkedAgentId, agent.id);
+
+    // (e) listBgProcesses returns both rows ordered by name.
+    const list2 = listBgProcesses(db);
+    assert.equal(list2.length, 2);
+    assert.deepEqual(list2.map(b => b.name), ['bg-test-1', 'bg-test-2']);
+
+    // (f) deleteBgProcess removes a row by id.
+    deleteBgProcess(db, bg1.id);
+    const list3 = listBgProcesses(db);
+    assert.equal(list3.length, 1);
+    assert.ok(list3[0] !== undefined);
+    assert.deepEqual(list3[0].name, 'bg-test-2');
+
+    // (g) Foreign key cascade: when an agent is deleted, linked_agent_id goes to NULL
+    // (ON DELETE SET NULL) but the bg_process row itself survives.
+    deleteAgent(db, agent.id);
+    const list4 = listBgProcesses(db);
+    assert.equal(list4.length, 1);
+    assert.ok(list4[0] !== undefined);
+    assert.equal(list4[0].id, bg2.id);
+    assert.equal(list4[0].linkedAgentId, null, 'linkedAgentId should be NULL after agent deletion');
   } finally {
     db.close();
   }

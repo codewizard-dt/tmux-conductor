@@ -9,10 +9,10 @@ import fastifyCors from '@fastify/cors';
 import fastifyStatic from '@fastify/static';
 import fastifyWebsocket from '@fastify/websocket';
 import type { WebSocket } from 'ws';
-import { readConductorConf, DEFAULT_CONF_PATH, appendBgProcessToConf, removeBgProcessFromConf, removeBgLink, addBgLink, clearConfCache, type ConductorConf } from './config.ts';
+import { readConductorConf, DEFAULT_CONF_PATH, clearConfCache, type ConductorConf } from './config.ts';
 import type Database from 'better-sqlite3';
-import { openDb, getDbPath, listAgents, getAgentById, createAgent, addWorktreeToAgent, clearAgentWorktree, deleteAgent, updateAgentName, agentWindowName, addTask, deleteTask, reorderTasks, jumpTaskToHead, listTasksForAgentId, listTasksByProject, listCompletedTasks, listProjects, createProject, updateProject, deleteProject, nextAgentName, listSchedules, createSchedule, updateSchedule, deleteSchedule, dueSchedules, fireSchedule, getAllAgentUsageTotals, listAgentUsage, listCheckpoints, insertCheckpoint, getCheckpoint, listTerminalLog, appendTerminalLogChunk, popTask, type AgentUsageTotals, type Agent } from './db.ts';
-import { detectAgentStatus, detectAgentMode, detectAgentType, readTmuxWindowInventory, isTmuxWindowPresent, windowState, getActiveTask, capturePaneTail as capturePaneTailUninstrumented, capturePaneTailRaw as capturePaneTailRawUninstrumented, sendTextToPane, extractPaneLabel, applyGlobalPaneSize, type AgentMode, type AgentRunState, type AgentType } from './state.ts';
+import { openDb, getDbPath, listAgents, getAgentById, createAgent, deriveCloneName, addWorktreeToAgent, clearAgentWorktree, deleteAgent, updateAgentName, agentWindowName, addTask, deleteTask, reorderTasks, jumpTaskToHead, listTasksForAgentId, listTasksByProject, listCompletedTasks, listProjects, createProject, updateProject, deleteProject, nextAgentName, listSchedules, createSchedule, updateSchedule, deleteSchedule, dueSchedules, fireSchedule, getAllAgentUsageTotals, listAgentUsage, listCheckpoints, insertCheckpoint, getCheckpoint, listTerminalLog, appendTerminalLogChunk, popTask, createBgProcess, deleteBgProcess, listBgProcesses, type AgentUsageTotals, type Agent } from './db.ts';
+import { detectAgentStatus, detectAgentMode, detectAgentType, readTmuxWindowInventory, isTmuxWindowPresent, windowState, getActiveTask, capturePaneTail as capturePaneTailUninstrumented, capturePaneTailRaw as capturePaneTailRawUninstrumented, sendTextToPane, extractPaneLabel, applyGlobalPaneSize, type AgentMode, type AgentRunState, type AgentType, type DetectionReason } from './state.ts';
 import { getAgentContext, getCodexAgentContext, type AgentContext } from './context.ts';
 import dotenv from 'dotenv';
 import { getUserSkills, getPluginSkills, getProjectSkills } from './skills.ts';
@@ -146,9 +146,12 @@ interface BgStatus {
 }
 
 function buildBgStatuses(conf: ReturnType<typeof readConductorConf>, windowInventory?: Map<string, string>): BgStatus[] {
-  const { sessionName, stateDir, logDir, bgProcesses, agentBgLinks } = conf;
+  const { sessionName, stateDir, logDir } = conf;
+  const bgProcesses = listBgProcesses(db);
+  const agents = listAgents(db);
+  
   return bgProcesses.map((bg) => {
-    const linkedAgent = Object.entries(agentBgLinks).find(([, v]) => v === bg.name)?.[0] ?? null;
+    const linkedAgent = bg.linkedAgentId !== null ? (agents.find((a) => a.id === bg.linkedAgentId)?.name ?? null) : null;
     const statePath = path.join(stateDir, `bg-${bg.name}.state`);
     let bgState: string | null = null;
     try { bgState = readFileSync(statePath, 'utf8').trim(); } catch { /* not written yet */ }
@@ -229,7 +232,7 @@ function refreshAgentContextCache(conf: ReturnType<typeof readConductorConf>): v
     const paneCurrentCommand = inventory.windows.get(wn) ?? null;
     const windowPresent = paneCurrentCommand !== null;
     const tail15 = windowPresent ? capturePaneTail(sessionName, wn, 15, 'status') : '';
-    const state = detectAgentStatus(conf, wn, agent.launchCmd, tail15 || undefined, windowPresent, paneCurrentCommand);
+    const { state, reason, matchedPattern } = detectAgentStatus(conf, wn, agent.launchCmd, tail15 || undefined, windowPresent, paneCurrentCommand);
     const isBusy = state === 'busy' || state === 'awaiting' || state === 'stalled';
     const agentType = detectAgentType(agent.launchCmd);
     const ctx = windowPresent
@@ -436,6 +439,20 @@ function appendObservabilityLog(event: string, payload: Record<string, unknown>)
     appendFileSync(
       path.join(logDir, 'observability.jsonl'),
       `${JSON.stringify({ ts: new Date().toISOString(), event, ...payload })}\n`,
+    );
+  } catch {
+    /* observability logging must never break the control plane */
+  }
+}
+
+
+function appendTransitionLog(payload: Record<string, unknown>): void {
+  try {
+    const { logDir } = readConductorConf();
+    mkdirSync(logDir, { recursive: true });
+    appendFileSync(
+      path.join(logDir, 'transitions.jsonl'),
+      `${JSON.stringify({ ts: new Date().toISOString(), ...payload })}\n`,
     );
   } catch {
     /* observability logging must never break the control plane */
@@ -912,7 +929,7 @@ await fastify.register((api) => {
     // live in a `${project}-${name}` window and the hooks write that state file).
     if (
       foundAgent !== undefined &&
-      detectAgentStatus(readConductorConf(), agentWindowName(foundAgent), foundAgent.launchCmd) === 'idle' &&
+      detectAgentStatus(readConductorConf(), agentWindowName(foundAgent), foundAgent.launchCmd).state === 'idle' &&
       listTasksForAgentId(db, foundAgent.id, foundAgent.projectId).length === 0
     ) {
       const conf = readConductorConf();
@@ -1030,7 +1047,7 @@ await fastify.register((api) => {
     {
       const windowPresent = isTmuxWindowPresent(conf.sessionName, winName);
       const tail15 = windowPresent ? capturePaneTail(conf.sessionName, winName, 15, 'agent-window') : '';
-      const state = detectAgentStatus(conf, winName, launchCmd, tail15 || undefined);
+      const { state, reason, matchedPattern } = detectAgentStatus(conf, winName, launchCmd, tail15 || undefined);
       const isBusy = state === 'busy' || state === 'awaiting' || state === 'stalled';
       const agentType = detectAgentType(launchCmd);
       const ctx = getContextForAgent(conf, agentType, winName, workdir, isBusy, tail15 || undefined);
@@ -1093,7 +1110,7 @@ await fastify.register((api) => {
     {
       const windowPresent = isTmuxWindowPresent(conf.sessionName, winName);
       const tail15 = windowPresent ? capturePaneTail(conf.sessionName, winName, 15, 'mode-switch') : '';
-      const state = detectAgentStatus(conf, winName, entry.launchCmd, tail15 || undefined);
+      const { state, reason, matchedPattern } = detectAgentStatus(conf, winName, entry.launchCmd, tail15 || undefined);
       const isBusy = state === 'busy' || state === 'awaiting' || state === 'stalled';
       const agentType = detectAgentType(entry.launchCmd);
       const ctx = getContextForAgent(conf, agentType, winName, entry.workdir, isBusy, tail15 || undefined);
@@ -1437,6 +1454,52 @@ await fastify.register((api) => {
     return reply.send({ ok: true, agent: updated });
   });
 
+  // Clone an existing agent: same workdir/launchCmd/project/role/worktree-ness,
+  // a derived unique name (deriveCloneName), and a freshly spawned tmux window
+  // — the dashboard's "Clone" action. Mirrors POST /agents' create-then-spawn
+  // flow, pre-filled from the source agent instead of the request body.
+  api.post<{ Params: { id: string } }>('/agents/:id/clone', async (req, reply) => {
+    const agentId = parseInt(req.params.id, 10);
+    if (isNaN(agentId)) return reply.status(400).send({ error: 'invalid agent id' });
+
+    const source = getAgentById(db, agentId);
+    if (!source) {
+      return reply.status(404).send({ error: `agent ${String(agentId)} not found` });
+    }
+
+    const conf = readConductorConf();
+    const derivedName = deriveCloneName(db, source);
+
+    const newAgent = createAgent(db, {
+      name: derivedName,
+      workdir: source.workdir,
+      launchCmd: source.launchCmd,
+      ...(source.projectId != null ? { projectId: source.projectId } : {}),
+      role: source.role,
+      useWorktree: Boolean(source.worktreePath),
+    });
+    const winName = agentWindowName(newAgent);
+    spawnAgentWindow(newAgent, conf);
+
+    // Immediately notify SSE clients — don't wait for the next poll tick.
+    {
+      const windowPresent = isTmuxWindowPresent(conf.sessionName, winName);
+      const tail15 = windowPresent ? capturePaneTail(conf.sessionName, winName, 15, 'agent-window') : '';
+      const { state } = detectAgentStatus(conf, winName, newAgent.launchCmd, tail15 || undefined);
+      const isBusy = state === 'busy' || state === 'awaiting' || state === 'stalled';
+      const agentType = detectAgentType(newAgent.launchCmd);
+      const ctx = getContextForAgent(conf, agentType, winName, newAgent.workdir, isBusy, tail15 || undefined);
+      broadcastSSE('agent-update', {
+        id: newAgent.id, name: newAgent.name, projectId: newAgent.projectId, projectName: newAgent.projectName,
+        state, mode: windowPresent ? detectAgentMode(conf, winName, newAgent.launchCmd, tail15) : 'unknown',
+        agentType,
+        windowPresent, queuedTasks: 0, launchCmd: newAgent.launchCmd, workdir: newAgent.workdir, linkedBg: null, activeTask: null, ...ctx,
+      });
+    }
+
+    return reply.status(201).send({ ok: true, agent: newAgent });
+  });
+
   // Read-only tail of an agent's tmux pane output (including scrollback), so
   // the dashboard can show what the agent is printing.
   api.get<{ Params: { id: string }; Querystring: { lines?: string } }>('/agents/:id/tail', (req, reply) => {
@@ -1777,20 +1840,25 @@ await fastify.register((api) => {
     if (isTmuxWindowPresent(sessionName, name)) {
       return reply.status(409).send({ error: 'window already exists' });
     }
-    if (conf.bgProcesses.some((b) => b.name === name)) {
+    if (listBgProcesses(db).some((b) => b.name === name)) {
       return reply.status(409).send({ error: `bg process '${name}' already defined` });
     }
     if (linkedAgent !== undefined && typeof linkedAgent !== 'string') {
       return reply.status(400).send({ error: 'linkedAgent must be a string' });
     }
 
-    // conductor.conf is authoritative for bg processes (what conductor.sh spawns
-    // and teardown.sh kills) — write the definition there, not the DB.
-    await appendBgProcessToConf(conf._confPath, name, workdir, launchCmd);
+    // Resolve linkedAgent name to id
+    let linkedAgentId: number | undefined;
     if (linkedAgent) {
-      await addBgLink(conf._confPath, linkedAgent, name);
+      const agent = listAgents(db).find((a) => a.name === linkedAgent);
+      if (!agent) {
+        return reply.status(400).send({ error: `linkedAgent '${linkedAgent}' not found` });
+      }
+      linkedAgentId = agent.id;
     }
-    clearConfCache();
+
+    // Write the definition to SQLite — conductor.sh/spawn.sh load from there
+    createBgProcess(db, { name, workdir, launchCmd, ...(linkedAgentId !== undefined && { linkedAgentId }) });
 
     execSync(`tmux new-window -t ${sessionName} -n ${name} -c ${workdir}`, { timeout: TMUX_SYNC_TIMEOUT_MS });
     execSync(`tmux send-keys -t ${sessionName}:${name} "${launchCmd}" Enter`, { timeout: TMUX_SYNC_TIMEOUT_MS });
@@ -1804,7 +1872,7 @@ await fastify.register((api) => {
     const conf = readConductorConf();
     const { sessionName, stateDir, agentBgLinks } = conf;
 
-    const entry = conf.bgProcesses.find((b) => b.name === name);
+    const entry = listBgProcesses(db).find((b) => b.name === name);
     if (!entry) {
       return reply.status(404).send({ error: `bg process '${name}' not found` });
     }
@@ -1813,30 +1881,24 @@ await fastify.register((api) => {
       execSync(`tmux kill-window -t ${sessionName}:${name}`, { timeout: TMUX_SYNC_TIMEOUT_MS });
     }
 
-    // Remove the definition from conductor.conf (the authoritative source) plus
-    // any owning agent link, so conductor.sh won't respawn it and the next poll
-    // snapshot drops the row via the bg-removed SSE event.
-    await removeBgProcessFromConf(conf._confPath, name);
-    const owningAgent = Object.entries(agentBgLinks).find(([, v]) => v === name)?.[0];
-    if (owningAgent) {
-      await removeBgLink(conf._confPath, owningAgent);
-    }
-    clearConfCache();
+    // Remove the definition from SQLite. Since linked_agent_id is on the
+    // bg_processes row, deleting the row drops the link automatically.
+    deleteBgProcess(db, entry.id);
 
     try { unlinkSync(path.join(stateDir, `bg-${name}.state`)); } catch { /* fine */ }
 
     return reply.send({ ok: true, removed: name });
   });
 
-  // Recreate the tmux window for a bg process that already exists in conf but
+  // Recreate the tmux window for a bg process that already exists in the DB but
   // whose window has died. Mirrors POST /agents/:agent/window — does not touch
-  // conductor.conf. Re-attaches pipe-pane logging like conductor.sh does.
+  // SQLite. Re-attaches pipe-pane logging like conductor.sh does.
   api.post<{ Params: { name: string } }>('/bg-processes/:name/window', async (req, reply) => {
     const { name } = req.params;
     const conf = readConductorConf();
     const { sessionName, logDir } = conf;
 
-    const entry = conf.bgProcesses.find((b) => b.name === name);
+    const entry = listBgProcesses(db).find((b) => b.name === name);
     if (!entry) {
       return reply.status(404).send({ error: `bg process '${name}' not found` });
     }
@@ -1864,7 +1926,7 @@ await fastify.register((api) => {
     const conf = readConductorConf();
     const { sessionName, stateDir } = conf;
 
-    const entry = conf.bgProcesses.find((b) => b.name === name);
+    const entry = listBgProcesses(db).find((b) => b.name === name);
     if (!entry) {
       return reply.status(404).send({ error: `bg process '${name}' not found` });
     }
@@ -2070,7 +2132,7 @@ await fastify.register((api) => {
     {
       const windowPresent = isTmuxWindowPresent(conf.sessionName, winName);
       const tail15 = windowPresent ? capturePaneTail(conf.sessionName, winName, 15, 'snapshot') : '';
-      const state = detectAgentStatus(conf, winName, launchCmd, tail15 || undefined);
+      const { state, reason, matchedPattern } = detectAgentStatus(conf, winName, launchCmd, tail15 || undefined);
       const isBusy = state === 'busy' || state === 'awaiting' || state === 'stalled';
       const agentType = detectAgentType(launchCmd);
       const ctx = getContextForAgent(conf, agentType, winName, project.workdir, isBusy, tail15 || undefined);
@@ -2241,6 +2303,11 @@ const focusedAgents = new Set<number>();
 const focusedWebSocketAgents = new Map<number, number>();
 const agentLabelCache = new Map<number, string | null>();
 const agentContextCache = new Map<number, AgentContext>();
+// Side-channel for per-tick detection detail that must NOT leak into the public
+// agentStatuses[] SSE contract (raw pane tail text, internal detection reason).
+// Populated fresh in buildSnapshot() every tick; read by pollAndDiff() for
+// transition-log purposes (TASK-143 step 2/3), not part of the JSON-serialized snapshot.
+const lastDetectionByAgentId = new Map<number, { reason: DetectionReason; matchedPattern: 'busy' | 'idle' | 'awaiting' | undefined; tail15: string }>();
 
 function addFocusedWebSocketOwner(agentId: number): void {
   focusedWebSocketAgents.set(agentId, (focusedWebSocketAgents.get(agentId) ?? 0) + 1);
@@ -2296,7 +2363,8 @@ function buildSnapshot(): Snapshot {
     const windowPresent = paneCurrentCommand !== null;
     // One capture-pane per agent per tick, shared by status and mode detection.
     const tail15 = windowPresent ? capturePaneTail(sessionName, wn, 15, 'snapshot') : '';
-    const state = detectAgentStatus(conf, wn, agent.launchCmd, tail15 || undefined, windowPresent, paneCurrentCommand);
+    const { state, reason, matchedPattern } = detectAgentStatus(conf, wn, agent.launchCmd, tail15 || undefined, windowPresent, paneCurrentCommand);
+    lastDetectionByAgentId.set(agent.id, { reason, matchedPattern, tail15 });
     // Clear label when window is gone; re-seed whenever cache is null (covers server restart + no-window reopen).
     if (state === 'no-window') {
       agentLabelCache.set(agent.id, null);
@@ -2397,6 +2465,19 @@ function pollAndDiff() {
           agent: agent.name,
           previousState: prev.state,
           nextState: agent.state,
+        });
+        const detection = lastDetectionByAgentId.get(agent.id);
+        appendTransitionLog({
+          agentId: agent.id,
+          agent: agent.name,
+          from: prev.state,
+          to: agent.state,
+          reason: detection?.reason ?? 'state-file',
+          matchedPattern: detection?.matchedPattern,
+          stateFileAgeS: agent.status.evidence.stateFile.ageSeconds,
+          windowPresent: agent.windowPresent,
+          queuedTasks: agent.queuedTasks,
+          paneTail: detection?.tail15 ? detection.tail15.split('\n') : [],
         });
       }
 
