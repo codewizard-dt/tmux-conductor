@@ -14,7 +14,7 @@ const NAME_PATTERN = /^[A-Za-z0-9_-]+$/;
 const fieldCls = 'flex flex-col gap-1.5';
 const labelCls = 'text-[10px] font-semibold uppercase tracking-[0.08em] text-muted';
 const inputCls = [
-  'w-full rounded-[8px] border border-line bg-card px-3 py-1.5',
+  'w-full rounded-[8px] border border-line-input bg-card px-3 py-1.5',
   'font-mono text-[12px] text-ink placeholder:text-muted-2',
   'outline-none transition',
   'focus:border-accent focus:ring-2 focus:ring-accent/10',
@@ -155,7 +155,7 @@ export default function AddProjectForm() {
           <button
             type="submit"
             disabled={submitting}
-            className="inline-flex h-8 cursor-pointer items-center justify-center rounded-[8px] bg-ink px-4 text-[13px] font-medium text-white shadow-[0_1px_2px_0_rgb(16_17_26/0.06),inset_0_1px_0_0_rgb(255_255_255/0.1)] transition hover:bg-ink-2 active:scale-[0.985] disabled:pointer-events-none disabled:opacity-50"
+            className="inline-flex h-8 cursor-pointer items-center justify-center rounded-[8px] bg-button-primary px-4 text-[13px] font-medium text-button-primary-text shadow-[0_1px_2px_0_rgb(16_17_26/0.06),inset_0_1px_0_0_rgb(255_255_255/0.1)] transition hover:opacity-90 active:scale-[0.985] disabled:pointer-events-none disabled:opacity-50"
           >
             {submitting ? 'Creating…' : 'Create Project'}
           </button>

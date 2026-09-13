@@ -63,7 +63,7 @@ export default function ScheduleForm({ onCreated }: ScheduleFormProps) {
           placeholder="Name (optional)…"
           value={name}
           onChange={e => { setName(e.target.value); setError(null); }}
-          className="rounded-[7px] border border-line bg-card px-2.5 py-1 font-mono text-[12px] text-ink placeholder:text-muted-2 outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/10 disabled:opacity-40"
+          className="rounded-[7px] border border-line-input bg-card px-2.5 py-1 font-mono text-[12px] text-ink placeholder:text-muted-2 outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/10 disabled:opacity-40"
           disabled={submitting}
           aria-label="Schedule name"
         />
@@ -72,7 +72,7 @@ export default function ScheduleForm({ onCreated }: ScheduleFormProps) {
           placeholder="Command…"
           value={command}
           onChange={e => { setCommand(e.target.value); setError(null); }}
-          className="rounded-[7px] border border-line bg-card px-2.5 py-1 font-mono text-[12px] text-ink placeholder:text-muted-2 outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/10 disabled:opacity-40"
+          className="rounded-[7px] border border-line-input bg-card px-2.5 py-1 font-mono text-[12px] text-ink placeholder:text-muted-2 outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/10 disabled:opacity-40"
           disabled={submitting}
           aria-label="Schedule command"
         />
@@ -82,7 +82,7 @@ export default function ScheduleForm({ onCreated }: ScheduleFormProps) {
             min={5}
             value={intervalSeconds}
             onChange={e => { setIntervalSeconds(Number(e.target.value)); setError(null); }}
-            className="w-20 rounded-[7px] border border-line bg-card px-2.5 py-1 font-mono text-[12px] text-ink placeholder:text-muted-2 outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/10 disabled:opacity-40"
+            className="w-20 rounded-[7px] border border-line-input bg-card px-2.5 py-1 font-mono text-[12px] text-ink placeholder:text-muted-2 outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/10 disabled:opacity-40"
             disabled={submitting}
             aria-label="Interval in seconds"
           />
@@ -90,7 +90,7 @@ export default function ScheduleForm({ onCreated }: ScheduleFormProps) {
           <select
             value={action}
             onChange={e => { setAction(e.target.value === 'jump' ? 'jump' : 'append'); setError(null); }}
-            className="rounded-[7px] border border-line bg-card px-2.5 py-1 font-mono text-[12px] text-ink outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/10 disabled:opacity-40"
+            className="rounded-[7px] border border-line-input bg-card px-2.5 py-1 font-mono text-[12px] text-ink outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/10 disabled:opacity-40"
             disabled={submitting}
             aria-label="Action"
           >
@@ -111,7 +111,7 @@ export default function ScheduleForm({ onCreated }: ScheduleFormProps) {
         <button
           type="submit"
           disabled={!hasCommand || submitting}
-          className="inline-flex h-7 cursor-pointer items-center justify-center rounded-[7px] bg-ink px-3 text-[12px] font-medium text-white transition hover:bg-ink-2 active:scale-[0.985] disabled:pointer-events-none disabled:opacity-40"
+          className="inline-flex h-7 cursor-pointer items-center justify-center rounded-[7px] bg-button-primary px-3 text-[12px] font-medium text-button-primary-text transition hover:opacity-90 active:scale-[0.985] disabled:pointer-events-none disabled:opacity-40"
           aria-label="Create schedule"
         >
           {submitting ? '…' : 'Create schedule'}

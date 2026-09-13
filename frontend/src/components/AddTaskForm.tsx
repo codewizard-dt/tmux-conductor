@@ -170,14 +170,14 @@ export default function AddTaskForm({ agentId, onAdded, projectId, projectName }
               }
             }}
             onPaste={handlePaste}
-            className="flex-1 resize-none overflow-hidden rounded-[7px] border border-line bg-card px-2.5 py-1 font-mono text-[12px] text-ink placeholder:text-muted-2 outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/10 disabled:opacity-40"
+            className="flex-1 resize-none overflow-hidden rounded-[7px] border border-line-input bg-card px-2.5 py-1 font-mono text-[12px] text-ink placeholder:text-muted-2 outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/10 disabled:opacity-40"
             disabled={busy}
             aria-label="New task text"
           />
           <button
             type="submit"
             disabled={!hasValue || busy}
-            className="inline-flex h-7 cursor-pointer items-center rounded-[7px] bg-ink px-3 text-[12px] font-medium text-white transition hover:bg-ink-2 active:scale-[0.985] disabled:pointer-events-none disabled:opacity-40"
+            className="inline-flex h-7 cursor-pointer items-center rounded-[7px] bg-button-primary px-3 text-[12px] font-medium text-button-primary-text transition hover:opacity-90 active:scale-[0.985] disabled:pointer-events-none disabled:opacity-40"
             aria-label="Add task"
           >
             {submitting ? '…' : 'Add'}

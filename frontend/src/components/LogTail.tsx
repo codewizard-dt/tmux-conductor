@@ -3,7 +3,7 @@ import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
 import { API_BASE, sendAgentKeys, uploadAgentImage, type KeysPayload } from '../lib/api'
-import { TERMINAL_FONT_OPTIONS } from '../lib/terminalTheme'
+import { fitWithRightEdgeMargin, TERMINAL_FONT_OPTIONS } from '../lib/terminalTheme'
 import { maybeProbeOnFirstRender, registerResizeListener } from '../lib/terminalSizeProbe'
 import { connectTerminalWebSocket, type TerminalWebSocketClient } from '../lib/terminalWebSocket'
 import { useSSEEvent } from '../hooks/useSSE'
@@ -204,6 +204,18 @@ export default function LogTail({ agentId, agentName, maxHeightClass, focused, f
   // resets/clears and the content redraws in the same render frame, so there's no blank
   // intermediate frame — that two-frame reset()+write() gap was the periodic flicker. Records the
   // text written so follow-mode can re-apply a snapshot that arrived while scrolled up.
+  // Focuses captureRef and verifies the focus actually landed, retrying across a few animation
+  // frames instead of a single unverified setTimeout(0) — captureRef.current can still be null
+  // on the very first frame this fires (e.g. arriving before the loaded/windowPresent-gated
+  // terminal-creation effect has rendered it), and a lost race previously failed silently.
+  function focusCaptureWithRetry(attemptsLeft = 5) {
+    const el = captureRef.current
+    if (el) el.focus()
+    if (document.activeElement !== el && attemptsLeft > 0) {
+      requestAnimationFrame(() => { focusCaptureWithRetry(attemptsLeft - 1) })
+    }
+  }
+
   function applySnapshot(text: string) {
     const term = termRef.current
     if (!term) return
@@ -289,7 +301,7 @@ export default function LogTail({ agentId, agentName, maxHeightClass, focused, f
     const fitAddon = new FitAddon()
     term.loadAddon(fitAddon)
     term.open(xtermContainerRef.current)
-    fitAddon.fit()
+    fitWithRightEdgeMargin(term, fitAddon)
     termRef.current = term
     fitAddonRef.current = fitAddon
     // Global pane-size sync (unrelated to the local xterm fit below): probes the widest
@@ -321,7 +333,7 @@ export default function LogTail({ agentId, agentName, maxHeightClass, focused, f
       initialTextRef.current = ''
       pendingTextRef.current = firstSnapshot
     }
-    const ro = new ResizeObserver(() => { fitAddonRef.current?.fit() })
+    const ro = new ResizeObserver(() => { if (termRef.current && fitAddonRef.current) fitWithRightEdgeMargin(termRef.current, fitAddonRef.current) })
     ro.observe(xtermContainerRef.current)
     return () => {
       ro.disconnect()
@@ -446,13 +458,14 @@ export default function LogTail({ agentId, agentName, maxHeightClass, focused, f
     }
   }, [focused])
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps, react-hooks/set-state-in-effect
   useEffect(() => {
-    if (interactSignal !== undefined && interactSignal > 0) {
-      setTimeout(() => {
-        setInteracting(true)
-        captureRef.current?.focus()
-      }, 0)
-    }
+    if (interactSignal === undefined || interactSignal <= 0) return
+    // Defer setState to avoid cascading renders (interactive mode is triggered by external signal)
+    queueMicrotask(() => {
+      setInteracting(true)
+      focusCaptureWithRetry()
+    })
   }, [interactSignal])
 
   // Default Direct Input to on once the terminal is actually ready to receive it: LogTail's
@@ -463,15 +476,13 @@ export default function LogTail({ agentId, agentName, maxHeightClass, focused, f
   useEffect(() => {
     if (!loaded || !windowPresent || defaultInteractArmedRef.current) return
     defaultInteractArmedRef.current = true
-    setTimeout(() => {
-      setInteracting(true)
-      captureRef.current?.focus()
-    }, 0)
+    setInteracting(true)
+    focusCaptureWithRetry()
   }, [loaded, windowPresent])
 
   useEffect(() => {
     onInteractChange?.(interacting)
-    if (interacting) captureRef.current?.focus()
+    if (interacting) focusCaptureWithRetry()
   }, [interacting, onInteractChange])
 
   function enqueue(payload: KeysPayload) {
@@ -672,7 +683,7 @@ export default function LogTail({ agentId, agentName, maxHeightClass, focused, f
               : 'rounded-[10px] border-line outline-none'}${viewMode === 'history' ? ' hidden' : ''}`}
         >
           {interacting && (
-            <div className="flex items-center gap-2 bg-[#e0901a] px-3 py-1 text-[10px] font-bold uppercase tracking-[0.06em] text-white">
+            <div className="flex items-center gap-2 bg-[var(--color-accent-amber-on-solid)] px-3 py-1 text-[10px] font-bold uppercase tracking-[0.06em] text-white">
               <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" />
               Direct Input — keys go to {agentName}
               <button
@@ -687,12 +698,22 @@ export default function LogTail({ agentId, agentName, maxHeightClass, focused, f
             className={`overflow-hidden bg-[#0b0b0d] ${interacting ? '' : 'rounded-[10px]'} ${fillContainer ? 'flex-1 min-h-0' : (maxHeightClass ?? 'h-48')} ${!interacting && onInteractChange !== undefined ? 'cursor-text' : ''}`}
             onClick={!interacting && onInteractChange !== undefined ? () => { setInteracting(true); captureRef.current?.focus() } : undefined}
             onDoubleClick={onToggleExpand}
+            onMouseUp={() => {
+              // xterm.js wires every mousedown in its own element to its internal focus(),
+              // which steals focus onto the hidden .xterm-helper-textarea regardless of
+              // disableStdin (confirmed at the xterm.js source — see
+              // wiki/knowledge/concepts/browser-terminal-input-capture.md "Collision 2").
+              // Win it back on mouseup (not mousedown) so a drag-select still completes before
+              // focus moves — this covers a single click, both clicks of a double-click, and a
+              // drag-select release, all while Direct Input is already active.
+              if (interacting) captureRef.current?.focus()
+            }}
           />
           {interacting && escHint && (
             <div
               role="status"
               aria-live="polite"
-              className="pointer-events-none absolute inset-x-4 bottom-4 z-10 rounded-[10px] bg-[#e0901a] px-5 py-4 text-center shadow-lg"
+              className="pointer-events-none absolute inset-x-4 bottom-4 z-10 rounded-[10px] bg-[var(--color-accent-amber-on-solid)] px-5 py-4 text-center shadow-lg"
             >
               <p className="m-0 text-[15px] font-bold text-white">Press esc again to close the modal</p>
               <p className="m-0 mt-1.5 text-[13px] font-medium text-white/80">Press ⌘/ctrl + esc to send esc to the agent</p>
@@ -742,20 +763,20 @@ export default function LogTail({ agentId, agentName, maxHeightClass, focused, f
               }
             }}
             placeholder={`Send one-off text commands to ${agentName}…`}
-            className="min-h-7 min-w-0 flex-1 resize-none overflow-hidden rounded-[7px] border border-line bg-card px-2 py-1 font-mono text-[11px] text-ink placeholder:text-muted-2"
+            className="min-h-7 min-w-0 flex-1 resize-none overflow-hidden rounded-[7px] border border-line-input bg-card px-2 py-1 font-mono text-[11px] text-ink placeholder:text-muted-2"
             aria-label={`Send one-off text commands to ${agentName}`}
           />
           <button
             type="submit"
             disabled={sendText.trim() === ''}
-            className="inline-flex h-7 cursor-pointer items-center rounded-[7px] bg-accent-blue px-3 text-[12px] font-medium text-white transition hover:opacity-85 active:scale-[0.985] disabled:pointer-events-none disabled:opacity-40"
+            className="inline-flex h-7 cursor-pointer items-center rounded-[7px] bg-accent-blue-solid px-3 text-[12px] font-medium text-white transition hover:opacity-85 active:scale-[0.985] disabled:pointer-events-none disabled:opacity-40"
           >Send</button>
           <button
             type="button"
             onMouseDown={(e) => { e.preventDefault() }}
             onClick={() => { setInteracting((prev) => !prev) }}
             className={interacting
-              ? 'inline-flex h-7 cursor-pointer items-center gap-1.5 rounded-[7px] bg-[#e0901a] px-3 text-[12px] font-semibold text-white transition hover:opacity-85 active:scale-[0.985]'
+              ? 'inline-flex h-7 cursor-pointer items-center gap-1.5 rounded-[7px] bg-[var(--color-accent-amber-on-solid)] px-3 text-[12px] font-semibold text-white transition hover:opacity-85 active:scale-[0.985]'
               : 'inline-flex h-7 cursor-pointer items-center gap-1.5 rounded-[7px] border border-[#e0901a]/40 bg-card px-3 text-[12px] font-semibold text-[#c07a10] transition hover:bg-[#e0901a]/10 active:scale-[0.985]'}
             aria-pressed={interacting}
           >

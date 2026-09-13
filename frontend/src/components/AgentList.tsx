@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { API_BASE, addTask, createWorktreeForAgent, renameAgent, type AgentDisplayStatus, type AgentRunState, type AgentStatusContract, type Task } from '../lib/api'
+import { API_BASE, addTask, cloneAgent, createWorktreeForAgent, renameAgent, type AgentDisplayStatus, type AgentRunState, type AgentStatusContract, type Task } from '../lib/api'
 import AddTaskForm from './AddTaskForm'
+import AgentActionsMenu from './AgentActionsMenu'
 import CheckpointList from './CheckpointList'
 import ConfirmDialog from './ConfirmDialog'
 import DiffPanel from './DiffPanel'
@@ -79,17 +80,17 @@ function isLogExpandShortcut(e: KeyboardEvent): boolean {
 // ── Status ────────────────────────────────────────────────────────────────
 
 const STATUS_CONFIG: Record<AgentStatus, { bg: string; color: string; dot: string; label: string }> = {
-  busy: { bg: 'rgba(59,110,246,0.10)', color: '#3b6ef6', dot: '#3b6ef6', label: 'busy' },
-  idle: { bg: 'rgba(48,164,108,0.10)', color: '#30a46c', dot: '#30a46c', label: 'idle' },
-  'idle-waiting': { bg: 'rgba(48,164,108,0.10)', color: '#30a46c', dot: '#30a46c', label: 'idle/waiting' },
-  empty: { bg: 'rgba(224,144,26,0.10)', color: '#c07a10', dot: '#e0901a', label: 'no tasks' },
-  error: { bg: 'rgba(229,72,77,0.10)', color: '#e5484d', dot: '#e5484d', label: 'error' },
-  awaiting: { bg: 'rgba(224,144,26,0.10)', color: '#c07a10', dot: '#e0901a', label: 'waiting' },
-  stalled: { bg: 'rgba(229,72,77,0.10)', color: '#e5484d', dot: '#e5484d', label: 'stalled' },
-  starting: { bg: 'rgba(79,90,120,0.08)', color: '#4f5a78', dot: '#4f5a78', label: 'starting' },
-  'no-window': { bg: '#f1f2f4', color: '#9a9da5', dot: '#9a9da5', label: 'no window' },
-  exited: { bg: 'rgba(229,72,77,0.10)', color: '#e5484d', dot: '#e5484d', label: 'exited' },
-  unknown: { bg: '#f1f2f4', color: '#6b6e76', dot: '#9a9da5', label: 'unknown' },
+  busy: { bg: 'var(--color-status-busy-bg)', color: 'var(--color-status-busy-text)', dot: '#3b6ef6', label: 'busy' },
+  idle: { bg: 'var(--color-status-idle-bg)', color: 'var(--color-status-idle-text)', dot: '#30a46c', label: 'idle' },
+  'idle-waiting': { bg: 'var(--color-status-success-bg)', color: 'var(--color-status-success-text)', dot: '#30a46c', label: 'idle/waiting' },
+  empty: { bg: 'var(--color-status-warn-bg)', color: 'var(--color-status-warn-text)', dot: '#e0901a', label: 'no tasks' },
+  error: { bg: 'var(--color-status-error-bg)', color: 'var(--color-status-error-text)', dot: '#e5484d', label: 'error' },
+  awaiting: { bg: 'var(--color-status-warn-bg)', color: 'var(--color-status-warn-text)', dot: '#e0901a', label: 'waiting' },
+  stalled: { bg: 'var(--color-status-error-bg)', color: 'var(--color-status-error-text)', dot: '#e5484d', label: 'stalled' },
+  starting: { bg: 'var(--color-status-neutral-bg)', color: 'var(--color-status-neutral-text)', dot: '#4f5a78', label: 'starting' },
+  'no-window': { bg: 'var(--color-badge-neutral-bg)', color: 'var(--color-badge-neutral-text)', dot: '#9a9da5', label: 'no window' },
+  exited: { bg: 'var(--color-status-error-bg)', color: '#e5484d', dot: '#e5484d', label: 'exited' },
+  unknown: { bg: 'var(--color-badge-neutral-bg)', color: 'var(--color-badge-neutral-text)', dot: '#9a9da5', label: 'unknown' },
 }
 
 export function getStatusColor(status: AgentStatus): string {
@@ -150,8 +151,8 @@ function AgentTypeBadge({ agent }: { agent: Agent }) {
   const type = inferAgentType(agent)
   if (type === null) return null
   const palette = type === 'claude'
-    ? { bg: 'rgba(126,87,194,0.10)', color: '#5b21b6', dot: '#7e57c2' }
-    : { bg: 'rgba(20,126,105,0.10)', color: '#0f766e', dot: '#14a38b' }
+    ? { bg: 'var(--color-badge-type-claude-bg)', color: 'var(--color-badge-type-claude-text)', dot: '#7e57c2' }
+    : { bg: 'var(--color-badge-type-codex-bg)', color: 'var(--color-badge-type-codex-text)', dot: '#14a38b' }
   return (
     <span
       className="inline-flex items-center gap-1 rounded-pill px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.06em]"
@@ -165,13 +166,13 @@ function AgentTypeBadge({ agent }: { agent: Agent }) {
 }
 
 
-export const ROLE_CONFIG: Record<string, { className: string; dot: string }> = {
-  frontend: { className: 'bg-pink-100 text-pink-700', dot: '#ec4899' },
-  backend: { className: 'bg-orange-100 text-orange-700', dot: '#f97316' },
-  qa: { className: 'bg-cyan-100 text-cyan-700', dot: '#06b6d4' },
-  devops: { className: 'bg-indigo-100 text-indigo-700', dot: '#6366f1' },
-  security: { className: 'bg-lime-100 text-lime-700', dot: '#84cc16' },
-  architect: { className: 'bg-stone-100 text-stone-700', dot: '#78716c' },
+export const ROLE_CONFIG: Record<string, { bg: string; text: string; dot: string }> = {
+  frontend: { bg: 'var(--role-badge-frontend-bg)', text: 'var(--role-badge-frontend-text)', dot: '#c026d3' },
+  backend: { bg: 'var(--role-badge-backend-bg)', text: 'var(--role-badge-backend-text)', dot: '#63cf17' },
+  qa: { bg: 'var(--role-badge-qa-bg)', text: 'var(--role-badge-qa-text)', dot: '#06b6d4' },
+  devops: { bg: 'var(--role-badge-devops-bg)', text: 'var(--role-badge-devops-text)', dot: '#c026a0' },
+  security: { bg: 'var(--role-badge-security-bg)', text: 'var(--role-badge-security-text)', dot: '#2bc91d' },
+  architect: { bg: 'var(--color-badge-neutral-bg)', text: 'var(--color-badge-neutral-text)', dot: '#78716c' },
 }
 
 // TASK-115: enumerable, testable role-list derivation — never hand-type the
@@ -181,17 +182,19 @@ export const ROLE_CONFIG: Record<string, { className: string; dot: string }> = {
 // (host-server/rolePresets.ts) validates against.
 export const ROLE_VALUES = ['generic', ...Object.keys(ROLE_CONFIG)] as const
 
+const SKILLS_VISIBLE_LIMIT = 5
+
 export function isValidAgentRole(role: string): role is (typeof ROLE_VALUES)[number] {
   return (ROLE_VALUES as readonly string[]).includes(role)
 }
 
 export function resolveRoleBadge(
   role: string | null | undefined
-): { role: string; className: string; dot: string } | null {
+): { role: string; bg: string; text: string; dot: string } | null {
   if (role == null || role === 'generic') return null
   const cfg = ROLE_CONFIG[role]
   if (!cfg) return null
-  return { role, className: cfg.className, dot: cfg.dot }
+  return { role, bg: cfg.bg, text: cfg.text, dot: cfg.dot }
 }
 
 function RoleBadge({ role }: { role: string | null | undefined }) {
@@ -199,7 +202,8 @@ function RoleBadge({ role }: { role: string | null | undefined }) {
   if (!resolved) return null
   return (
     <span
-      className={`inline-flex items-center gap-1 rounded-pill px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.06em] ${resolved.className}`}
+      className="inline-flex items-center gap-1 rounded-pill px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.06em]"
+      style={{ background: resolved.bg, color: resolved.text }}
       title={`Role: ${resolved.role}`}
     >
       <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full" style={{ background: resolved.dot }} />
@@ -208,19 +212,63 @@ function RoleBadge({ role }: { role: string | null | undefined }) {
   )
 }
 
+/** Merged type+role identity pill: falls back to a single-value pill when only one side resolves. */
+function AgentIdentityBadge({ agent }: { agent: Agent }) {
+  const type = inferAgentType(agent)
+  const role = resolveRoleBadge(agent.role)
+  if (type === null && !role) return null
+
+  const typePalette = type === null
+    ? null
+    : type === 'claude'
+      ? { bg: 'var(--color-badge-type-claude-bg)', color: 'var(--color-badge-type-claude-text)', dot: '#7e57c2' }
+      : { bg: 'var(--color-badge-type-codex-bg)', color: 'var(--color-badge-type-codex-text)', dot: '#14a38b' }
+
+  const title = type && role
+    ? `Agent type: ${type}, Role: ${role.role}`
+    : type
+      ? `Agent type: ${type}`
+      : `Role: ${role?.role ?? ''}`
+
+  return (
+    <span
+      className="inline-flex items-center gap-1 rounded-pill px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.06em]"
+      style={{ background: typePalette?.bg ?? role?.bg, color: typePalette?.color ?? role?.text }}
+      title={title}
+    >
+      {typePalette && <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full" style={{ background: typePalette.dot }} />}
+      {role && <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full" style={{ background: role.dot }} />}
+      {type && role ? `${type} · ${role.role}` : type ?? role?.role}
+    </span>
+  )
+}
+
 /** Deterministic hue (0–359) from a project name so each project keeps a stable badge color. */
 function projectHue(name: string): number {
   let h = 0
   for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) % 360
-  return h
+  // Map the raw hash into one of three safe sub-ranges that avoid the ±20° exclusion
+  // bands around the semantic status hues (amber/red/green/blue/violet/rose) used
+  // elsewhere in the UI, so identity (project) hues never collide with status hues.
+  // Safe ranges, walked in order: (56,132] width 76, (172,207] width 35, (278,331] width 53.
+  // Each branch adds 1 before the offset so x=0 lands one past the (open) lower bound
+  // instead of on it — the ranges are open-below/closed-above, so the boundary value
+  // itself (56, 172, 278) is excluded, not safe.
+  let x = h % 144
+  if (x < 76) return 57 + x
+  x -= 76
+  if (x < 35) return 173 + x
+  x -= 35
+  return 279 + x
 }
 
 /** Small colored pill identifying an agent's project. `null` name → neutral "Unassigned". */
-export function ProjectBadge({ name }: { name: string | null }) {
+export function ProjectBadge({ name, size = 'sm' }: { name: string | null; size?: 'sm' | 'md' }) {
+  const textSize = size === 'md' ? 'text-[15px]' : 'text-[13px]'
   if (name === null) {
     return (
       <span
-        className="inline-flex flex-shrink-0 items-center rounded-pill bg-[#f1f2f4] px-2 py-0.5 text-[13px] font-semibold text-[#9a9da5]"
+        className={`inline-flex flex-shrink-0 items-center rounded-pill bg-[var(--color-badge-neutral-bg)] px-2 py-0.5 ${textSize} font-semibold text-[var(--color-badge-neutral-text)]`}
         title="No project assigned"
       >
         Unassigned
@@ -230,8 +278,8 @@ export function ProjectBadge({ name }: { name: string | null }) {
   const hue = projectHue(name)
   return (
     <span
-      className="inline-flex flex-shrink-0 items-center rounded-pill px-2 py-0.5 text-[13px] font-semibold"
-      style={{ background: `hsl(${String(hue)} 65% 94%)`, color: `hsl(${String(hue)} 55% 32%)` }}
+      className={`inline-flex flex-shrink-0 items-center rounded-pill px-2 py-0.5 ${textSize} font-semibold`}
+      style={{ background: `hsl(${String(hue)} var(--project-badge-bg-s) var(--project-badge-bg-l))`, color: `hsl(${String(hue)} var(--project-badge-text-s) var(--project-badge-text-l))` }}
       title={`Project: ${name}`}
     >
       {name}
@@ -241,9 +289,9 @@ export function ProjectBadge({ name }: { name: string | null }) {
 
 /** Color for the context-fill bar: green under 70%, amber 70–90%, red above. */
 function contextColor(pct: number): string {
-  if (pct >= 90) return '#e5484d'
-  if (pct >= 70) return '#c07a10'
-  return '#30a46c'
+  if (pct >= 90) return 'var(--color-status-error-text)'
+  if (pct >= 70) return 'var(--color-status-warn-text)'
+  return 'var(--color-status-idle-text)'
 }
 
 /** Compact token count, e.g. 55336 → "55k". */
@@ -308,7 +356,7 @@ function ContextMeter({ agent, detailed = false }: { agent: Agent; detailed?: bo
   // Model chip only — no context data yet (new session, after /clear)
   if (pct == null) {
     return (
-      <span className="rounded-pill bg-[#f1f2f4] px-1.5 py-0.5 text-[10px] font-semibold text-[#4f5a78]">
+      <span className="rounded-pill bg-[var(--color-badge-neutral-bg)] px-1.5 py-0.5 text-[10px] font-semibold text-[var(--color-badge-neutral-text)]">
         {model}
       </span>
     )
@@ -322,7 +370,7 @@ function ContextMeter({ agent, detailed = false }: { agent: Agent; detailed?: bo
   return (
     <div className="flex items-center gap-1.5" title={title} aria-label={title}>
       {model && detailed && (
-        <span className="rounded-pill bg-[#f1f2f4] px-1.5 py-0.5 text-[10px] font-semibold text-[#4f5a78]">
+        <span className="rounded-pill bg-[var(--color-badge-neutral-bg)] px-1.5 py-0.5 text-[10px] font-semibold text-[var(--color-badge-neutral-text)]">
           {model}
         </span>
       )}
@@ -351,7 +399,7 @@ export function UsageBadge({ agent }: { agent: Agent }) {
   const title = `Session usage: ${cost || 'cost n/a'} · in ${String(u.inputTokens)} / out ${String(u.outputTokens)} / cache-w ${String(u.cacheCreationInputTokens)} / cache-r ${String(u.cacheReadInputTokens)} · ${String(u.sessions)} session(s)`
   return (
     <span
-      className="flex-shrink-0 rounded-pill bg-[#f1f2f4] px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-[#4f5a78]"
+      className="flex-shrink-0 rounded-pill bg-[var(--color-badge-neutral-bg)] px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-[var(--color-badge-neutral-text)]"
       title={title}
       aria-label={title}
     >
@@ -477,13 +525,13 @@ function SkillBadge({ skill }: { skill: Skill }) {
   return (
     <span className="flex gap-1">
       {skill.source === 'project' && (
-        <span className="rounded px-1 py-0.5 text-[10px] font-medium bg-violet-100 text-violet-700">project</span>
+        <span className="rounded px-1 py-0.5 text-[10px] font-medium bg-violet-100 text-violet-700 dark:bg-violet-950/40 dark:text-violet-300">project</span>
       )}
       {!skill.userInvocable && (
-        <span className="rounded px-1 py-0.5 text-[10px] font-medium bg-blue-100 text-blue-700">auto-only</span>
+        <span className="rounded px-1 py-0.5 text-[10px] font-medium bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300">auto-only</span>
       )}
       {skill.autoOnly && (
-        <span className="rounded px-1 py-0.5 text-[10px] font-medium bg-amber-100 text-amber-700">manual</span>
+        <span className="rounded px-1 py-0.5 text-[10px] font-medium bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">manual</span>
       )}
     </span>
   )
@@ -523,7 +571,6 @@ export function AgentDetailModal({ agent, project, projectId, status, onClose, a
   onNavigate: (dir: 'prev' | 'next') => void
   onRenamed?: (id: number, newName: string) => void
 }) {
-  const isMac = /mac/i.test(navigator.userAgent)
   const [tasks, setTasks] = useState<Task[]>([])
   const [windowError, setWindowError] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
@@ -540,12 +587,15 @@ export function AgentDetailModal({ agent, project, projectId, status, onClose, a
   const [renameInput, setRenameInput] = useState('')
   const [showRenameInput, setShowRenameInput] = useState(false)
   const [renameError, setRenameError] = useState<string | null>(null)
+  const [cloning, setCloning] = useState(false)
+  const [cloneError, setCloneError] = useState<string | null>(null)
   const [interacting, setInteracting] = useState(false)
   const [logExpanded, setLogExpanded] = useState(false)
   // Incrementing signal (re)enables Direct Input in LogTail; seeded by the card CTA.
   const interactSignal = armInteract ? 1 : 0
   const [skills, setSkills] = useState<SkillsResponse | null>(null)
   const [queuedSkill, setQueuedSkill] = useState<string | null>(null)
+  const [showAllSkills, setShowAllSkills] = useState(false)
 
   useEffect(() => {
     const prev = document.body.style.overflow
@@ -578,7 +628,7 @@ export function AgentDetailModal({ agent, project, projectId, status, onClose, a
       if (e.key === 'Escape' && !interacting) { onClose(); return }
       const tag = (e.target as HTMLElement).tagName
       if (tag === 'TEXTAREA' || tag === 'INPUT') return
-      if (e.metaKey || e.ctrlKey) {
+      if (e.metaKey && e.shiftKey) {
         if (e.key === 'ArrowRight') { e.preventDefault(); onNavigate('next') }
         if (e.key === 'ArrowLeft') { e.preventDefault(); onNavigate('prev') }
       }
@@ -649,6 +699,10 @@ export function AgentDetailModal({ agent, project, projectId, status, onClose, a
         const body = await res.json().catch(() => ({})) as { error?: string }
         throw new Error(body.error ?? `HTTP ${res.status.toString()}`)
       }
+      // Window close is one of the two "agent went away" actions (the other
+      // being remove) that this modal's own dropdown can trigger — close it
+      // like doRemove does, rather than leaving it open on a windowless agent.
+      onClose()
     } catch (err: unknown) {
       setCloseError(err instanceof Error ? err.message : 'Failed to close window')
     } finally {
@@ -672,8 +726,53 @@ export function AgentDetailModal({ agent, project, projectId, status, onClose, a
     }
   }
 
+  async function handleClone() {
+    if (cloning) return
+    setCloning(true)
+    setCloneError(null)
+    try {
+      await cloneAgent(agent.id)
+    } catch (err: unknown) {
+      setCloneError(err instanceof Error ? err.message : 'Clone failed')
+    } finally {
+      setCloning(false)
+    }
+  }
+
   const effectiveWorktreePath = agent.worktreePath ?? worktreeOverride?.worktreePath ?? null
   const effectiveBranch = agent.branch ?? worktreeOverride?.branch ?? null
+
+  const agentActionItems: { key: string; label: string; onSelect: () => void; disabled?: boolean; title?: string; tone?: 'default' | 'danger' | 'warning' }[] = [
+    {
+      key: 'rename',
+      label: 'Rename',
+      onSelect: () => { setRenameInput(agent.name); setShowRenameInput(true); setRenameError(null) },
+    },
+    ...(agent.windowPresent
+      ? [{
+          key: 'close',
+          label: 'Close agent',
+          onSelect: () => { setConfirmingClose(true) },
+          disabled: closing,
+          tone: 'warning' as const,
+          title: 'Kill the tmux window (agent stays registered) and close this view',
+        }]
+      : []),
+    {
+      key: 'remove',
+      label: 'Remove agent',
+      onSelect: () => { setConfirmingRemove(true) },
+      disabled: removing,
+      tone: 'danger' as const,
+      title: 'Unregister the agent and remove it',
+    },
+    {
+      key: 'clone',
+      label: 'Clone',
+      onSelect: () => { void handleClone() },
+      disabled: cloning,
+    },
+  ]
 
   return createPortal(
     <ErrorBoundary>
@@ -686,15 +785,14 @@ export function AgentDetailModal({ agent, project, projectId, status, onClose, a
         <div className="absolute inset-4 flex flex-col overflow-hidden rounded-[14px] bg-card shadow-pop md:inset-8">
           <div className="flex flex-shrink-0 items-center gap-3 border-b border-line px-5 py-3.5">
             <span className="flex min-w-0 flex-col">
-              <span className="text-[15px] font-semibold tracking-tight text-ink leading-tight">{agent.name}</span>
+              <span className="text-[17px] font-semibold tracking-tight text-accent-blue leading-tight">{agent.name}</span>
               {agent.label && (
                 <span className="text-[11px] font-semibold tracking-tight text-[#5b21b6] leading-tight">{agent.label}</span>
               )}
             </span>
-            <ProjectBadge name={project} />
+            <ProjectBadge name={project} size="md" />
             <StatusBadge status={status} />
-            <AgentTypeBadge agent={agent} />
-            <RoleBadge role={agent.role} />
+            <AgentIdentityBadge agent={agent} />
             <ContextMeter agent={agent} detailed />
             {needsAttention(status) && (
               <span className="animate-flash text-[14px] font-bold leading-none" style={{ color: status === 'stalled' ? '#e5484d' : '#e0901a' }} aria-label="Needs attention">!</span>
@@ -703,15 +801,8 @@ export function AgentDetailModal({ agent, project, projectId, status, onClose, a
               <span className="text-[11px] text-accent-green">/{queuedSkill} queued ✓</span>
             )}
             <div className="ml-auto flex flex-shrink-0 items-center gap-2">
-              {/* Agent actions — each styled distinctly: rename (blue), close (amber), remove (red). */}
               {!showRenameInput ? (
-                <button
-                  type="button"
-                  onClick={() => { setRenameInput(agent.name); setShowRenameInput(true); setRenameError(null) }}
-                  className="inline-flex h-7 cursor-pointer items-center rounded-[7px] border border-accent-blue/30 bg-accent-blue/5 px-3 text-[12px] font-medium text-accent-blue transition hover:bg-accent-blue/10 active:scale-[0.985]"
-                >
-                  Rename
-                </button>
+                <AgentActionsMenu items={agentActionItems} />
               ) : (
                 <>
                   <input
@@ -729,7 +820,7 @@ export function AgentDetailModal({ agent, project, projectId, status, onClose, a
                     type="button"
                     onClick={() => { void handleRename() }}
                     disabled={renaming}
-                    className="inline-flex h-7 cursor-pointer items-center rounded-[7px] bg-accent-green px-3 text-[12px] font-medium text-white transition hover:opacity-85 active:scale-[0.985] disabled:pointer-events-none disabled:opacity-40"
+                    className="inline-flex h-7 cursor-pointer items-center rounded-[7px] bg-accent-green-solid px-3 text-[12px] font-medium text-white transition hover:opacity-85 active:scale-[0.985] disabled:pointer-events-none disabled:opacity-40"
                   >
                     {renaming ? 'Saving…' : 'Save'}
                   </button>
@@ -742,32 +833,22 @@ export function AgentDetailModal({ agent, project, projectId, status, onClose, a
                   </button>
                 </>
               )}
-              {agent.windowPresent && (
-                <button
-                  type="button"
-                  onClick={() => { setConfirmingClose(true) }}
-                  disabled={closing}
-                  className="inline-flex h-7 cursor-pointer items-center rounded-[7px] border border-[#e0901a]/40 bg-[#e0901a]/5 px-3 text-[12px] font-medium text-[#c07a10] transition hover:bg-[#e0901a]/10 active:scale-[0.985] disabled:pointer-events-none disabled:opacity-40"
-                  title="Kill the tmux window but keep the agent registered"
-                >
-                  {closing ? 'Closing…' : 'Close agent'}
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={() => { setConfirmingRemove(true) }}
-                disabled={removing}
-                className="inline-flex h-7 cursor-pointer items-center rounded-[7px] bg-accent-red px-3 text-[12px] font-medium text-white transition hover:opacity-85 active:scale-[0.985] disabled:pointer-events-none disabled:opacity-40"
-                title="Unregister the agent and remove it"
-              >
-                {removing ? 'Removing…' : 'Remove agent'}
-              </button>
               <span className="mx-0.5 h-5 w-px bg-line" aria-hidden="true" />
               {agentCount > 1 && (
                 <div className="hidden select-none items-center gap-1.5 sm:flex">
-                  <kbd className="inline-flex items-center gap-1 rounded-[5px] border border-line bg-canvas px-2 py-1 font-mono text-[20px] leading-none text-ink "><div>{isMac ? '⌘' : 'Ctrl'}</div> <div className='pb-1'>←</div></kbd>
+                  <button
+                    type="button"
+                    onClick={() => { onNavigate('prev') }}
+                    aria-label="Previous agent"
+                    className="inline-flex cursor-pointer items-center gap-1 rounded-[5px] border border-line bg-canvas px-2 py-1 font-mono text-[20px] leading-none text-ink transition hover:opacity-80 active:scale-[0.985]"
+                  ><div>Shift+Cmd</div> <div className='pb-1'>←</div></button>
                   <div className="text-[12px] text-muted-2">/</div>
-                  <kbd className="inline-flex items-center gap-1 rounded-[5px] border border-line bg-canvas px-2 py-1 font-mono text-[20px] leading-none text-ink "><div >{isMac ? '⌘' : 'Ctrl'}</div> <div className="pb-1">→</div></kbd>
+                  <button
+                    type="button"
+                    onClick={() => { onNavigate('next') }}
+                    aria-label="Next agent"
+                    className="inline-flex cursor-pointer items-center gap-1 rounded-[5px] border border-line bg-canvas px-2 py-1 font-mono text-[20px] leading-none text-ink transition hover:opacity-80 active:scale-[0.985]"
+                  ><div>Shift+Cmd</div> <div className="pb-1">→</div></button>
                 </div>
               )}
               <button
@@ -783,9 +864,18 @@ export function AgentDetailModal({ agent, project, projectId, status, onClose, a
             </div>
           </div>
 
-          {(renameError ?? closeError ?? removeError) && (
+          {agent.activeTask && (
+            <div
+              className="flex-shrink-0 border-b border-line bg-canvas/50 px-5 py-1.5 font-mono text-[11px] text-muted-2 truncate"
+              title={agent.activeTask}
+            >
+              {agent.activeTask}
+            </div>
+          )}
+
+          {(renameError ?? closeError ?? removeError ?? cloneError) && (
             <div className="flex-shrink-0 border-b border-line bg-accent-red/5 px-5 py-1.5 text-[11px] text-accent-red">
-              {renameError ?? closeError ?? removeError}
+              {renameError ?? closeError ?? removeError ?? cloneError}
             </div>
           )}
 
@@ -831,7 +921,7 @@ export function AgentDetailModal({ agent, project, projectId, status, onClose, a
                       type="button"
                       onClick={() => { void handleCreateWindow() }}
                       disabled={creating}
-                      className="inline-flex h-7 cursor-pointer items-center rounded-[7px] bg-accent-blue px-3 text-[12px] font-medium text-white transition hover:opacity-85 active:scale-[0.985] disabled:pointer-events-none disabled:opacity-40"
+                      className="inline-flex h-7 cursor-pointer items-center rounded-[7px] bg-accent-blue-solid px-3 text-[12px] font-medium text-white transition hover:opacity-85 active:scale-[0.985] disabled:pointer-events-none disabled:opacity-40"
                     >
                       {creating ? 'Creating…' : 'Create window'}
                     </button>
@@ -858,35 +948,42 @@ export function AgentDetailModal({ agent, project, projectId, status, onClose, a
             </div>
 
             {/* Skills section */}
-            {skills && !logExpanded && (
-              <details className="mt-3 flex-shrink-0">
-                <summary className="cursor-pointer text-[11px] font-semibold uppercase tracking-[0.08em] text-muted select-none">
-                  Skills ({skills.project.length + skills.user.length})
-                </summary>
-                <div className="mt-2 space-y-3">
-                  {/* Project skills — expanded */}
-                  {skills.project.length > 0 && (
-                    <div>
-                      <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-2">Project</div>
-                      {skills.project.map((skill) => (
-                        <SkillRow key={skill.name} skill={skill} agentId={agent.id} onQueued={setQueuedSkill} />
-                      ))}
-                    </div>
-                  )}
-                  {/* User skills — collapsed */}
-                  <details>
-                    <summary className="cursor-pointer text-[10px] font-semibold uppercase tracking-wider text-muted-2 select-none">
-                      User ({skills.user.length})
-                    </summary>
-                    <div className="mt-1">
-                      {skills.user.map((skill) => (
-                        <SkillRow key={skill.name} skill={skill} agentId={agent.id} onQueued={setQueuedSkill} />
-                      ))}
-                    </div>
-                  </details>
-                </div>
-              </details>
-            )}
+            {skills && !logExpanded && (() => {
+              const allSkills = [
+                ...skills.project.map((skill) => ({ skill, group: 'project' as const })),
+                ...skills.user.map((skill) => ({ skill, group: 'user' as const })),
+              ]
+              const visibleSkills = showAllSkills ? allSkills : allSkills.slice(0, SKILLS_VISIBLE_LIMIT)
+              const hiddenCount = allSkills.length - SKILLS_VISIBLE_LIMIT
+              return (
+                <details className="mt-3 flex-shrink-0">
+                  <summary className="cursor-pointer text-[11px] font-semibold uppercase tracking-[0.08em] text-muted select-none">
+                    Skills ({allSkills.length})
+                  </summary>
+                  <div className="mt-2 space-y-1">
+                    {visibleSkills.map(({ skill, group }, i) => (
+                      <div key={skill.name}>
+                        {(i === 0 || visibleSkills[i - 1]?.group !== group) && (
+                          <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-2">
+                            {group === 'project' ? 'Project' : 'User'}
+                          </div>
+                        )}
+                        <SkillRow skill={skill} agentId={agent.id} onQueued={setQueuedSkill} />
+                      </div>
+                    ))}
+                    {hiddenCount > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => { setShowAllSkills((v) => !v) }}
+                        className="text-[11px] text-accent-blue hover:underline"
+                      >
+                        {showAllSkills ? 'Show less' : `+${String(hiddenCount)} more`}
+                      </button>
+                    )}
+                  </div>
+                </details>
+              )
+            })()}
 
             {!logExpanded && <DiffPanel agentId={agent.id} />}
 
@@ -905,7 +1002,7 @@ export function AgentDetailModal({ agent, project, projectId, status, onClose, a
           />
           <ConfirmDialog
             open={confirmingClose}
-            message={`Close agent "${agent.name}"'s window? The agent stays registered and can be relaunched with "Create window".`}
+            message={`Close agent "${agent.name}"'s window and close this view? The agent stays registered and can be relaunched with "Create window".`}
             confirmLabel="Close"
             onConfirm={() => { void doCloseWindow() }}
             onCancel={() => { setConfirmingClose(false) }}
@@ -1062,7 +1159,7 @@ function SessionBanner({ sessionExists }: { sessionExists: boolean }) {
   }
 
   return (
-    <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-[10px] border border-accent-amber/20 bg-accent-amber/5 px-4 py-3 text-[13px] font-medium" style={{ color: '#7a4c06' }}>
+    <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-[10px] border border-accent-amber/20 bg-accent-amber/5 px-4 py-3 text-[13px] font-medium" style={{ color: 'var(--color-banner-warn-text)' }}>
       <span>
         {sessionExists ? 'Monitor offline — restarting…' : 'Session offline — showing last known state'}
         {startError && <span className="ml-2 font-normal" style={{ color: '#e5484d' }}>{startError}</span>}
@@ -1071,7 +1168,7 @@ function SessionBanner({ sessionExists }: { sessionExists: boolean }) {
         type="button"
         onClick={() => { void handleStart() }}
         disabled={starting}
-        className="inline-flex h-7 flex-shrink-0 cursor-pointer items-center rounded-[7px] bg-accent-blue px-3 text-[12px] font-medium text-white transition hover:opacity-85 active:scale-[0.985] disabled:pointer-events-none disabled:opacity-40"
+        className="inline-flex h-7 flex-shrink-0 cursor-pointer items-center rounded-[7px] bg-accent-blue-solid px-3 text-[12px] font-medium text-white transition hover:opacity-85 active:scale-[0.985] disabled:pointer-events-none disabled:opacity-40"
       >
         {starting
           ? (sessionExists ? 'Reconnecting…' : 'Starting…')
@@ -1146,7 +1243,7 @@ function BgProcessRow({ bg }: { bg: BgProcess }) {
             type="button"
             onClick={() => { void callApi(`/bg-processes/${encodeURIComponent(bg.name)}/window`, 'POST', 'open') }}
             disabled={acting !== null}
-            className="inline-flex h-7 cursor-pointer items-center rounded-[7px] bg-accent-blue px-3 text-[12px] font-medium text-white transition hover:opacity-85 active:scale-[0.985] disabled:pointer-events-none disabled:opacity-40"
+            className="inline-flex h-7 cursor-pointer items-center rounded-[7px] bg-accent-blue-solid px-3 text-[12px] font-medium text-white transition hover:opacity-85 active:scale-[0.985] disabled:pointer-events-none disabled:opacity-40"
           >
             {acting === 'open' ? 'Opening…' : 'Open window'}
           </button>
@@ -1273,14 +1370,20 @@ export default function AgentList() {
   // between board columns — a status change remounts AgentItem but not us.
   // Keyed by the globally-unique agent id, not name.
   const [expandedAgent, setExpandedAgent] = useState<{ id: number; armInteract: boolean } | null>(null)
-  // Stays on the unfiltered `agents` list (not filteredAgents) deliberately: if a user
-  // has an agent's detail modal open and then types a filter that would exclude that
-  // agent from the visible grid, prev/next navigation should not suddenly change
-  // behavior or strand — keeping full-list navigation independent of the grid filter
-  // is the least surprising choice.
-  const orderedAgentIds = useMemo(
-    () => [...agents].sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase())).map((a) => a.id),
+  // Cycle navigation (Cmd+Shift+Arrow) must skip inactive agents entirely — an
+  // exited/gone agent should never be a valid prev/next target. Otherwise this
+  // stays on the unfiltered `agents` list (not filteredAgents) deliberately: if
+  // a user has an agent's detail modal open and then types a filter that would
+  // exclude that agent from the visible grid, prev/next navigation should not
+  // suddenly change behavior or strand — keeping full-list navigation
+  // independent of the grid filter is the least surprising choice.
+  const activeAgents = useMemo(
+    () => agents.filter((a) => columnFor(deriveStatus(a)) !== null),
     [agents],
+  )
+  const orderedAgentIds = useMemo(
+    () => [...activeAgents].sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase())).map((a) => a.id),
+    [activeAgents],
   )
   const handleNavigate = useCallback((dir: 'prev' | 'next') => {
     setExpandedAgent((prev) => {
@@ -1520,7 +1623,7 @@ export default function AgentList() {
           onChange={(e) => { setFilterText(e.target.value) }}
           placeholder="Filter agents by name, project, role, or branch…"
           aria-label="Filter agents"
-          className="mb-4 max-w-xs rounded-[8px] border border-line bg-card px-3 py-1.5 font-mono text-[12px] text-ink placeholder:text-muted-2 outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/10 disabled:opacity-40"
+          className="mb-4 max-w-xs rounded-[8px] border border-line-input bg-card px-3 py-1.5 font-mono text-[12px] text-ink placeholder:text-muted-2 outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/10 disabled:opacity-40"
         />
       )}
       {agents.length === 0 ? (
@@ -1568,7 +1671,7 @@ export default function AgentList() {
           status={deriveStatus(expandedModalAgent)}
           armInteract={expandedAgent.armInteract}
           onClose={() => { setExpandedAgent(null) }}
-          agentCount={agents.length}
+          agentCount={activeAgents.length}
           onNavigate={handleNavigate}
           onRenamed={(id, newName) => {
             // Optimistic rename by stable id; the SSE agent-renamed reconciles too.

@@ -92,7 +92,7 @@ export default function FolderPickerModal({ initialPath, onSelect, onClose }: Fo
               if (inputPath !== currentPath) navigate(inputPath);
             }}
             placeholder="/path/to/folder"
-            className="w-full rounded-[6px] border border-line bg-canvas px-3 py-1.5 font-mono text-[12px] text-ink placeholder:text-muted-2 outline-none focus:border-accent focus:ring-2 focus:ring-accent/10 transition"
+            className="w-full rounded-[6px] border border-line-input bg-canvas px-3 py-1.5 font-mono text-[12px] text-ink placeholder:text-muted-2 outline-none focus:border-accent focus:ring-2 focus:ring-accent/10 transition"
           />
         </div>
 
@@ -156,7 +156,7 @@ export default function FolderPickerModal({ initialPath, onSelect, onClose }: Fo
               type="button"
               disabled={!currentPath}
               onClick={() => { onSelect(currentPath); }}
-              className="cursor-pointer rounded-[6px] bg-ink px-3 py-1.5 text-[12px] font-medium text-white hover:bg-ink/80 transition disabled:opacity-40 disabled:pointer-events-none"
+              className="cursor-pointer rounded-[6px] bg-button-primary px-3 py-1.5 text-[12px] font-medium text-button-primary-text hover:opacity-90 transition disabled:opacity-40 disabled:pointer-events-none"
             >
               Select this folder
             </button>

@@ -112,7 +112,7 @@ export default function ProjectList() {
                       setRoleByProject((prev) => ({ ...prev, [project.id]: next }));
                     }}
                     disabled={busy || deleting}
-                    className="h-7 flex-shrink-0 rounded-[7px] border border-line bg-canvas px-1.5 text-[12px] text-ink disabled:opacity-40"
+                    className="h-7 flex-shrink-0 rounded-[7px] border border-line-input bg-canvas px-1.5 text-[12px] text-ink disabled:opacity-40"
                   >
                     {ROLE_VALUES.map((r) => (
                       <option key={r} value={r}>{r === 'generic' ? 'Generic' : `${r.charAt(0).toUpperCase()}${r.slice(1)}`}</option>
@@ -122,7 +122,7 @@ export default function ProjectList() {
                     type="button"
                     onClick={() => { void handleSpawn(project); }}
                     disabled={busy || deleting}
-                    className="inline-flex h-7 flex-shrink-0 cursor-pointer items-center rounded-[7px] bg-accent-blue px-3 text-[12px] font-medium text-white transition hover:opacity-85 active:scale-[0.985] disabled:pointer-events-none disabled:opacity-40"
+                    className="inline-flex h-7 flex-shrink-0 cursor-pointer items-center rounded-[7px] bg-accent-blue-solid px-3 text-[12px] font-medium text-white transition hover:opacity-85 active:scale-[0.985] disabled:pointer-events-none disabled:opacity-40"
                   >
                     {busy ? 'Spawning…' : 'Spawn agent'}
                   </button>

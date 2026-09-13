@@ -117,7 +117,7 @@ export default function InactiveAgentsPanel() {
                         type="button"
                         onClick={(e) => { e.stopPropagation(); void handleWake(a); }}
                         disabled={busy}
-                        className="inline-flex h-7 flex-shrink-0 cursor-pointer items-center rounded-[7px] bg-accent-blue px-3 text-[12px] font-medium text-white transition hover:opacity-85 active:scale-[0.985] disabled:pointer-events-none disabled:opacity-40"
+                        className="inline-flex h-7 flex-shrink-0 cursor-pointer items-center rounded-[7px] bg-accent-blue-solid px-3 text-[12px] font-medium text-white transition hover:opacity-85 active:scale-[0.985] disabled:pointer-events-none disabled:opacity-40"
                       >
                         {busy ? 'Working…' : 'Wake agent'}
                       </button>

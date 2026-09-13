@@ -9,7 +9,7 @@ import fastifyCors from '@fastify/cors';
 import fastifyStatic from '@fastify/static';
 import fastifyWebsocket from '@fastify/websocket';
 import type { WebSocket } from 'ws';
-import { readConductorConf, DEFAULT_CONF_PATH, clearConfCache, type ConductorConf } from './config.ts';
+import { readConductorConf, DEFAULT_CONF_PATH, type ConductorConf } from './config.ts';
 import type Database from 'better-sqlite3';
 import { openDb, getDbPath, listAgents, getAgentById, createAgent, deriveCloneName, addWorktreeToAgent, clearAgentWorktree, deleteAgent, updateAgentName, agentWindowName, addTask, deleteTask, reorderTasks, jumpTaskToHead, listTasksForAgentId, listTasksByProject, listCompletedTasks, listProjects, createProject, updateProject, deleteProject, nextAgentName, listSchedules, createSchedule, updateSchedule, deleteSchedule, dueSchedules, fireSchedule, getAllAgentUsageTotals, listAgentUsage, listCheckpoints, insertCheckpoint, getCheckpoint, listTerminalLog, appendTerminalLogChunk, popTask, createBgProcess, deleteBgProcess, listBgProcesses, type AgentUsageTotals, type Agent } from './db.ts';
 import { detectAgentStatus, detectAgentMode, detectAgentType, readTmuxWindowInventory, isTmuxWindowPresent, windowState, getActiveTask, capturePaneTail as capturePaneTailUninstrumented, capturePaneTailRaw as capturePaneTailRawUninstrumented, sendTextToPane, extractPaneLabel, applyGlobalPaneSize, type AgentMode, type AgentRunState, type AgentType, type DetectionReason } from './state.ts';
@@ -232,7 +232,7 @@ function refreshAgentContextCache(conf: ReturnType<typeof readConductorConf>): v
     const paneCurrentCommand = inventory.windows.get(wn) ?? null;
     const windowPresent = paneCurrentCommand !== null;
     const tail15 = windowPresent ? capturePaneTail(sessionName, wn, 15, 'status') : '';
-    const { state, reason, matchedPattern } = detectAgentStatus(conf, wn, agent.launchCmd, tail15 || undefined, windowPresent, paneCurrentCommand);
+    const { state } = detectAgentStatus(conf, wn, agent.launchCmd, tail15 || undefined, windowPresent, paneCurrentCommand);
     const isBusy = state === 'busy' || state === 'awaiting' || state === 'stalled';
     const agentType = detectAgentType(agent.launchCmd);
     const ctx = windowPresent
@@ -1047,7 +1047,7 @@ await fastify.register((api) => {
     {
       const windowPresent = isTmuxWindowPresent(conf.sessionName, winName);
       const tail15 = windowPresent ? capturePaneTail(conf.sessionName, winName, 15, 'agent-window') : '';
-      const { state, reason, matchedPattern } = detectAgentStatus(conf, winName, launchCmd, tail15 || undefined);
+      const { state } = detectAgentStatus(conf, winName, launchCmd, tail15 || undefined);
       const isBusy = state === 'busy' || state === 'awaiting' || state === 'stalled';
       const agentType = detectAgentType(launchCmd);
       const ctx = getContextForAgent(conf, agentType, winName, workdir, isBusy, tail15 || undefined);
@@ -1110,7 +1110,7 @@ await fastify.register((api) => {
     {
       const windowPresent = isTmuxWindowPresent(conf.sessionName, winName);
       const tail15 = windowPresent ? capturePaneTail(conf.sessionName, winName, 15, 'mode-switch') : '';
-      const { state, reason, matchedPattern } = detectAgentStatus(conf, winName, entry.launchCmd, tail15 || undefined);
+      const { state } = detectAgentStatus(conf, winName, entry.launchCmd, tail15 || undefined);
       const isBusy = state === 'busy' || state === 'awaiting' || state === 'stalled';
       const agentType = detectAgentType(entry.launchCmd);
       const ctx = getContextForAgent(conf, agentType, winName, entry.workdir, isBusy, tail15 || undefined);
@@ -1870,7 +1870,7 @@ await fastify.register((api) => {
   api.delete<{ Params: { name: string } }>('/bg-processes/:name', async (req, reply) => {
     const { name } = req.params;
     const conf = readConductorConf();
-    const { sessionName, stateDir, agentBgLinks } = conf;
+    const { sessionName, stateDir } = conf;
 
     const entry = listBgProcesses(db).find((b) => b.name === name);
     if (!entry) {
@@ -2132,7 +2132,7 @@ await fastify.register((api) => {
     {
       const windowPresent = isTmuxWindowPresent(conf.sessionName, winName);
       const tail15 = windowPresent ? capturePaneTail(conf.sessionName, winName, 15, 'snapshot') : '';
-      const { state, reason, matchedPattern } = detectAgentStatus(conf, winName, launchCmd, tail15 || undefined);
+      const { state } = detectAgentStatus(conf, winName, launchCmd, tail15 || undefined);
       const isBusy = state === 'busy' || state === 'awaiting' || state === 'stalled';
       const agentType = detectAgentType(launchCmd);
       const ctx = getContextForAgent(conf, agentType, winName, project.workdir, isBusy, tail15 || undefined);

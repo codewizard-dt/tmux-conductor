@@ -23,31 +23,35 @@ set -euo pipefail
 # ---------------------------------------------------------------------------
 # Defaults
 # ---------------------------------------------------------------------------
-# HOOK_DIR     = source directory containing the on-*.js scripts and the
-#                lib/write-state.js helper (this repo's hooks/ by default —
-#                resolved absolutely so `cp` works from any cwd).
+# HOOK_DIR      = source directory containing the on-*.js scripts and the
+#                 lib/write-state.js helper (this repo's hooks/ by default —
+#                 resolved absolutely so `cp` works from any cwd).
 # SETTINGS_FILE = the global Claude Code settings file we merge registrations
 #                 into. Global (not project-local) so hooks fire regardless of
 #                 which project a session starts in.
-# INSTALL_DIR  = stable, vendor-neutral path the registered commands point at.
-#                Copying scripts here decouples settings.json from the repo
-#                checkout path, so users can move or delete the repo without
-#                breaking their hooks.
+# INSTALL_DIR   = stable, vendor-neutral path the registered commands point at.
+#                 Copying scripts here decouples settings.json from the repo
+#                 checkout path, so users can move or delete the repo without
+#                 breaking their hooks.
+# SKILLS_DIR    = stable path where Claude Code discovers skills by directory
+#                 presence. Skills need no registration (unlike hooks).
 HOOK_DIR="$(cd "$(dirname "$0")/hooks" && pwd)"
 SETTINGS_FILE="$HOME/.claude/settings.json"
 INSTALL_DIR="$HOME/.claude/hooks/tmux-conductor"
 CODEX_HOOKS_FILE="$HOME/.codex/hooks.json"
 CODEX_INSTALL_DIR="$HOME/.codex/hooks/tmux-conductor"
+SKILLS_DIR="$HOME/.claude/skills/dev-commands"
 
 # ---------------------------------------------------------------------------
 # Argument parsing
 # ---------------------------------------------------------------------------
-# All three defaults above are overridable via flags. Primary use cases:
-#   --hook-dir      : running from a different source tree (tests, CI)
-#   --settings-file : writing into a sandboxed settings.json (tests)
-#   --install-dir   : installing to a non-default location (tests, dry runs)
+# All defaults above are overridable via flags. Primary use cases:
+#   --hook-dir       : running from a different source tree (tests, CI)
+#   --settings-file  : writing into a sandboxed settings.json (tests)
+#   --install-dir    : installing to a non-default location (tests, dry runs)
 #   --codex-hooks-file : writing into a sandboxed Codex hooks.json (tests)
 #   --codex-install-dir: installing Codex hooks to a non-default location
+#   --skills-dir     : installing skills to a non-default location (tests, dry runs)
 # Unknown flags fail loudly rather than being silently ignored.
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -69,6 +73,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --codex-install-dir)
       CODEX_INSTALL_DIR="$2"
+      shift 2
+      ;;
+    --skills-dir)
+      SKILLS_DIR="$2"
       shift 2
       ;;
     *)
@@ -171,3 +179,36 @@ jq --arg install_dir "$CODEX_INSTALL_DIR" --arg install_dir_cmd "$CODEX_INSTALL_
 mv "$CODEX_TMP_FILE" "$CODEX_HOOKS_FILE"
 
 echo "Conductor Codex hooks installed to $CODEX_INSTALL_DIR and registered in $CODEX_HOOKS_FILE"
+
+# ---------------------------------------------------------------------------
+# Install dev-commands skill
+# ---------------------------------------------------------------------------
+# The dev-commands skill is a read-only bundle of documentation (SKILL.md)
+# and a standalone bash script (scripts/dev-commands.sh) that agents invoke
+# proactively to query background process state. Skills require no registration
+# in settings.json — Claude Code discovers them by directory presence alone.
+# This installation step is independent of hook installation and does not
+# depend on jq or settings.json manipulation.
+SKILLS_SOURCE_DIR="$(cd "$(dirname "$0")/skills/dev-commands" && pwd)"
+
+# Ensure the target directory exists
+mkdir -p "$SKILLS_DIR"
+
+# Copy SKILL.md (the skill metadata and documentation)
+if [ -f "$SKILLS_SOURCE_DIR/SKILL.md" ]; then
+  cp "$SKILLS_SOURCE_DIR/SKILL.md" "$SKILLS_DIR/SKILL.md"
+else
+  echo "Warning: SKILL.md not found at $SKILLS_SOURCE_DIR/SKILL.md (skipping skill installation)" >&2
+fi
+
+# Copy the scripts directory (containing dev-commands.sh)
+if [ -d "$SKILLS_SOURCE_DIR/scripts" ]; then
+  mkdir -p "$SKILLS_DIR/scripts"
+  cp "$SKILLS_SOURCE_DIR/scripts"/* "$SKILLS_DIR/scripts/"
+  # Ensure all scripts are executable
+  chmod +x "$SKILLS_DIR/scripts"/*
+else
+  echo "Warning: scripts directory not found at $SKILLS_SOURCE_DIR/scripts (skipping script installation)" >&2
+fi
+
+echo "Dev-commands skill installed to $SKILLS_DIR"
