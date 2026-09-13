@@ -11,7 +11,7 @@ import fastifyWebsocket from '@fastify/websocket';
 import type { WebSocket } from 'ws';
 import { readConductorConf, DEFAULT_CONF_PATH, type ConductorConf } from './config.ts';
 import type Database from 'better-sqlite3';
-import { openDb, getDbPath, listAgents, getAgentById, createAgent, deriveCloneName, addWorktreeToAgent, clearAgentWorktree, deleteAgent, updateAgentName, agentWindowName, addTask, deleteTask, reorderTasks, jumpTaskToHead, listTasksForAgentId, listTasksByProject, listCompletedTasks, listProjects, createProject, updateProject, deleteProject, nextAgentName, listSchedules, createSchedule, updateSchedule, deleteSchedule, dueSchedules, fireSchedule, getAllAgentUsageTotals, listAgentUsage, listCheckpoints, insertCheckpoint, getCheckpoint, listTerminalLog, appendTerminalLogChunk, popTask, createBgProcess, deleteBgProcess, listBgProcesses, type AgentUsageTotals, type Agent } from './db.ts';
+import { openDb, getDbPath, listAgents, getAgentById, createAgent, deriveCloneName, addWorktreeToAgent, clearAgentWorktree, deleteAgent, updateAgentName, agentWindowName, addTask, deleteTask, reorderTasks, jumpTaskToHead, listTasksForAgentId, listTasksByProject, listCompletedTasks, listProjects, createProject, updateProject, deleteProject, nextAgentName, listSchedules, createSchedule, updateSchedule, deleteSchedule, dueSchedules, fireSchedule, getAllAgentUsageTotals, listAgentUsage, listCheckpoints, insertCheckpoint, getCheckpoint, listTerminalLog, appendTerminalLogChunk, popTask, createBgProcess, deleteBgProcess, updateBgProcess, listBgProcesses, type AgentUsageTotals, type Agent } from './db.ts';
 import { detectAgentStatus, detectAgentMode, detectAgentType, readTmuxWindowInventory, isTmuxWindowPresent, windowState, getActiveTask, capturePaneTail as capturePaneTailUninstrumented, capturePaneTailRaw as capturePaneTailRawUninstrumented, sendTextToPane, extractPaneLabel, applyGlobalPaneSize, type AgentMode, type AgentRunState, type AgentType, type DetectionReason } from './state.ts';
 import { getAgentContext, getCodexAgentContext, type AgentContext } from './context.ts';
 import dotenv from 'dotenv';
@@ -1874,6 +1874,51 @@ await fastify.register((api) => {
     execSync(`tmux pipe-pane -t ${sessionName}:${name} -o "cat >> '${logDir}/bg-${name}.log'"`, { timeout: TMUX_SYNC_TIMEOUT_MS });
 
     return reply.status(201).send({ ok: true, bg: { name, workdir, launchCmd, linkedAgent: linkedAgent ?? null, projectId: projectId ?? null } });
+  });
+
+  // Updates the stored bg-process definition (workdir, launchCmd, projectId).
+  // name is immutable — it's the tmux window key and the route param for
+  // delete/window actions, so it is never accepted in the body.
+  //
+  // IMPORTANT semantics: launchCmd may already be running inside a live tmux
+  // window. This route writes SQLite only and never kills/restarts that
+  // window — the new values apply only the next time the window is
+  // (re)created (POST /bg-processes/:name/window, or a fresh
+  // conductor.sh/spawn.sh run). We deliberately do NOT auto-recreate the
+  // window here: POST /bg-processes/:name/window is an explicit, separate
+  // user action elsewhere in the UI, and silently killing a running process
+  // out from under the user on a field edit would violate that convention.
+  // The frontend surfaces a note that changes take effect on next restart.
+  api.patch<{ Params: { name: string }; Body: { workdir?: unknown; launchCmd?: unknown; projectId?: unknown } }>('/bg-processes/:name', async (req, reply) => {
+    const { name } = req.params;
+    const entry = listBgProcesses(db).find((b) => b.name === name);
+    if (!entry) {
+      return reply.status(404).send({ error: `bg process '${name}' not found` });
+    }
+
+    const { workdir, launchCmd, projectId } = req.body;
+    const data: Partial<{ workdir: string; launchCmd: string; projectId: number | null }> = {};
+    if (workdir !== undefined) {
+      if (typeof workdir !== 'string' || !workdir.startsWith('/')) {
+        return reply.status(400).send({ error: 'workdir must be an absolute path (starts with /)' });
+      }
+      data.workdir = workdir;
+    }
+    if (launchCmd !== undefined) {
+      if (typeof launchCmd !== 'string' || !launchCmd.trim()) {
+        return reply.status(400).send({ error: 'launchCmd must be a non-empty string' });
+      }
+      data.launchCmd = launchCmd;
+    }
+    if (projectId !== undefined) {
+      if (projectId !== null && (typeof projectId !== 'number' || !Number.isInteger(projectId))) {
+        return reply.status(400).send({ error: 'projectId must be an integer or null' });
+      }
+      data.projectId = projectId;
+    }
+
+    const updated = updateBgProcess(db, entry.id, data);
+    return reply.send(updated);
   });
 
   api.delete<{ Params: { name: string } }>('/bg-processes/:name', async (req, reply) => {

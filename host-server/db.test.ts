@@ -11,6 +11,7 @@ import {
   listBgProcesses,
   listProjects,
   deleteBgProcess,
+  updateBgProcess,
   deleteAgent,
 } from './db.ts';
 import type Database from 'better-sqlite3';
@@ -242,6 +243,55 @@ void test('TASK-161: a bg process with a project_id set resolves projectName via
     assert.ok(unscopedStatus);
     assert.equal(unscopedStatus.projectId, null);
     assert.equal(unscopedStatus.projectName, null);
+  } finally {
+    db.close();
+  }
+});
+
+// TASK-161-uat-fix: updateBgProcess is the new (previously nonexistent) Update
+// leg of bg-process CRUD, scoped to exactly workdir/launchCmd/projectId — name
+// stays immutable (it's the tmux window key and the route param for
+// delete/window actions) and is never accepted by this function's `data`.
+void test('TASK-161-uat-fix: updateBgProcess applies a partial update (workdir/launchCmd/projectId) and leaves name/linkedAgentId untouched', () => {
+  const db = openDb(':memory:');
+  try {
+    const project = createProject(db, { name: 'uatfix-project', workdir: '/tmp/uatfix-project' });
+    const agent = createAgent(db, { name: 'uatfix-agent', workdir: '/tmp/uatfix-agent', launchCmd: 'claude' });
+    const bg = createBgProcess(db, { name: 'uatfix-bg', workdir: '/tmp/before', launchCmd: 'npm run before', linkedAgentId: agent.id });
+    assert.equal(bg.projectId, null);
+
+    // (a) Updating only workdir leaves launchCmd/projectId/name/linkedAgentId alone.
+    const afterWorkdir = updateBgProcess(db, bg.id, { workdir: '/tmp/after' });
+    assert.equal(afterWorkdir.name, 'uatfix-bg');
+    assert.equal(afterWorkdir.workdir, '/tmp/after');
+    assert.equal(afterWorkdir.launchCmd, 'npm run before');
+    assert.equal(afterWorkdir.linkedAgentId, agent.id);
+    assert.equal(afterWorkdir.projectId, null);
+
+    // (b) Updating launchCmd + projectId together in one call.
+    const afterBoth = updateBgProcess(db, bg.id, { launchCmd: 'npm run after', projectId: project.id });
+    assert.equal(afterBoth.workdir, '/tmp/after');
+    assert.equal(afterBoth.launchCmd, 'npm run after');
+    assert.equal(afterBoth.projectId, project.id);
+
+    // (c) projectId can be cleared back to null (unassigning from a project).
+    const afterCleared = updateBgProcess(db, bg.id, { projectId: null });
+    assert.equal(afterCleared.projectId, null);
+
+    // (d) An empty data object is a no-op read-back, not an error.
+    const noop = updateBgProcess(db, bg.id, {});
+    assert.equal(noop.workdir, '/tmp/after');
+    assert.equal(noop.launchCmd, 'npm run after');
+
+    // (e) Round-trips through a fresh listBgProcesses read too, not just the
+    // UPDATE...RETURNING result.
+    const reloaded = listBgProcesses(db).find((b) => b.id === bg.id);
+    assert.ok(reloaded);
+    assert.equal(reloaded.workdir, '/tmp/after');
+    assert.equal(reloaded.launchCmd, 'npm run after');
+
+    // (f) A nonexistent id throws rather than silently no-op-ing.
+    assert.throws(() => { updateBgProcess(db, bg.id + 999, { workdir: '/tmp/nope' }); });
   } finally {
     db.close();
   }

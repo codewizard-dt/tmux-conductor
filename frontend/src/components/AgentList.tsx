@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { API_BASE, addTask, cloneAgent, createWorktreeForAgent, renameAgent, type AgentDisplayStatus, type AgentRunState, type AgentStatusContract, type Task } from '../lib/api'
+import { API_BASE, addTask, cloneAgent, createWorktreeForAgent, listProjects, renameAgent, updateBgProcess, type AgentDisplayStatus, type AgentRunState, type AgentStatusContract, type Project, type Task } from '../lib/api'
 import AddTaskForm from './AddTaskForm'
 import AgentActionsMenu from './AgentActionsMenu'
 import CheckpointList from './CheckpointList'
@@ -1185,11 +1185,18 @@ function SessionBanner({ sessionExists }: { sessionExists: boolean }) {
 // One row per BG_PROCESSES entry. When the window has died, the row turns
 // amber and offers the choice: respawn the window or remove the definition
 // from conductor.conf entirely.
-function BgProcessRow({ bg }: { bg: BgProcess }) {
+function BgProcessRow({ bg, projects, onUpdated }: { bg: BgProcess; projects: Project[]; onUpdated: (updated: BgProcess) => void }) {
   const [acting, setActing] = useState<'open' | 'close' | 'remove' | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
   const [confirmingRemove, setConfirmingRemove] = useState(false)
   const [confirmingClose, setConfirmingClose] = useState(false)
+
+  const [editing, setEditing] = useState(false)
+  const [editWorkdir, setEditWorkdir] = useState(bg.workdir)
+  const [editLaunchCmd, setEditLaunchCmd] = useState(bg.launchCmd)
+  const [editProjectId, setEditProjectId] = useState<number | null>(bg.projectId)
+  const [editError, setEditError] = useState<string | null>(null)
+  const [editSaving, setEditSaving] = useState(false)
 
   async function callApi(path: string, method: string, kind: 'open' | 'close' | 'remove') {
     setActing(kind)
@@ -1217,6 +1224,51 @@ function BgProcessRow({ bg }: { bg: BgProcess }) {
     void callApi(`/bg-processes/${encodeURIComponent(bg.name)}/window`, 'DELETE', 'close')
   }
 
+  function startEdit() {
+    setEditWorkdir(bg.workdir)
+    setEditLaunchCmd(bg.launchCmd)
+    setEditProjectId(bg.projectId)
+    setEditError(null)
+    setEditing(true)
+  }
+
+  function cancelEdit() {
+    setEditing(false)
+    setEditError(null)
+  }
+
+  async function saveEdit() {
+    if (!editWorkdir.startsWith('/')) {
+      setEditError('Working directory must be an absolute path (start with /)')
+      return
+    }
+    if (!editLaunchCmd.trim()) {
+      setEditError('Launch command is required')
+      return
+    }
+    setEditSaving(true)
+    setEditError(null)
+    try {
+      const saved = await updateBgProcess(bg.name, {
+        workdir: editWorkdir,
+        launchCmd: editLaunchCmd,
+        projectId: editProjectId,
+      })
+      onUpdated({
+        ...bg,
+        workdir: saved.workdir,
+        launchCmd: saved.launchCmd,
+        projectId: saved.projectId,
+        projectName: projects.find((p) => p.id === saved.projectId)?.name ?? null,
+      })
+      setEditing(false)
+    } catch (err: unknown) {
+      setEditError(err instanceof Error ? err.message : 'Failed to save changes')
+    } finally {
+      setEditSaving(false)
+    }
+  }
+
   return (
     <div className={`flex flex-wrap items-center gap-x-3 gap-y-2 rounded-card border px-4 py-3 ${bg.windowPresent ? 'border-line bg-canvas' : 'border-accent-amber/30 bg-accent-amber/5'}`}>
       <span className="font-mono text-[13px] font-medium text-ink">{bg.name}</span>
@@ -1231,6 +1283,16 @@ function BgProcessRow({ bg }: { bg: BgProcess }) {
       <span className="truncate font-mono text-[11px] text-muted-2" title={`${bg.launchCmd} (in ${bg.workdir})`}>{bg.launchCmd}</span>
       {bg.linkedAgent && <span className="text-[11px] text-muted">linked to {bg.linkedAgent}</span>}
       <div className="ml-auto flex flex-shrink-0 items-center gap-2">
+        {!editing && (
+          <button
+            type="button"
+            onClick={startEdit}
+            disabled={acting !== null}
+            className="inline-flex h-7 cursor-pointer items-center rounded-[7px] border border-line bg-card px-3 text-[12px] font-medium text-ink-2 transition hover:bg-canvas active:scale-[0.985] disabled:pointer-events-none disabled:opacity-40"
+          >
+            Edit
+          </button>
+        )}
         {bg.windowPresent ? (
           <button
             type="button"
@@ -1260,6 +1322,67 @@ function BgProcessRow({ bg }: { bg: BgProcess }) {
         </button>
       </div>
       {actionError && <span className="w-full text-[12px]" style={{ color: '#e5484d' }}>{actionError}</span>}
+      {editing && (
+        <div className="mt-1 flex w-full flex-col gap-2 rounded-[8px] border border-line bg-card p-3">
+          <div className="grid grid-cols-2 gap-2">
+            <div className="flex flex-col gap-1">
+              <label className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted">Working Directory</label>
+              <input
+                type="text"
+                value={editWorkdir}
+                onChange={(e) => { setEditWorkdir(e.target.value) }}
+                placeholder="/absolute/path"
+                className="w-full rounded-[8px] border border-line-input bg-canvas px-3 py-1.5 font-mono text-[12px] text-ink placeholder:text-muted-2 outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/10"
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted">Launch Command</label>
+              <input
+                type="text"
+                value={editLaunchCmd}
+                onChange={(e) => { setEditLaunchCmd(e.target.value) }}
+                placeholder="npm run dev"
+                className="w-full rounded-[8px] border border-line-input bg-canvas px-3 py-1.5 font-mono text-[12px] text-ink placeholder:text-muted-2 outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/10"
+              />
+            </div>
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted">Project</label>
+            <select
+              value={editProjectId === null ? '' : editProjectId.toString()}
+              onChange={(e) => { const v = e.target.value; setEditProjectId(v === '' ? null : Number(v)) }}
+              className="w-full rounded-[8px] border border-line-input bg-canvas px-3 py-1.5 font-mono text-[12px] text-ink outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/10"
+            >
+              <option value="">— Unassigned —</option>
+              {projects.map((p) => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
+          </div>
+          <p className="text-[10px] text-muted-2">
+            Changes are saved to the process definition only — they take effect the next time this process&apos;s window is (re)created (Open window, or a fresh conductor.sh/spawn.sh run), not immediately.
+          </p>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => { void saveEdit() }}
+              disabled={editSaving}
+              className="inline-flex h-7 cursor-pointer items-center rounded-[7px] bg-button-primary px-3 text-[12px] font-medium text-button-primary-text transition hover:opacity-90 active:scale-[0.985] disabled:pointer-events-none disabled:opacity-50"
+            >
+              {editSaving ? 'Saving…' : 'Save'}
+            </button>
+            <button
+              type="button"
+              onClick={cancelEdit}
+              disabled={editSaving}
+              className="inline-flex h-7 cursor-pointer items-center rounded-[7px] border border-line bg-card px-3 text-[12px] font-medium text-ink-2 transition hover:bg-canvas active:scale-[0.985] disabled:pointer-events-none disabled:opacity-40"
+            >
+              Cancel
+            </button>
+            {editError && <span className="text-[12px]" style={{ color: '#e5484d' }}>{editError}</span>}
+          </div>
+        </div>
+      )}
       <ConfirmDialog
         open={confirmingRemove}
         message={`Remove background process "${bg.name}"? This kills its tmux window (if any) and removes it from the conductor registry.`}
@@ -1297,7 +1420,14 @@ const groupBgsByProject = (list: BgProcess[]): { project: string | null; project
   return groups
 }
 
-function BgProcessSection({ bgs }: { bgs: BgProcess[] }) {
+function BgProcessSection({ bgs, onUpdated }: { bgs: BgProcess[]; onUpdated: (updated: BgProcess) => void }) {
+  // Fetched once here (not per-row) so every BgProcessRow's edit form shares
+  // the same project options — mirrors AddBgProcessForm's own local fetch.
+  const [projects, setProjects] = useState<Project[]>([])
+  useEffect(() => {
+    listProjects().then(setProjects).catch(() => { /* best-effort */ })
+  }, [])
+
   if (bgs.length === 0) {
     return (
       <div className="mt-6">
@@ -1333,7 +1463,7 @@ function BgProcessSection({ bgs }: { bgs: BgProcess[] }) {
               {group.project ?? 'Unassigned'}
             </p>
             <div className="flex flex-col gap-2">
-              {group.bgs.map((bg) => <BgProcessRow key={bg.name} bg={bg} />)}
+              {group.bgs.map((bg) => <BgProcessRow key={bg.name} bg={bg} projects={projects} onUpdated={onUpdated} />)}
             </div>
           </div>
         ))}
@@ -1549,6 +1679,21 @@ export default function AgentList() {
     })
   })
 
+  // Local counterpart to the bg-update SSE handler above: the PATCH route
+  // only writes SQLite (workdir/launchCmd/projectId) and doesn't touch the
+  // live tmux window, so the poll loop's windowPresent/state/linkedAgent
+  // diff never fires an SSE broadcast for it — the edit form applies the
+  // saved fields to local state directly instead of waiting on the server.
+  const handleBgUpdated = useCallback((updated: BgProcess) => {
+    setBgs((prev) => {
+      const idx = prev.findIndex((b) => b.name === updated.name)
+      if (idx === -1) return prev
+      const next = [...prev]
+      next[idx] = { ...next[idx], ...updated }
+      return next
+    })
+  }, [])
+
   useSSEEvent<{ name?: string }>('bg-removed', (data) => {
     if (typeof data.name === 'string') {
       setBgs((prev) => prev.filter((b) => b.name !== data.name))
@@ -1713,7 +1858,7 @@ export default function AgentList() {
         </div>
       )}
 
-      <BgProcessSection bgs={bgs} />
+      <BgProcessSection bgs={bgs} onUpdated={handleBgUpdated} />
       {/* Rendered from live `agents` state so the badge/banner keep updating
           while open; if the agent is removed, the lookup empties and the
           modal disappears. */}

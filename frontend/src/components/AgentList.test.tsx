@@ -687,6 +687,138 @@ describe('AgentList empty states (agent filter)', () => {
   })
 })
 
+// TASK-161-uat-fix: the inline Edit affordance added to each BgProcessSection
+// row — editing workdir/launchCmd/project and saving calls the new
+// PATCH /bg-processes/:name route, then applies the response to local state
+// directly (see AgentList.tsx's handleBgUpdated comment: the poll loop's
+// bg-update SSE broadcast only fires on windowPresent/state/linkedAgent
+// changes, never on a workdir/launchCmd/projectId edit).
+describe('BgProcessRow inline edit (TASK-161-uat-fix)', () => {
+  function stubBgEditFetch(opts: {
+    agent: Agent
+    bg: BgProcess
+    projects: { id: number; name: string; workdir: string; defaultLaunchCmd: string; createdAt: string }[]
+    onPatch: (name: string, body: { workdir?: string; launchCmd?: string; projectId?: number | null }) => { ok: boolean; json: () => unknown }
+  }) {
+    class MockEventSource {
+      addEventListener() { /* no-op */ }
+      removeEventListener() { /* no-op */ }
+      close() { /* no-op */ }
+    }
+    vi.stubGlobal('EventSource', MockEventSource)
+    vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string, init?: RequestInit) => {
+      if (url.includes('/bg-processes/') && init?.method === 'PATCH') {
+        const name = decodeURIComponent(url.split('/bg-processes/')[1] ?? '')
+        const body = init.body ? JSON.parse(init.body as string) as { workdir?: string; launchCmd?: string; projectId?: number | null } : {}
+        return Promise.resolve(opts.onPatch(name, body))
+      }
+      if (url.includes('/projects')) {
+        return Promise.resolve({ ok: true, json: () => opts.projects })
+      }
+      return Promise.resolve({
+        ok: true,
+        json: () => ({
+          session: 'test-session', sessionAlive: true, sessionExists: true,
+          agents: [opts.agent], bgProcesses: [opts.bg], timestamp: new Date().toISOString(),
+        }),
+      })
+    }))
+  }
+
+  it('editing workdir/launchCmd/project and saving PATCHes /bg-processes/:name and renders the new values', async () => {
+    const agent: Agent = { ...baseAgent(null), id: 1, name: 'solo-agent' }
+    const bg: BgProcess = {
+      name: 'editable-bg',
+      workdir: '/tmp/before',
+      launchCmd: 'npm run before',
+      windowPresent: true,
+      state: null,
+      logPath: '/tmp/before.log',
+      statePath: '/tmp/before.state',
+      linkedAgent: null,
+      projectId: null,
+      projectName: null,
+    }
+    const projects = [
+      { id: 1, name: 'project-one', workdir: '/tmp/p1', defaultLaunchCmd: 'claude', createdAt: new Date().toISOString() },
+      { id: 2, name: 'project-two', workdir: '/tmp/p2', defaultLaunchCmd: 'claude', createdAt: new Date().toISOString() },
+    ]
+
+    stubBgEditFetch({
+      agent,
+      bg,
+      projects,
+      onPatch: (name, body) => {
+        expect(name).toBe('editable-bg')
+        expect(body).toEqual({ workdir: '/tmp/after', launchCmd: 'npm run after', projectId: 2 })
+        return {
+          ok: true,
+          json: () => ({ id: 1, name: 'editable-bg', workdir: '/tmp/after', launchCmd: 'npm run after', linkedAgentId: null, projectId: 2 }),
+        }
+      },
+    })
+
+    render(<AgentList />)
+    expect(await screen.findByText('editable-bg')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }))
+
+    const workdirInput = await screen.findByDisplayValue('/tmp/before')
+    fireEvent.change(workdirInput, { target: { value: '/tmp/after' } })
+    const launchCmdInput = screen.getByDisplayValue('npm run before')
+    fireEvent.change(launchCmdInput, { target: { value: 'npm run after' } })
+    // The project <select> is the only combobox rendered by the edit form.
+    const projectSelect = screen.getByRole('combobox')
+    fireEvent.change(projectSelect, { target: { value: '2' } })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    // The row reflects the PATCH response once applied to local state — no
+    // page reload / re-fetch required.
+    expect(await screen.findByTitle('npm run after (in /tmp/after)')).toBeInTheDocument()
+    expect(screen.queryByDisplayValue('/tmp/after')).toBeNull()
+
+    vi.unstubAllGlobals()
+  })
+
+  it('Cancel discards edits without calling PATCH', async () => {
+    const agent: Agent = { ...baseAgent(null), id: 1, name: 'solo-agent' }
+    const bg: BgProcess = {
+      name: 'cancel-bg',
+      workdir: '/tmp/orig',
+      launchCmd: 'npm run orig',
+      windowPresent: true,
+      state: null,
+      logPath: '/tmp/orig.log',
+      statePath: '/tmp/orig.state',
+      linkedAgent: null,
+      projectId: null,
+      projectName: null,
+    }
+    const patchSpy = vi.fn()
+    stubBgEditFetch({
+      agent,
+      bg,
+      projects: [],
+      onPatch: (name, body) => { patchSpy(name, body); return { ok: true, json: () => ({}) } },
+    })
+
+    render(<AgentList />)
+    expect(await screen.findByText('cancel-bg')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }))
+    const workdirInput = await screen.findByDisplayValue('/tmp/orig')
+    fireEvent.change(workdirInput, { target: { value: '/tmp/never-saved' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+
+    expect(screen.queryByDisplayValue('/tmp/never-saved')).toBeNull()
+    expect(await screen.findByTitle('npm run orig (in /tmp/orig)')).toBeInTheDocument()
+    expect(patchSpy).not.toHaveBeenCalled()
+
+    vi.unstubAllGlobals()
+  })
+})
+
 describe('AgentList keyboard navigation ignores the grid filter', () => {
   it('next-agent navigation still reaches an agent hidden by the current filter (orderedAgentIds stays unfiltered)', async () => {
     class MockEventSource {

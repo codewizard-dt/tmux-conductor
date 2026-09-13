@@ -374,6 +374,33 @@ export async function deleteProject(projectId: number): Promise<void> {
   }
 }
 
+// Updates a bg process's stored definition (workdir/launchCmd/projectId only —
+// name is immutable). Writes SQLite only; does not touch a live tmux window.
+export interface BgProcessDefinition {
+  id: number;
+  name: string;
+  workdir: string;
+  launchCmd: string;
+  linkedAgentId: number | null;
+  projectId: number | null;
+}
+
+export async function updateBgProcess(
+  name: string,
+  data: Partial<{ workdir: string; launchCmd: string; projectId: number | null }>,
+): Promise<BgProcessDefinition> {
+  const res = await apiFetch(`${API_BASE}/bg-processes/${encodeURIComponent(name)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(body.error ?? `HTTP ${res.status.toString()}`);
+  }
+  return res.json() as Promise<BgProcessDefinition>;
+}
+
 // ── Schedules ──────────────────────────────────────────────────────────────
 
 export interface Schedule {

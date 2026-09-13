@@ -1,4 +1,5 @@
 import AddAgentForm from '../components/AddAgentForm'
+import AddBgProcessForm from '../components/AddBgProcessForm'
 import InactiveAgentsPanel from '../components/InactiveAgentsPanel'
 import AgentList from '../components/AgentList'
 import ErrorBoundary from '../components/ErrorBoundary'
@@ -10,6 +11,7 @@ export default function AgentsPage() {
         <AddAgentForm />
         <InactiveAgentsPanel />
       </div>
+      <AddBgProcessForm />
       <ErrorBoundary>
         <AgentList />
       </ErrorBoundary>

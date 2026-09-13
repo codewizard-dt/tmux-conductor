@@ -50,6 +50,8 @@ export default function AddBgProcessForm() {
   const [success, setSuccess] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const gitRoot = useGitRoot(workdir);
+  const selectedProject =
+    selectedProjectId === null ? null : projects.find((p) => p.id === selectedProjectId) ?? null;
 
   async function handleSubmit(e: React.SyntheticEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -60,7 +62,8 @@ export default function AddBgProcessForm() {
       setError('Name must match ^[a-zA-Z0-9_-]+$ (letters, digits, hyphens, underscores)');
       return;
     }
-    if (!workdir.startsWith('/')) {
+    const effectiveWorkdir = selectedProject !== null ? selectedProject.workdir : workdir;
+    if (!effectiveWorkdir.startsWith('/')) {
       setError('Working directory must be an absolute path (start with /)');
       return;
     }
@@ -78,7 +81,7 @@ export default function AddBgProcessForm() {
       const res = await fetch(`${API_URL}/bg-processes`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, workdir, launchCmd, linkedAgent: linkedAgent || undefined, projectId: selectedProjectId }),
+        body: JSON.stringify({ name, workdir: effectiveWorkdir, launchCmd, linkedAgent: linkedAgent || undefined, projectId: selectedProjectId }),
       });
 
       if (res.status === 201) {
@@ -150,13 +153,14 @@ export default function AddBgProcessForm() {
             <input
               id="bg-workdir"
               type="text"
-              value={workdir}
+              value={selectedProject !== null ? selectedProject.workdir : workdir}
               onChange={(e) => { setWorkdir(e.target.value); }}
               placeholder="/absolute/path"
-              required
+              required={selectedProject === null}
+              disabled={selectedProject !== null}
               className={inputCls}
             />
-            {gitRoot.isInsideRepo && gitRoot.gitRoot && gitRoot.gitRoot !== workdir && (
+            {selectedProject === null && gitRoot.isInsideRepo && gitRoot.gitRoot && gitRoot.gitRoot !== workdir && (
               <div className="mt-1 flex items-center gap-2 rounded-[6px] border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-[11px] text-amber-800">
                 <span>⚠ Inside a git repo — nearest root:</span>
                 <code className="font-mono">{gitRoot.gitRoot}</code>

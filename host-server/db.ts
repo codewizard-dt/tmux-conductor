@@ -672,6 +672,30 @@ export function createBgProcess(db: Database.Database, data: { name: string; wor
   return mapBgProcess(row);
 }
 
+// Updates a bg process's stored definition only (workdir, launchCmd, projectId).
+// name is immutable (it's the tmux window key and the route param for
+// delete/window actions) and is never accepted here. Semantics: this writes
+// SQLite only — the launchCmd may already be running inside a live tmux
+// window, and this function never touches that window. The new values take
+// effect the next time the window is (re)created (POST /bg-processes/:name/window,
+// or a fresh conductor.sh/spawn.sh run) — not retroactively.
+export function updateBgProcess(db: Database.Database, id: number, data: Partial<{ workdir: string; launchCmd: string; projectId: number | null }>): BgProcess {
+  const sets: string[] = [];
+  const vals: unknown[] = [];
+  if (data.workdir !== undefined) { sets.push('workdir=?'); vals.push(data.workdir); }
+  if (data.launchCmd !== undefined) { sets.push('launch_cmd=?'); vals.push(data.launchCmd); }
+  if (data.projectId !== undefined) { sets.push('project_id=?'); vals.push(data.projectId); }
+  if (sets.length === 0) {
+    const row = db.prepare(`SELECT * FROM bg_processes WHERE id=?`).get(id) as BgProcessRow | undefined;
+    if (!row) throw new Error(`bg process ${String(id)} not found`);
+    return mapBgProcess(row);
+  }
+  vals.push(id);
+  const row = db.prepare(`UPDATE bg_processes SET ${sets.join(', ')} WHERE id=? RETURNING *`).get(...vals) as BgProcessRow | undefined;
+  if (!row) throw new Error(`bg process ${String(id)} not found`);
+  return mapBgProcess(row);
+}
+
 export function deleteBgProcess(db: Database.Database, id: number): void {
   db.prepare(`DELETE FROM bg_processes WHERE id=?`).run(id);
 }
