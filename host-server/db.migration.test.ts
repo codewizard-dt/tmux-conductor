@@ -116,6 +116,19 @@ void test('existing pre-v3 DB gains columns and preserves rows', () => {
     const legacy = new Database(dbPath);
     legacy.exec(`
       CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+      -- projects exists in every real v2 DB (created by the v1 migration);
+      -- TASK-156's v9 migration adds bg_processes.project_id as an FK to this
+      -- table, and openDb -> seedFromLegacy's writes to bg_processes require
+      -- the FK target to exist once foreign_keys=ON — so a faithful pre-v3
+      -- fixture must include it. Its absence is a fixture gap, not a migration
+      -- defect.
+      CREATE TABLE projects (
+        id INTEGER PRIMARY KEY,
+        name TEXT NOT NULL UNIQUE CHECK (name GLOB '[A-Za-z0-9_-]*'),
+        workdir TEXT NOT NULL,
+        default_launch_cmd TEXT NOT NULL DEFAULT 'claude --dangerously-skip-permissions',
+        created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))
+      );
       CREATE TABLE agents (
         id INTEGER PRIMARY KEY,
         name TEXT,
@@ -184,6 +197,99 @@ void test('existing pre-v3 DB gains columns and preserves rows', () => {
       assert.equal(row.branch, null, 'new branch should be NULL on migrated row');
 
       assertSchemaVersionAtLeast(db, 3);
+    } finally {
+      db.close();
+    }
+  } finally {
+    cleanupDbFiles(dbPath);
+  }
+});
+
+
+// TASK-156: bg_processes gained a project_id scoping column (schema_version 9),
+// added via `ALTER TABLE bg_processes ADD COLUMN project_id INTEGER REFERENCES
+// projects(id) ON DELETE SET NULL` (a plain column add, not a table rebuild like
+// v2/v8 above). The FK target means a faithful pre-v9 fixture needs a `projects`
+// table too — even empty — for the ALTER TABLE's REFERENCES clause to be valid
+// DDL, alongside the full v8-shape `agents`/`tasks` tables and the pre-v9
+// `bg_processes` shape (no project_id column yet).
+void test('existing pre-v9 DB gains bg_processes.project_id and preserves rows', () => {
+  const dbPath = tmpDbPath('prev9');
+  try {
+    const legacy = new Database(dbPath);
+    legacy.exec(`
+      CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+      CREATE TABLE projects (
+        id INTEGER PRIMARY KEY,
+        name TEXT NOT NULL UNIQUE CHECK (name GLOB '[A-Za-z0-9_-]*'),
+        workdir TEXT NOT NULL,
+        default_launch_cmd TEXT NOT NULL DEFAULT 'claude --dangerously-skip-permissions',
+        created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))
+      );
+      CREATE TABLE agents (
+        id INTEGER PRIMARY KEY,
+        name TEXT NOT NULL,
+        workdir TEXT NOT NULL,
+        launch_cmd TEXT NOT NULL,
+        project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL,
+        created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+        worktree_path TEXT,
+        branch TEXT,
+        role TEXT NOT NULL DEFAULT 'generic' CHECK (role IN ('generic','frontend','backend','qa','devops','security','architect'))
+      );
+      -- Pre-v9 bg_processes shape: no project_id column yet.
+      CREATE TABLE bg_processes (
+        id INTEGER PRIMARY KEY,
+        name TEXT NOT NULL UNIQUE CHECK (name GLOB '[A-Za-z0-9_-]*'),
+        workdir TEXT NOT NULL,
+        launch_cmd TEXT NOT NULL,
+        linked_agent_id INTEGER REFERENCES agents(id) ON DELETE SET NULL
+      );
+      -- tasks exists in every real v8 DB (rebuilt by TASK-125's v8 migration) —
+      -- include it in its post-v8 shape so openDb has a faithful pre-v9 fixture
+      -- to migrate from (empty is fine; this test is about bg_processes).
+      CREATE TABLE tasks (
+        id INTEGER PRIMARY KEY,
+        command TEXT NOT NULL,
+        agent_id INTEGER REFERENCES agents(id) ON DELETE CASCADE,
+        project_id INTEGER REFERENCES projects(id) ON DELETE CASCADE,
+        position REAL NOT NULL,
+        status TEXT NOT NULL DEFAULT 'queued' CHECK (status IN ('queued','backlog','done')),
+        source TEXT NOT NULL DEFAULT 'manual' CHECK (source IN ('manual','schedule')),
+        schedule_id INTEGER,
+        created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+        completed_at TEXT,
+        CHECK (agent_id IS NULL OR project_id IS NULL)
+      );
+    `);
+    legacy
+      .prepare(
+        `INSERT INTO bg_processes (name, workdir, launch_cmd, linked_agent_id) VALUES (?, ?, ?, ?)`,
+      )
+      .run('task156_probe', '/tmp/task156-probe', 'npm run dev', null);
+    legacy.prepare(`INSERT OR REPLACE INTO meta VALUES ('schema_version', '8')`).run();
+    legacy.close();
+
+    const db = openDb(dbPath);
+    try {
+      const cols = tableColumns(db, 'bg_processes');
+      assert.ok(
+        cols.some((c) => c.name === 'project_id'),
+        'bg_processes.project_id column should be added by v9 migration',
+      );
+
+      // The pre-existing row must survive the migration with project_id NULL.
+      // Assert by name because openDb also runs seedFromLegacy, which may
+      // insert additional bg_processes rows.
+      const probe = db
+        .prepare(`SELECT project_id FROM bg_processes WHERE name='task156_probe'`)
+        .all() as { project_id: number | null }[];
+      assert.equal(probe.length, 1, 'pre-existing task156_probe row should still exist');
+      const row = probe[0];
+      assert.ok(row, 'probe row should be present');
+      assert.equal(row.project_id, null, 'new project_id should be NULL on migrated row');
+
+      assertSchemaVersionAtLeast(db, 9);
     } finally {
       db.close();
     }
@@ -800,6 +906,18 @@ void test('TASK-111: an existing pre-v7 agent row backfills role to \'generic\' 
     const legacy = new Database(dbPath);
     legacy.exec(`
       CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+      -- projects exists in every real v6 DB (created by the v1 migration);
+      -- TASK-156's v9 migration adds bg_processes.project_id as an FK to this
+      -- table, and openDb -> seedFromLegacy's writes to bg_processes require
+      -- the FK target to exist once foreign_keys=ON — so a faithful pre-v7
+      -- fixture must include it.
+      CREATE TABLE projects (
+        id INTEGER PRIMARY KEY,
+        name TEXT NOT NULL UNIQUE CHECK (name GLOB '[A-Za-z0-9_-]*'),
+        workdir TEXT NOT NULL,
+        default_launch_cmd TEXT NOT NULL DEFAULT 'claude --dangerously-skip-permissions',
+        created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))
+      );
       CREATE TABLE agents (
         id INTEGER PRIMARY KEY,
         name TEXT,
@@ -897,6 +1015,17 @@ void test('TASK-125: v8 migration preserves every existing tasks row exactly and
         CHECK (agent_id IS NULL OR project_id IS NULL)
       );
       CREATE INDEX idx_tasks_pick ON tasks(status, position);
+      -- bg_processes exists in every real v7 DB (created by the v1
+      -- migration); TASK-156's v9 migration ALTERs this table to add
+      -- project_id, which requires the table to exist — a faithful pre-v8
+      -- fixture must include it (empty is fine; this test is about tasks).
+      CREATE TABLE bg_processes (
+        id INTEGER PRIMARY KEY,
+        name TEXT,
+        workdir TEXT,
+        launch_cmd TEXT,
+        linked_agent_id INTEGER
+      );
     `);
     legacy.prepare(`INSERT OR REPLACE INTO meta VALUES ('schema_version', '7')`).run();
     legacy.prepare(`INSERT OR REPLACE INTO meta VALUES ('legacy_import', '1')`).run();
@@ -915,7 +1044,7 @@ void test('TASK-125: v8 migration preserves every existing tasks row exactly and
     // Run the REAL production migration path — not a hand-rolled copy of it.
     const db = openDb(dbPath);
     try {
-      assert.equal(schemaVersion(db), '8', 'schema_version should be 8 after migration');
+      assertSchemaVersionAtLeast(db, 8);
 
       const after = db.prepare(`SELECT * FROM tasks ORDER BY id`).all() as Record<string, unknown>[];
       assert.equal(

@@ -2148,6 +2148,20 @@ await fastify.register((api) => {
     return reply.status(201).send(newAgent);
   });
 
+  api.get<{ Params: { id: string } }>('/projects/:id/bg-processes', (req, reply) => {
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) {
+      return reply.status(400).send({ error: 'invalid project id' });
+    }
+
+    const project = listProjects(db).find((p) => p.id === id);
+    if (!project) {
+      return reply.status(404).send({ error: `project ${String(id)} not found` });
+    }
+
+    return reply.send(listBgProcesses(db, { projectId: id }));
+  });
+
   // ── Schedules API ─────────────────────────────────────────────────────────
 
   api.get('/schedules', (_req, reply) => {

@@ -41,6 +41,7 @@ export interface BgProcess {
   workdir: string;
   launchCmd: string;
   linkedAgentId: number | null;
+  projectId: number | null;
 }
 
 export interface Task {
@@ -143,6 +144,7 @@ interface BgProcessRow {
   workdir: string;
   launch_cmd: string;
   linked_agent_id: number | null;
+  project_id: number | null;
 }
 
 interface TaskRow {
@@ -212,7 +214,7 @@ function mapAgent(r: AgentRow | AgentWithProjectRow): Agent {
 }
 
 function mapBgProcess(r: BgProcessRow): BgProcess {
-  return { id: r.id, name: r.name, workdir: r.workdir, launchCmd: r.launch_cmd, linkedAgentId: r.linked_agent_id };
+  return { id: r.id, name: r.name, workdir: r.workdir, launchCmd: r.launch_cmd, linkedAgentId: r.linked_agent_id, projectId: r.project_id };
 }
 
 function mapTask(r: TaskRow): Task {
@@ -443,6 +445,10 @@ function runMigrations(db: Database.Database): void {
     db.pragma('foreign_keys = ON');
     db.prepare(`INSERT OR REPLACE INTO meta VALUES ('schema_version', '8')`).run();
   }
+  if (version < 9) {
+    db.exec(`ALTER TABLE bg_processes ADD COLUMN project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL`);
+    db.prepare(`INSERT OR REPLACE INTO meta VALUES ('schema_version', '9')`).run();
+  }
 }
 
 function seedFromLegacy(db: Database.Database): void {
@@ -652,14 +658,17 @@ export function updateAgentName(db: Database.Database, id: number, newName: stri
 
 // ─── BgProcesses CRUD ────────────────────────────────────────────────────────
 
-export function listBgProcesses(db: Database.Database): BgProcess[] {
+export function listBgProcesses(db: Database.Database, opts?: { projectId?: number }): BgProcess[] {
+  if (opts?.projectId !== undefined) {
+    return (db.prepare(`SELECT * FROM bg_processes WHERE project_id = ? ORDER BY name`).all(opts.projectId) as BgProcessRow[]).map(mapBgProcess);
+  }
   return (db.prepare(`SELECT * FROM bg_processes ORDER BY name`).all() as BgProcessRow[]).map(mapBgProcess);
 }
 
-export function createBgProcess(db: Database.Database, data: { name: string; workdir: string; launchCmd: string; linkedAgentId?: number }): BgProcess {
+export function createBgProcess(db: Database.Database, data: { name: string; workdir: string; launchCmd: string; linkedAgentId?: number; projectId?: number }): BgProcess {
   const row = db.prepare(
-    `INSERT INTO bg_processes (name, workdir, launch_cmd, linked_agent_id) VALUES (?, ?, ?, ?) RETURNING *`
-  ).get(data.name, data.workdir, data.launchCmd, data.linkedAgentId ?? null) as BgProcessRow;
+    `INSERT INTO bg_processes (name, workdir, launch_cmd, linked_agent_id, project_id) VALUES (?, ?, ?, ?, ?) RETURNING *`
+  ).get(data.name, data.workdir, data.launchCmd, data.linkedAgentId ?? null, data.projectId ?? null) as BgProcessRow;
   return mapBgProcess(row);
 }
 

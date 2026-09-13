@@ -151,3 +151,58 @@ void test('TASK-159: createBgProcess, listBgProcesses, deleteBgProcess provide f
     db.close();
   }
 });
+
+
+// TASK-156: bg_processes gained a project_id scoping column (schema_version 9).
+// These tests cover the createBgProcess/listBgProcesses project-scoping surface;
+// the CRUD/linked-agent behavior above is TASK-159's and is left untouched.
+void test('TASK-156: createBgProcess persists and round-trips projectId via mapBgProcess', () => {
+  const db = openDb(':memory:');
+  try {
+    const project = createProject(db, { name: 'task156-project', workdir: '/tmp/task156-project' });
+
+    const bg = createBgProcess(db, { name: 'task156-bg-scoped', workdir: '/tmp/task156-bg', launchCmd: 'npm run dev', projectId: project.id });
+    assert.equal(bg.projectId, project.id);
+
+    // Round-trip through a fresh read (mapBgProcess), not just the INSERT...RETURNING result.
+    const reloaded = listBgProcesses(db, { projectId: project.id });
+    assert.equal(reloaded.length, 1);
+    assert.ok(reloaded[0]);
+    assert.equal(reloaded[0].id, bg.id);
+    assert.equal(reloaded[0].projectId, project.id);
+
+    // Omitting projectId still yields a null projectId (existing behavior unaffected).
+    const unscoped = createBgProcess(db, { name: 'task156-bg-unscoped', workdir: '/tmp/task156-bg-2', launchCmd: 'npm run dev' });
+    assert.equal(unscoped.projectId, null);
+  } finally {
+    db.close();
+  }
+});
+
+void test('TASK-156: listBgProcesses(db, { projectId }) isolates rows per project, and listBgProcesses(db) remains unfiltered', () => {
+  const db = openDb(':memory:');
+  try {
+    const projectA = createProject(db, { name: 'task156-project-a', workdir: '/tmp/task156-a' });
+    const projectB = createProject(db, { name: 'task156-project-b', workdir: '/tmp/task156-b' });
+
+    const bgA = createBgProcess(db, { name: 'task156-bg-a', workdir: '/tmp/task156-bg-a', launchCmd: 'npm run dev', projectId: projectA.id });
+    const bgB = createBgProcess(db, { name: 'task156-bg-b', workdir: '/tmp/task156-bg-b', launchCmd: 'npm run dev', projectId: projectB.id });
+    const bgNone = createBgProcess(db, { name: 'task156-bg-none', workdir: '/tmp/task156-bg-none', launchCmd: 'npm run dev' });
+
+    const listA = listBgProcesses(db, { projectId: projectA.id });
+    assert.deepEqual(listA.map((b) => b.id), [bgA.id]);
+
+    const listB = listBgProcesses(db, { projectId: projectB.id });
+    assert.deepEqual(listB.map((b) => b.id), [bgB.id]);
+
+    // No opts: every row, unfiltered — unchanged from today's behavior.
+    const listAll = listBgProcesses(db);
+    assert.deepEqual(
+      listAll.map((b) => b.id).sort((x, y) => x - y),
+      [bgA.id, bgB.id, bgNone.id].sort((x, y) => x - y),
+    );
+    assert.equal(listAll.length, 3);
+  } finally {
+    db.close();
+  }
+});
