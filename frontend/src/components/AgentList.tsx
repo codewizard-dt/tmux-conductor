@@ -62,6 +62,8 @@ export interface BgProcess {
   logPath: string
   statePath: string
   linkedAgent: string | null
+  projectId: number | null
+  projectName: string | null
 }
 
 interface SessionState {
@@ -1276,13 +1278,65 @@ function BgProcessRow({ bg }: { bg: BgProcess }) {
   )
 }
 
+// Bg-process equivalent of AgentList's projectLabelFor/projectIdFor below —
+// direct field reads off the bg-process payload itself, no name-keyed map.
+const bgProjectLabelFor = (bg: BgProcess): string | null => bg.projectName
+const bgProjectIdFor = (bg: BgProcess): number | null => bg.projectId
+
+// Cluster a pre-sorted list into consecutive same-project groups, mirroring
+// groupByProject below but scoped to BgProcess[]. Bg processes have no
+// status-derived kanban columns, so there's just one clustered list.
+const groupBgsByProject = (list: BgProcess[]): { project: string | null; projectId: number | null; bgs: BgProcess[] }[] => {
+  const groups: { project: string | null; projectId: number | null; bgs: BgProcess[] }[] = []
+  for (const bg of list) {
+    const project = bgProjectLabelFor(bg)
+    const last = groups[groups.length - 1]
+    if (last && last.project === project) last.bgs.push(bg)
+    else groups.push({ project, projectId: bgProjectIdFor(bg), bgs: [bg] })
+  }
+  return groups
+}
+
 function BgProcessSection({ bgs }: { bgs: BgProcess[] }) {
-  if (bgs.length === 0) return null
+  if (bgs.length === 0) {
+    return (
+      <div className="mt-6">
+        <h2 className="mb-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted">Background processes</h2>
+        <p className="text-[13px] italic text-muted-2">No background processes.</p>
+      </div>
+    )
+  }
+
+  // Project name (unassigned last), then name — matches the project-ordering
+  // half of AgentList's byProjectThenStatus below. groupBgsByProject only
+  // clusters consecutive runs, so the input must be pre-sorted.
+  const sorted = [...bgs].sort((a, b) => {
+    const pa = bgProjectLabelFor(a)
+    const pb = bgProjectLabelFor(b)
+    if (pa !== pb) {
+      if (pa === null) return 1
+      if (pb === null) return -1
+      const cmp = pa.toLowerCase().localeCompare(pb.toLowerCase())
+      if (cmp !== 0) return cmp
+    }
+    return a.name.toLowerCase().localeCompare(b.name.toLowerCase())
+  })
+  const groups = groupBgsByProject(sorted)
+
   return (
     <div className="mt-6">
       <h2 className="mb-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted">Background processes</h2>
-      <div className="flex flex-col gap-2">
-        {bgs.map((bg) => <BgProcessRow key={bg.name} bg={bg} />)}
+      <div className="flex flex-col gap-3">
+        {groups.map((group) => (
+          <div key={group.projectId ?? group.project ?? '__unassigned__'}>
+            <p className="mb-1.5 px-1 text-[12px] font-semibold uppercase tracking-[0.06em] text-muted-2">
+              {group.project ?? 'Unassigned'}
+            </p>
+            <div className="flex flex-col gap-2">
+              {group.bgs.map((bg) => <BgProcessRow key={bg.name} bg={bg} />)}
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   )

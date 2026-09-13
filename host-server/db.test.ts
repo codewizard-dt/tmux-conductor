@@ -9,6 +9,7 @@ import {
   deriveCloneName,
   createBgProcess,
   listBgProcesses,
+  listProjects,
   deleteBgProcess,
   deleteAgent,
 } from './db.ts';
@@ -202,6 +203,45 @@ void test('TASK-156: listBgProcesses(db, { projectId }) isolates rows per projec
       [bgA.id, bgB.id, bgNone.id].sort((x, y) => x - y),
     );
     assert.equal(listAll.length, 3);
+  } finally {
+    db.close();
+  }
+});
+
+
+// TASK-161: host-server/index.ts's buildBgStatuses resolves each bg process's
+// projectName by joining its projectId against listProjects(db) — the join
+// GET /status's bgProcesses[] array depends on for projectId/projectName.
+// buildBgStatuses itself can't be imported directly in a unit test: index.ts
+// opens a real on-disk DB and calls fastify.listen() at module scope as a
+// side effect of import (no index.test.ts exists for this reason), so this
+// exercises the exact join it performs — mirroring
+// `bg.projectId !== null ? (projects.find((p) => p.id === bg.projectId)?.name ?? null) : null`
+// from host-server/index.ts's buildBgStatuses — at the db layer.
+void test('TASK-161: a bg process with a project_id set resolves projectName via listProjects, matching buildBgStatuses\' join for GET /status', () => {
+  const db = openDb(':memory:');
+  try {
+    const project = createProject(db, { name: 'task161-project', workdir: '/tmp/task161-project' });
+    const scoped = createBgProcess(db, { name: 'task161-bg-scoped', workdir: '/tmp/task161-bg', launchCmd: 'npm run dev', projectId: project.id });
+    const unscoped = createBgProcess(db, { name: 'task161-bg-unscoped', workdir: '/tmp/task161-bg-2', launchCmd: 'npm run dev' });
+
+    const bgProcesses = listBgProcesses(db);
+    const projects = listProjects(db);
+    const statuses = bgProcesses.map((bg) => ({
+      name: bg.name,
+      projectId: bg.projectId,
+      projectName: bg.projectId !== null ? (projects.find((p) => p.id === bg.projectId)?.name ?? null) : null,
+    }));
+
+    const scopedStatus = statuses.find((s) => s.name === scoped.name);
+    assert.ok(scopedStatus);
+    assert.equal(scopedStatus.projectId, project.id);
+    assert.equal(scopedStatus.projectName, 'task161-project');
+
+    const unscopedStatus = statuses.find((s) => s.name === unscoped.name);
+    assert.ok(unscopedStatus);
+    assert.equal(unscopedStatus.projectId, null);
+    assert.equal(unscopedStatus.projectName, null);
   } finally {
     db.close();
   }

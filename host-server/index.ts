@@ -143,15 +143,19 @@ interface BgStatus {
   logPath: string;
   statePath: string;
   linkedAgent: string | null;
+  projectId: number | null;
+  projectName: string | null;
 }
 
 function buildBgStatuses(conf: ReturnType<typeof readConductorConf>, windowInventory?: Map<string, string>): BgStatus[] {
   const { sessionName, stateDir, logDir } = conf;
   const bgProcesses = listBgProcesses(db);
   const agents = listAgents(db);
-  
+  const projects = listProjects(db);
+
   return bgProcesses.map((bg) => {
     const linkedAgent = bg.linkedAgentId !== null ? (agents.find((a) => a.id === bg.linkedAgentId)?.name ?? null) : null;
+    const projectName = bg.projectId !== null ? (projects.find((p) => p.id === bg.projectId)?.name ?? null) : null;
     const statePath = path.join(stateDir, `bg-${bg.name}.state`);
     let bgState: string | null = null;
     try { bgState = readFileSync(statePath, 'utf8').trim(); } catch { /* not written yet */ }
@@ -164,6 +168,8 @@ function buildBgStatuses(conf: ReturnType<typeof readConductorConf>, windowInven
       logPath: path.join(logDir, `bg-${bg.name}.log`),
       statePath,
       linkedAgent,
+      projectId: bg.projectId,
+      projectName,
     };
   });
 }
@@ -1817,8 +1823,8 @@ await fastify.register((api) => {
 
   // ── Background Process Management ────────────────────────────────────────
 
-  api.post<{ Body: { name?: string; workdir?: string; launchCmd?: string; linkedAgent?: string } }>('/bg-processes', async (req, reply) => {
-    const { name, workdir, launchCmd = '', linkedAgent } = req.body;
+  api.post<{ Body: { name?: string; workdir?: string; launchCmd?: string; linkedAgent?: string; projectId?: number } }>('/bg-processes', async (req, reply) => {
+    const { name, workdir, launchCmd = '', linkedAgent, projectId } = req.body;
 
     if (!name || typeof name !== 'string' || !/^[a-zA-Z0-9_-]+$/.test(name)) {
       return reply.status(400).send({ error: 'name is required and must match ^[a-zA-Z0-9_-]+$' });
@@ -1846,6 +1852,9 @@ await fastify.register((api) => {
     if (linkedAgent !== undefined && typeof linkedAgent !== 'string') {
       return reply.status(400).send({ error: 'linkedAgent must be a string' });
     }
+    if (projectId !== undefined && (typeof projectId !== 'number' || !Number.isInteger(projectId))) {
+      return reply.status(400).send({ error: 'projectId must be an integer' });
+    }
 
     // Resolve linkedAgent name to id
     let linkedAgentId: number | undefined;
@@ -1858,13 +1867,13 @@ await fastify.register((api) => {
     }
 
     // Write the definition to SQLite — conductor.sh/spawn.sh load from there
-    createBgProcess(db, { name, workdir, launchCmd, ...(linkedAgentId !== undefined && { linkedAgentId }) });
+    createBgProcess(db, { name, workdir, launchCmd, ...(linkedAgentId !== undefined && { linkedAgentId }), ...(projectId !== undefined && { projectId }) });
 
     execSync(`tmux new-window -t ${sessionName} -n ${name} -c ${workdir}`, { timeout: TMUX_SYNC_TIMEOUT_MS });
     execSync(`tmux send-keys -t ${sessionName}:${name} "${launchCmd}" Enter`, { timeout: TMUX_SYNC_TIMEOUT_MS });
     execSync(`tmux pipe-pane -t ${sessionName}:${name} -o "cat >> '${logDir}/bg-${name}.log'"`, { timeout: TMUX_SYNC_TIMEOUT_MS });
 
-    return reply.status(201).send({ ok: true, bg: { name, workdir, launchCmd, linkedAgent: linkedAgent ?? null } });
+    return reply.status(201).send({ ok: true, bg: { name, workdir, launchCmd, linkedAgent: linkedAgent ?? null, projectId: projectId ?? null } });
   });
 
   api.delete<{ Params: { name: string } }>('/bg-processes/:name', async (req, reply) => {

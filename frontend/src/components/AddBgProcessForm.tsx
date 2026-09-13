@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { API_BASE as API_URL } from '../lib/api';
+import { API_BASE as API_URL, listProjects, type Project } from '../lib/api';
 import { useGitRoot } from '../lib/useGitRoot';
 
 const NAME_PATTERN = /^[a-zA-Z0-9_-]+$/;
@@ -30,6 +30,17 @@ export default function AddBgProcessForm() {
       .then((d: { agents?: Agent[] }) => { if (d.agents) setAgents(d.agents); })
       .catch(() => { /* best-effort */ });
   }, []);
+  const [projects, setProjects] = useState<Project[]>([]);
+  useEffect(() => {
+    void (async () => {
+      try {
+        setProjects(await listProjects());
+      } catch {
+        /* best-effort */
+      }
+    })();
+  }, []);
+  const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null);
   const [name, setName] = useState('');
   const [workdir, setWorkdir] = useState('');
   const [launchCmd, setLaunchCmd] = useState('');
@@ -57,13 +68,17 @@ export default function AddBgProcessForm() {
       setError('Launch command is required');
       return;
     }
+    if (selectedProjectId === null) {
+      setError('Project is required');
+      return;
+    }
 
     setSubmitting(true);
     try {
       const res = await fetch(`${API_URL}/bg-processes`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, workdir, launchCmd, linkedAgent: linkedAgent || undefined }),
+        body: JSON.stringify({ name, workdir, launchCmd, linkedAgent: linkedAgent || undefined, projectId: selectedProjectId }),
       });
 
       if (res.status === 201) {
@@ -71,6 +86,7 @@ export default function AddBgProcessForm() {
         setWorkdir('');
         setLaunchCmd('');
         setLinkedAgent('');
+        setSelectedProjectId(null);
         setShowAdvanced(false);
         setSuccess(true);
         setTimeout(() => { setSuccess(false); }, 4000);
@@ -97,6 +113,24 @@ export default function AddBgProcessForm() {
         onSubmit={(e: React.SyntheticEvent<HTMLFormElement>) => { void handleSubmit(e); }}
         className="flex flex-col gap-3"
       >
+        <div className={fieldCls}>
+          <label htmlFor="bg-project" className={labelCls}>Project</label>
+          <select
+            id="bg-project"
+            value={selectedProjectId === null ? '' : selectedProjectId.toString()}
+            onChange={(e) => {
+              const v = e.target.value;
+              setSelectedProjectId(v === '' ? null : Number(v));
+            }}
+            required
+            className={inputCls}
+          >
+            {projects.map((p) => (
+              <option key={p.id} value={p.id}>{p.name}</option>
+            ))}
+          </select>
+        </div>
+
         <div className="grid grid-cols-2 gap-3">
           <div className={fieldCls}>
             <label htmlFor="bg-name" className={labelCls}>Name</label>

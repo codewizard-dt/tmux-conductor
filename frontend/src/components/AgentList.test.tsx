@@ -578,6 +578,8 @@ describe('AgentList empty states (agent filter)', () => {
       logPath: '/tmp/bg.log',
       statePath: '/tmp/bg.state',
       linkedAgent: null,
+      projectId: null,
+      projectName: null,
     }
     stubEventSourceAndFetch({
       session: 'test-session',
@@ -600,6 +602,86 @@ describe('AgentList empty states (agent filter)', () => {
     // Background-process cards are a separate section (BgProcessSection, driven by its own
     // `bgs` state) — the agent filter must never reach into it.
     expect(screen.getByText('my-bg-process')).toBeInTheDocument()
+
+    vi.unstubAllGlobals()
+  })
+
+  it('groups background processes under per-project sub-headers, ordered like the agent grouping, with unassigned last (TASK-161)', async () => {
+    const agentAlpha: Agent = { ...baseAgent(null), id: 1, name: 'solo-agent' }
+    const bgZ1: BgProcess = {
+      name: 'zeta-watcher',
+      workdir: '/tmp/zeta',
+      launchCmd: 'npm run watch',
+      windowPresent: true,
+      state: null,
+      logPath: '/tmp/zeta.log',
+      statePath: '/tmp/zeta.state',
+      linkedAgent: null,
+      projectId: 10,
+      projectName: 'zeta-project',
+    }
+    const bgZ2: BgProcess = { ...bgZ1, name: 'zeta-builder' }
+    const bgA1: BgProcess = {
+      name: 'alpha-runner',
+      workdir: '/tmp/alpha',
+      launchCmd: 'npm run dev',
+      windowPresent: true,
+      state: null,
+      logPath: '/tmp/alpha.log',
+      statePath: '/tmp/alpha.state',
+      linkedAgent: null,
+      projectId: 20,
+      projectName: 'alpha-project',
+    }
+    const bgUnassigned: BgProcess = {
+      name: 'stray-process',
+      workdir: '/tmp/stray',
+      launchCmd: 'npm run stray',
+      windowPresent: true,
+      state: null,
+      logPath: '/tmp/stray.log',
+      statePath: '/tmp/stray.state',
+      linkedAgent: null,
+      projectId: null,
+      projectName: null,
+    }
+
+    stubEventSourceAndFetch({
+      session: 'test-session',
+      sessionAlive: true,
+      sessionExists: true,
+      agents: [agentAlpha],
+      bgProcesses: [bgZ1, bgZ2, bgA1, bgUnassigned],
+      timestamp: new Date().toISOString(),
+    })
+
+    render(<AgentList />)
+    expect(await screen.findByText('solo-agent')).toBeInTheDocument()
+
+    // Sub-headers: project name (case-insensitive alpha order), unassigned last —
+    // the same ordering convention BgProcessSection borrows from the agent
+    // kanban's byProjectThenStatus/groupByProject grouping.
+    const heading = screen.getByText('Background processes')
+    const section = heading.parentElement as HTMLElement
+    const headerEls = Array.from(section.querySelectorAll('p'))
+    const headerTexts = headerEls.map((el) => el.textContent)
+    expect(headerTexts).toEqual(['alpha-project', 'zeta-project', 'Unassigned'])
+
+    // Each header's row group is its next sibling; row names live in the
+    // name span (`.text-ink`), which is unique to that span among a row's
+    // font-mono spans (the launch-cmd span uses `.text-muted-2` instead).
+    const rowNamesFor = (headerEl: Element) => {
+      const rowContainer = headerEl.nextElementSibling as HTMLElement
+      return Array.from(rowContainer.querySelectorAll('span.text-ink')).map((s) => s.textContent)
+    }
+    const headerAt = (i: number): Element => {
+      const el = headerEls[i]
+      if (!el) throw new Error(`expected a sub-header at index ${String(i)}`)
+      return el
+    }
+    expect(rowNamesFor(headerAt(0))).toEqual(['alpha-runner'])
+    expect(rowNamesFor(headerAt(1))).toEqual(['zeta-builder', 'zeta-watcher'])
+    expect(rowNamesFor(headerAt(2))).toEqual(['stray-process'])
 
     vi.unstubAllGlobals()
   })
