@@ -1,6 +1,6 @@
 {
   "name": "tmux-conductor-host-server",
-  "version": "3.4.0",
+  "version": "3.5.0",
   "type": "module",
   "scripts": {
     "start": "node --import tsx/esm index.ts",

@@ -11,7 +11,7 @@ import fastifyWebsocket from '@fastify/websocket';
 import type { WebSocket } from 'ws';
 import { readConductorConf, DEFAULT_CONF_PATH, type ConductorConf } from './config.ts';
 import type Database from 'better-sqlite3';
-import { openDb, getDbPath, listAgents, getAgentById, createAgent, deriveCloneName, addWorktreeToAgent, clearAgentWorktree, deleteAgent, updateAgentName, agentWindowName, addTask, deleteTask, reorderTasks, jumpTaskToHead, listTasksForAgentId, listTasksByProject, listCompletedTasks, listProjects, createProject, updateProject, deleteProject, nextAgentName, listSchedules, createSchedule, updateSchedule, deleteSchedule, dueSchedules, fireSchedule, getAllAgentUsageTotals, listAgentUsage, listCheckpoints, insertCheckpoint, getCheckpoint, listTerminalLog, appendTerminalLogChunk, popTask, createBgProcess, deleteBgProcess, updateBgProcess, listBgProcesses, type AgentUsageTotals, type Agent } from './db.ts';
+import { openDb, getDbPath, listAgents, getAgentById, createAgent, deriveCloneName, addWorktreeToAgent, clearAgentWorktree, deleteAgent, updateAgentName, updateAgentRole, agentWindowName, addTask, deleteTask, reorderTasks, jumpTaskToHead, listTasksForAgentId, listTasksByProject, listCompletedTasks, listProjects, createProject, updateProject, deleteProject, nextAgentName, listSchedules, createSchedule, updateSchedule, deleteSchedule, dueSchedules, fireSchedule, getAllAgentUsageTotals, listAgentUsage, listCheckpoints, insertCheckpoint, getCheckpoint, listTerminalLog, appendTerminalLogChunk, popTask, createBgProcess, deleteBgProcess, updateBgProcess, listBgProcesses, type AgentUsageTotals, type Agent } from './db.ts';
 import { detectAgentStatus, detectAgentMode, detectAgentType, readTmuxWindowInventory, isTmuxWindowPresent, windowState, getActiveTask, capturePaneTail as capturePaneTailUninstrumented, capturePaneTailRaw as capturePaneTailRawUninstrumented, sendTextToPane, extractPaneLabel, applyGlobalPaneSize, type AgentMode, type AgentRunState, type AgentType, type DetectionReason } from './state.ts';
 import { getAgentContext, getCodexAgentContext, type AgentContext } from './context.ts';
 import dotenv from 'dotenv';
@@ -71,7 +71,7 @@ const modeSwitchInFlight = new Set<string>();
 // Direct-input endpoint limits: tmux key names the dashboard may forward, and
 // payload caps. Key names can never start with '-' so they are safe as
 // send-keys positional args.
-const TMUX_KEY_RE = /^(Enter|Escape|Tab|BTab|Space|BSpace|DC|IC|Up|Down|Left|Right|Home|End|PPage|NPage|F([1-9]|1[0-2])|C-[a-z]|M-[A-Za-z])$/;
+const TMUX_KEY_RE = /^(Enter|Escape|Tab|BTab|Space|BSpace|DC|IC|Up|Down|Left|Right|Home|End|PPage|NPage|F([1-9]|1[0-2])|C-[a-z]|M-[A-Za-z]|C-(Left|Right|Up|Down)|M-(Left|Right|Up|Down))$/;
 const MAX_KEYS = 32;
 const MAX_TEXT = 10_000;
 const TMUX_SYNC_TIMEOUT_MS = Number(process.env['TMUX_SYNC_TIMEOUT_MS'] ?? '100');
@@ -212,6 +212,7 @@ function emptyAgentContext(conf: ReturnType<typeof readConductorConf>): AgentCon
     contextTokens: null,
     contextPct: null,
     contextLimit: conf.contextWindow,
+    contextLimitConfident: false,
   };
 }
 
@@ -1004,7 +1005,7 @@ await fastify.register((api) => {
     const {
       name,
       workdir,
-      launchCmd = 'claude --dangerously-skip-permissions',
+      launchCmd = 'claude --dangerously-skip-permissions --append-system-prompt-file ~/.claude/rules/agent-teams-preference.md',
       role,
       useWorktree,
     } = req.body;
@@ -1403,14 +1404,24 @@ await fastify.register((api) => {
     return reply.send({ ok: true, removed: name });
   });
 
-  // Rename an agent: updates the DB, renames the tmux window and state file.
-  api.patch<{ Params: { id: string }; Body: { name?: string } }>('/agents/:id', (req, reply) => {
+  // Update an agent: rename it, change its role, or both. Renaming updates the
+  // DB, tmux window, and state file; a role change only updates the DB and
+  // broadcasts the new role — no tmux/state-file work involved.
+  api.patch<{ Params: { id: string }; Body: { name?: string; role?: string } }>('/agents/:id', (req, reply) => {
     const agentId = parseInt(req.params.id, 10);
     if (isNaN(agentId)) return reply.status(400).send({ error: 'invalid agent id' });
-    const { name: newName } = req.body;
+    const { name: newName, role: newRole } = req.body;
 
-    if (typeof newName !== 'string' || !/^[a-zA-Z0-9_-]+$/.test(newName)) {
+    if (newName === undefined && newRole === undefined) {
+      return reply.status(400).send({ error: 'at least one of name or role is required' });
+    }
+
+    if (newName !== undefined && (typeof newName !== 'string' || !/^[a-zA-Z0-9_-]+$/.test(newName))) {
       return reply.status(400).send({ error: 'name must match ^[a-zA-Z0-9_-]+$' });
+    }
+
+    if (newRole !== undefined && (typeof newRole !== 'string' || !ROLE_VALUES.includes(newRole))) {
+      return reply.status(400).send({ error: `role must be one of: ${ROLE_VALUES.join(', ')}` });
     }
 
     const conf = readConductorConf();
@@ -1423,39 +1434,68 @@ await fastify.register((api) => {
     }
     const oldName = entry.name;
 
-    if (newName === oldName) {
-      return reply.send({ ok: true, agent: entry });
+    let updated: Agent = entry;
+    let renamed = false;
+
+    if (newName !== undefined && newName !== oldName) {
+      // Per-project name uniqueness (DB constraint)
+      const nameConflict = agents.find((a) => a.name === newName && a.projectId === entry.projectId && a.id !== entry.id);
+      if (nameConflict) {
+        return reply.status(409).send({ error: `an agent named '${newName}' already exists in this project` });
+      }
+
+      // Global tmux window-name uniqueness: two agents from different projects with
+      // the same short name produce different window names (projectName-agentName),
+      // but two agents where the compound names happen to collide must be rejected.
+      const oldWindowName = agentWindowName(entry);
+      const newWindowName = entry.projectName ? `${entry.projectName}-${newName}` : newName;
+      const windowConflict = agents.find((a) => agentWindowName(a) === newWindowName && a.id !== entry.id);
+      if (windowConflict) {
+        return reply.status(409).send({ error: `window name '${newWindowName}' is already in use by another agent` });
+      }
+
+      updated = updateAgentName(db, entry.id, newName);
+
+      if (isTmuxWindowPresent(sessionName, oldWindowName)) {
+        spawnSync('tmux', ['rename-window', '-t', `${sessionName}:${oldWindowName}`, newWindowName], { encoding: 'utf8', timeout: TMUX_SYNC_TIMEOUT_MS });
+      }
+
+      try { renameSync(path.join(stateDir, `${oldWindowName}.state`), path.join(stateDir, `${newWindowName}.state`)); } catch { /* no state file — fine */ }
+      resetUsageMemo(oldWindowName); // usage memo is keyed by window name — re-bootstrap under the new one
+
+      // focusedAgents / prevTailMap* are keyed by the stable agent id, so a rename
+      // needs no juggling — the streams keep flowing under the same id.
+
+      renamed = true;
     }
 
-    // Per-project name uniqueness (DB constraint)
-    const nameConflict = agents.find((a) => a.name === newName && a.projectId === entry.projectId && a.id !== entry.id);
-    if (nameConflict) {
-      return reply.status(409).send({ error: `an agent named '${newName}' already exists in this project` });
+    if (newRole !== undefined) {
+      updated = updateAgentRole(db, entry.id, newRole);
     }
 
-    // Global tmux window-name uniqueness: two agents from different projects with
-    // the same short name produce different window names (projectName-agentName),
-    // but two agents where the compound names happen to collide must be rejected.
-    const oldWindowName = agentWindowName(entry);
-    const newWindowName = entry.projectName ? `${entry.projectName}-${newName}` : newName;
-    const windowConflict = agents.find((a) => agentWindowName(a) === newWindowName && a.id !== entry.id);
-    if (windowConflict) {
-      return reply.status(409).send({ error: `window name '${newWindowName}' is already in use by another agent` });
+    if (renamed) {
+      broadcastSSE('agent-renamed', { id: updated.id, oldName, newName: updated.name });
     }
 
-    const updated = updateAgentName(db, entry.id, newName);
-
-    if (isTmuxWindowPresent(sessionName, oldWindowName)) {
-      spawnSync('tmux', ['rename-window', '-t', `${sessionName}:${oldWindowName}`, newWindowName], { encoding: 'utf8', timeout: TMUX_SYNC_TIMEOUT_MS });
+    if (newRole !== undefined) {
+      // Immediately notify SSE clients of the role change — reuses the same
+      // context-gathering shape as the clone/respawn routes' 'agent-update' broadcasts.
+      const winName = agentWindowName(updated);
+      const windowPresent = isTmuxWindowPresent(sessionName, winName);
+      const tail15 = windowPresent ? capturePaneTail(sessionName, winName, 15, 'agent-window') : '';
+      const { state } = detectAgentStatus(conf, winName, updated.launchCmd, tail15 || undefined);
+      const isBusy = state === 'busy' || state === 'awaiting' || state === 'stalled';
+      const agentType = detectAgentType(updated.launchCmd);
+      const ctx = getContextForAgent(conf, agentType, winName, updated.workdir, isBusy, tail15 || undefined);
+      broadcastSSE('agent-update', {
+        id: updated.id, name: updated.name, projectId: updated.projectId, projectName: updated.projectName,
+        state, mode: windowPresent ? detectAgentMode(conf, winName, updated.launchCmd, tail15) : 'unknown',
+        agentType,
+        windowPresent, queuedTasks: listTasksForAgentId(db, updated.id, updated.projectId).length,
+        launchCmd: updated.launchCmd, workdir: updated.workdir, linkedBg: conf.agentBgLinks[updated.name] ?? null,
+        activeTask: getActiveTask(conf, winName, state), role: updated.role, ...ctx,
+      });
     }
-
-    try { renameSync(path.join(stateDir, `${oldWindowName}.state`), path.join(stateDir, `${newWindowName}.state`)); } catch { /* no state file — fine */ }
-    resetUsageMemo(oldWindowName); // usage memo is keyed by window name — re-bootstrap under the new one
-
-    // focusedAgents / prevTailMap* are keyed by the stable agent id, so a rename
-    // needs no juggling — the streams keep flowing under the same id.
-
-    broadcastSSE('agent-renamed', { id: updated.id, oldName, newName });
 
     return reply.send({ ok: true, agent: updated });
   });
@@ -1843,11 +1883,11 @@ await fastify.register((api) => {
     if (sessionCheck.status !== 0) {
       return reply.status(409).send({ error: 'session not running', sessionAlive: false });
     }
-    if (isTmuxWindowPresent(sessionName, name)) {
-      return reply.status(409).send({ error: 'window already exists' });
-    }
     if (listBgProcesses(db).some((b) => b.name === name)) {
       return reply.status(409).send({ error: `bg process '${name}' already defined` });
+    }
+    if (isTmuxWindowPresent(sessionName, name)) {
+      return reply.status(409).send({ error: 'window already exists' });
     }
     if (linkedAgent !== undefined && typeof linkedAgent !== 'string') {
       return reply.status(400).send({ error: 'linkedAgent must be a string' });
@@ -2167,14 +2207,15 @@ await fastify.register((api) => {
       return reply.status(400).send({ error: `role must be one of: ${ROLE_VALUES.join(', ')}` });
     }
 
-    const agentName = typeof nameOverride === 'string' ? nameOverride : nextAgentName(db, id);
+    const effectiveRole = typeof role === 'string' ? role : 'generic';
+    const agentName = typeof nameOverride === 'string' ? nameOverride : nextAgentName(db, id, effectiveRole);
     const launchCmd = typeof launchCmdOverride === 'string' ? launchCmdOverride.trim() : project.defaultLaunchCmd;
     const newAgent = createAgent(db, {
       name: agentName,
       workdir: project.workdir,
       launchCmd,
       projectId: id,
-      ...(typeof role === 'string' ? { role } : {}),
+      role: effectiveRole,
       useWorktree: useWorktree === true,
     });
 
@@ -2336,6 +2377,7 @@ await fastify.register((api) => {
           activeTask: agent.activeTask,
           model: agent.model, modelId: agent.modelId,
           contextTokens: agent.contextTokens, contextPct: agent.contextPct, contextLimit: agent.contextLimit,
+          contextLimitConfident: agent.contextLimitConfident,
           usage: agent.usage,
         });
       }
@@ -2605,6 +2647,7 @@ function pollAndDiff() {
         contextTokens: agent.contextTokens,
         contextPct: agent.contextPct,
         contextLimit: agent.contextLimit,
+        contextLimitConfident: agent.contextLimitConfident,
         usage: agent.usage,
       });
     }

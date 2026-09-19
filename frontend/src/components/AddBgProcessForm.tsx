@@ -22,7 +22,12 @@ const inputCls = [
   'disabled:opacity-40',
 ].join(' ');
 
-export default function AddBgProcessForm() {
+interface AddBgProcessFormProps {
+  open: boolean;
+  onClose: () => void;
+}
+
+export default function AddBgProcessForm({ open, onClose }: AddBgProcessFormProps) {
   const [agents, setAgents] = useState<Agent[]>([]);
   useEffect(() => {
     void fetch(`${API_URL}/status`)
@@ -47,16 +52,24 @@ export default function AddBgProcessForm() {
   const [linkedAgent, setLinkedAgent] = useState('');
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const gitRoot = useGitRoot(workdir);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    document.addEventListener('keydown', handler);
+    return () => { document.removeEventListener('keydown', handler); };
+  }, [open, onClose]);
+
   const selectedProject =
     selectedProjectId === null ? null : projects.find((p) => p.id === selectedProjectId) ?? null;
 
   async function handleSubmit(e: React.SyntheticEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
-    setSuccess(false);
 
     if (!NAME_PATTERN.test(name)) {
       setError('Name must match ^[a-zA-Z0-9_-]+$ (letters, digits, hyphens, underscores)');
@@ -91,8 +104,7 @@ export default function AddBgProcessForm() {
         setLinkedAgent('');
         setSelectedProjectId(null);
         setShowAdvanced(false);
-        setSuccess(true);
-        setTimeout(() => { setSuccess(false); }, 4000);
+        onClose();
       } else if (res.status === 409) {
         const body = await res.json() as ApiErrorBody;
         setError(body.error ?? 'Conflict error');
@@ -107,11 +119,31 @@ export default function AddBgProcessForm() {
     }
   }
 
+  if (!open) return null;
+
+  function handleOverlayClick(e: React.MouseEvent<HTMLDivElement>) {
+    if (e.target === e.currentTarget) onClose();
+  }
+
   return (
-    <div className="animate-riseIn rounded-card border border-line bg-card px-5 py-4 shadow-card">
-      <h2 className="mb-4 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted">
-        Add Background Process
-      </h2>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+      onClick={handleOverlayClick}
+    >
+      <div className="animate-riseIn flex max-h-[90vh] w-[560px] flex-col overflow-y-auto rounded-card border border-line bg-card px-5 py-4 shadow-pop">
+      <div className="mb-4 flex items-center justify-between">
+        <h2 className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted">
+          Add Background Process
+        </h2>
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close"
+          className="cursor-pointer rounded-[6px] border-0 bg-transparent p-1 text-muted hover:text-ink transition"
+        >
+          ✕
+        </button>
+      </div>
       <form
         onSubmit={(e: React.SyntheticEvent<HTMLFormElement>) => { void handleSubmit(e); }}
         className="flex flex-col gap-3"
@@ -227,9 +259,9 @@ export default function AddBgProcessForm() {
             {submitting ? 'Spawning…' : 'Spawn Process'}
           </button>
           {error && <p className="text-[12px] text-accent-red">{error}</p>}
-          {success && <p className="text-[12px] text-accent-green">Process spawned ✓</p>}
         </div>
       </form>
+      </div>
     </div>
   );
 }

@@ -9,7 +9,7 @@ import { fetchAgentDiff } from '../lib/api'
  * (which would need a second signal to know "loading, but might still be non-git") and the
  * placeholder window is brief enough that it doesn't read as a flash for non-git agents.
  */
-function DiffPanel({ agentId }: { agentId: number }) {
+function DiffPanel({ agentId, onPresenceChange }: { agentId: number; onPresenceChange?: (present: boolean) => void }) {
   const [diff, setDiff] = useState<string | null>(null)
   const [base, setBase] = useState<string | null>(null)
   const [truncated, setTruncated] = useState(false)
@@ -59,11 +59,20 @@ function DiffPanel({ agentId }: { agentId: number }) {
   }, [agentId, load])
 
   // Non-git agent (endpoint reports no base branch): this component owns its own visibility
-  // gating, so render nothing once we know for sure — but never null out on top of an error.
-  if (loaded && !error && diff === null && base === null) return null
+  // gating, same condition as before — but now relayed outward via onPresenceChange (TASK-157)
+  // so the parent tab list can omit the Diff tab entirely for non-git agents, instead of only
+  // expressing absence as an internal `return null`. Never null out on top of an error, and
+  // stay present while still loading (the loading branch below renders real content).
+  const present = !(loaded && !error && diff === null && base === null)
+
+  useEffect(() => {
+    onPresenceChange?.(present)
+  }, [present, onPresenceChange])
+
+  if (!present) return null
 
   if (loading && !loaded) {
-    return <p className="mt-3 text-[12px] italic text-muted-2">Loading diff…</p>
+    return <p className="text-[12px] italic text-muted-2">Loading diff…</p>
   }
 
   const lines = diff ? diff.split('\n') : []
@@ -76,12 +85,12 @@ function DiffPanel({ agentId }: { agentId: number }) {
     return 'text-ink'
   }
 
+  // TASK-157: no longer a standalone <details> accordion — this is now the Diff tab's whole
+  // panel content, so the "Changes" heading is a plain label, not a collapsible summary.
   return (
-    <details className="mt-3 flex-shrink-0">
-      <summary className="cursor-pointer text-[11px] font-semibold uppercase tracking-[0.08em] text-muted select-none">
-        Changes
-      </summary>
-      <div className="mt-2 flex items-center gap-2">
+    <div className="flex-shrink-0">
+      <div className="flex items-center gap-2">
+        <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted">Changes</span>
         <button
           type="button"
           onClick={() => { load({ cancelled: false }) }}
@@ -102,7 +111,7 @@ function DiffPanel({ agentId }: { agentId: number }) {
           ))}
         </pre>
       )}
-    </details>
+    </div>
   )
 }
 

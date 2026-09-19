@@ -322,6 +322,32 @@ export async function renameAgent(agentId: number, newName: string): Promise<Api
   return (res.json() as Promise<{ agent: ApiAgent }>).then((b) => b.agent);
 }
 
+/** PATCH /api/agents/:id — update an agent's role (addressed by id). Returns the updated agent. */
+export async function updateAgentRole(agentId: number, role: string): Promise<ApiAgent> {
+  const res = await apiFetch(`${API_BASE}/agents/${agentId.toString()}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ role }),
+  });
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(body.error ?? `HTTP ${res.status.toString()}`);
+  }
+  return (res.json() as Promise<{ agent: ApiAgent }>).then((b) => b.agent);
+}
+
+
+export async function cloneAgent(agentId: number): Promise<ApiAgent> {
+  const res = await apiFetch(`${API_BASE}/agents/${agentId.toString()}/clone`, {
+    method: 'POST',
+  });
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(body.error ?? `HTTP ${res.status.toString()}`);
+  }
+  return (res.json() as Promise<{ agent: ApiAgent }>).then((b) => b.agent);
+}
+
 /** POST /api/projects/:id/agents — omit name for auto-naming (project-N). Returns the new agent. */
 export async function spawnAgentInProject(
   projectId: number,

@@ -20,6 +20,7 @@ case "$STATE_DIR"  in /*) ;; *) STATE_DIR="$REPO_ROOT/${STATE_DIR#./}" ;; esac
 LOG_FILE="$LOG_DIR/monitor-$(date +%Y%m%d-%H%M%S).log"
 PAUSED_FILE="$LOG_DIR/.paused"
 DISPATCH_LOG="$LOG_DIR/dispatch.jsonl"
+TRANSITION_LOG="$LOG_DIR/transitions.jsonl"
 
 # Globals set by is_idle() to expose detection context
 LAST_DETECTION=""
@@ -30,10 +31,56 @@ LAST_STATE_AGE=""
 LAST_QUEUE_KIND=""
 LAST_QUEUE_REMAINING=""
 
+# TASK-144: per-agent last-observed state, for detecting transitions in the
+# poll loop's hookless/regex-fallback path (mirrors host-server's
+# transitions.jsonl emission on the TypeScript side — see TASK-143). Declared
+# with declare -gA to match the associative-array pattern used for
+# AGENT_DIRS/AGENT_CMDS/etc. in lib/db.sh's load_agents().
+declare -gA PREV_TRANSITION_STATE
+
 log() { echo "[$(date +%H:%M:%S)] $*" | tee -a "$LOG_FILE"; }
 debug() { [ "${DEBUG:-0}" != "0" ] && echo "[$(date +%H:%M:%S)] DEBUG: $*" | tee -a "$LOG_FILE" || true; }
 rm -f "$PAUSED_FILE"
 mkdir -p "$STATE_DIR"
+
+# TASK-128: prevent two concurrent monitor.sh instances from racing dispatch
+# against the same STATE_DIR — dispatch.sh's send-keys-then-sleep-then-Enter
+# gap has no locking around the target pane, so two monitors dispatching to
+# the same agent in close succession can interleave keystrokes. Lock file is
+# keyed on STATE_DIR (not global), so two conductor.conf setups pointing at
+# different STATE_DIRs never contend with each other.
+LOCK_FILE="$STATE_DIR/monitor.pid"
+if [ -f "$LOCK_FILE" ]; then
+  LOCK_PID="$(cat "$LOCK_FILE" 2>/dev/null || true)"
+  if [ -n "$LOCK_PID" ] && kill -0 "$LOCK_PID" 2>/dev/null; then
+    # PID is alive - verify it is actually a monitor.sh process before
+    # refusing to start; a recycled PID belonging to an unrelated process
+    # must never block startup. `ps -p PID -o command=` (headerless full
+    # command line) is supported by both BSD (macOS) and GNU (Linux) ps.
+    LOCK_CMD="$(ps -p "$LOCK_PID" -o command= 2>/dev/null || true)"
+    if [ -n "$LOCK_CMD" ]; then
+      case "$LOCK_CMD" in
+        *monitor.sh*)
+          log "FATAL: another monitor.sh instance appears to be running (PID $LOCK_PID, lock file $LOCK_FILE). Confirm no other conductor is running against this STATE_DIR, then remove the lock file manually before restarting."
+          exit 1
+          ;;
+        *)
+          log "WARNING: lock file $LOCK_FILE names live PID $LOCK_PID, but its command ('$LOCK_CMD') does not look like monitor.sh (recycled PID) - overriding stale lock and proceeding."
+          ;;
+      esac
+    else
+      # ps failed, returned nothing, or the identity check is otherwise
+      # inconclusive. Fail open: refuse to start only on a confident,
+      # positively-verified conflict (PID alive AND positively identified as
+      # monitor.sh) - an uncertain guard must never become a boot blocker.
+      log "WARNING: lock file $LOCK_FILE names live PID $LOCK_PID, but its identity could not be verified (ps failed or returned nothing) - proceeding (fail-open)."
+    fi
+  else
+    log "NOTICE: stale lock found (PID ${LOCK_PID:-unknown} not running), clearing"
+  fi
+fi
+echo "$$" > "$LOCK_FILE"
+trap 'rm -f "$LOCK_FILE"' EXIT
 
 # Agent and background-process lists are loaded from SQLite via load_agents /
 # load_bg (see lib/db.sh). These are re-invoked at the top of the poll loop so
@@ -383,6 +430,46 @@ print(json.dumps(data, separators=(',', ':')))
 " "$ts" "$agent" "$command" "${LAST_STATE_VALUE:-}" "$state_age_json" "${LAST_DETECTION:-}" "$queue_kind" "$queue_remaining_json" "$pane_tail" >> "$DISPATCH_LOG" 2>/dev/null || true
 }
 
+
+# TASK-144 step 2: sibling to emit_dispatch_jsonl, but fires on every observed
+# state transition (not just at dispatch time) so hookless/regex-fallback
+# agents get the same transitions.jsonl coverage TASK-143 gives the
+# host-server's TypeScript detector. Reads LAST_DETECTION/LAST_STATE_AGE from
+# the caller's current globals (set by is_idle() and still current at the
+# call site), same as emit_dispatch_jsonl does.
+emit_transition_jsonl() {
+  local agent="$1"
+  local from_state="$2"
+  local to_state="$3"
+  local target="$4"
+
+  local ts state_age_json pane_tail
+  ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+
+  # state_age_s: null if empty, else integer
+  if [ -n "$LAST_STATE_AGE" ]; then
+    state_age_json="$LAST_STATE_AGE"
+  else
+    state_age_json="null"
+  fi
+
+  pane_tail=$(pane_tail_json "$target" 2>/dev/null || echo "[]")
+
+  python3 -c "
+import sys, json
+data = {
+    'ts': sys.argv[1],
+    'agent': sys.argv[2],
+    'from': sys.argv[3] if sys.argv[3] else None,
+    'to': sys.argv[4] if sys.argv[4] else None,
+    'reason': sys.argv[5] if sys.argv[5] else None,
+    'stateFileAgeS': int(sys.argv[6]) if sys.argv[6] != 'null' else None,
+    'paneTail': json.loads(sys.argv[7]),
+}
+print(json.dumps(data, separators=(',', ':')))
+" "$ts" "$agent" "$from_state" "$to_state" "${LAST_DETECTION:-}" "$state_age_json" "$pane_tail" >> "$TRANSITION_LOG" 2>/dev/null || true
+}
+
 log "Monitor started. Watching ${#AGENT_NAMES[@]} agents. Poll interval: ${POLL_INTERVAL}s"
 log "Idle pattern: $IDLE_PATTERN"
 log "Usage check: $USAGE_CHECK_CMD"
@@ -437,6 +524,26 @@ while true; do
     fi
 
     if is_idle "$target" "$window_name" "$name"; then
+      idle_rc=0
+    else
+      idle_rc=1
+    fi
+
+    # TASK-144 step 1: emit a transition record when this tick's observed
+    # state (LAST_STATE_VALUE, set by is_idle() above regardless of its
+    # return code) differs from the last tick's for this agent. Skip the
+    # agent's first tick, when PREV_TRANSITION_STATE[$name] is still unset and
+    # there is nothing yet to diff against. This mirrors transitions.jsonl
+    # logging (TASK-143, host-server side) for the hookless/regex-fallback
+    # path that only monitor.sh's is_idle() runs. emit_transition_jsonl is
+    # added in step 2 of this task — the call site is wired up now so it
+    # plugs in once that function lands.
+    if [ -n "${PREV_TRANSITION_STATE[$name]+set}" ] && [ "${PREV_TRANSITION_STATE[$name]}" != "$LAST_STATE_VALUE" ]; then
+      emit_transition_jsonl "$name" "${PREV_TRANSITION_STATE[$name]}" "$LAST_STATE_VALUE" "$target"
+    fi
+    PREV_TRANSITION_STATE[$name]="$LAST_STATE_VALUE"
+
+    if [ "$idle_rc" -eq 0 ]; then
       log "$name — idle detected (detection=$LAST_DETECTION state=${LAST_STATE_VALUE:-n/a} age=${LAST_STATE_AGE:-n/a}s)"
 
       # Check usage before dispatching

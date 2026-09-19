@@ -2,13 +2,13 @@
 id: TASK-128
 aliases: [TASK-128]
 title: "monitor.sh single-instance startup guard — PID lockfile keyed on STATE_DIR"
-status: todo
+status: pending-uat
 created: 2026-08-15
-updated: 2026-08-15
+updated: 2026-09-13
 depends_on: []
 blocks: []
 parallel_safe_with: []
-uat: ""
+uat: "[[UAT-128]]"
 tags: [monitor, dispatch, hardening, infrastructure]
 ---
 
@@ -52,29 +52,38 @@ No evidence this fired today — both live agents (`bootstrap-1`, `general`) had
 
 ### 1. Implement the lockfile guard  <!-- agent: general-purpose -->
 
-- [ ] In `scripts/monitor.sh`, add `LOCK_FILE="$STATE_DIR/monitor.pid"` and the check/acquire sequence described in Approach, inserted after the existing `mkdir -p "$STATE_DIR"` line and before `load_agents`/`load_bg`. Re-read the file fresh first — this is a hot file with concurrent sibling edits, and the task's line-number citations may already be stale by the time this is picked up.
-- [ ] Implement the three-way branch exactly as specified: confirmed-live-monitor.sh → refuse + exit non-zero; live-but-not-monitor.sh → warn + override + proceed; stale (dead PID) → notice + clear + proceed; `ps` inconclusive → fail open + warn + proceed. Do not collapse any of these branches — the fail-open branch is the one that prevents this guard from becoming a boot-blocking landmine.
-- [ ] Add the `trap ... EXIT` (or extend an existing trap) to remove `$LOCK_FILE` on clean exit. Search `scripts/monitor.sh` for any pre-existing `trap` registration first.
-- [ ] `bash -n scripts/monitor.sh` — clean syntax check.
+<!-- Updated: 2026-09-13 -->
+<!-- Result: implemented at scripts/monitor.sh:45-83, inserted after the existing mkdir -p "$STATE_DIR" (line 44) and before load_agents/load_bg (now lines 90-91). No pre-existing trap found (searched via search_for_pattern); a new `trap 'rm -f "$LOCK_FILE"' EXIT` added at line 83. bash -n scripts/monitor.sh passed clean. Dispatch loop/is_idle/check_usage/AGENT_NAMES body untouched. -->
+
+- [x] In `scripts/monitor.sh`, add `LOCK_FILE="$STATE_DIR/monitor.pid"` and the check/acquire sequence described in Approach, inserted after the existing `mkdir -p "$STATE_DIR"` line and before `load_agents`/`load_bg`. Re-read the file fresh first — this is a hot file with concurrent sibling edits, and the task's line-number citations may already be stale by the time this is picked up.
+- [x] Implement the three-way branch exactly as specified: confirmed-live-monitor.sh → refuse + exit non-zero; live-but-not-monitor.sh → warn + override + proceed; stale (dead PID) → notice + clear + proceed; `ps` inconclusive → fail open + warn + proceed. Do not collapse any of these branches — the fail-open branch is the one that prevents this guard from becoming a boot-blocking landmine.
+- [x] Add the `trap ... EXIT` (or extend an existing trap) to remove `$LOCK_FILE` on clean exit. Search `scripts/monitor.sh` for any pre-existing `trap` registration first.
+- [x] `bash -n scripts/monitor.sh` — clean syntax check.
 
 ### 2. Manual verification (no bash test harness exists in this repo — same constraint as TASK-113/UAT-113)  <!-- agent: general-purpose -->
 
-- [ ] Start `monitor.sh` normally, then attempt to start a second instance against the same `STATE_DIR` — confirm the second refuses with a clear, actionable message and the first instance is unaffected and keeps running.
-- [ ] Kill the first instance uncleanly (`kill -9`, bypassing the exit trap) to leave a stale lock file behind, then start `monitor.sh` again — confirm it starts cleanly with a "stale lock cleared" log line, not a refusal.
-- [ ] Manually write a lock file containing a PID that is alive but is *not* a `monitor.sh` process (e.g. the current shell's own PID) — confirm `monitor.sh` recognizes the mismatch, logs a warning, and starts anyway (does not refuse).
-- [ ] Start and then cleanly stop `monitor.sh` (Ctrl-C, or the normal `teardown.sh` path) — confirm the lock file is removed and a subsequent normal start shows no stale-lock warning at all.
-- [ ] Record the observed output of all four scenarios in this task file (append under this step) as the evidence a future `/uat-generate` pass can build cases from.
+<!-- Updated: 2026-09-13 -->
+<!-- These are all runtime/E2E (starting real monitor.sh instances, killing processes, writing live lock files) — out of /tackle's static-gates-only scope per wiki/guides/command-anti-patterns.md. Deferred to UAT (/uat-generate + /uat-walk or /uat-auto), which can execute and record these four scenarios properly. -->
+
+- [DEFERRED-TO-UAT] Start `monitor.sh` normally, then attempt to start a second instance against the same `STATE_DIR` — confirm the second refuses with a clear, actionable message and the first instance is unaffected and keeps running.
+- [DEFERRED-TO-UAT] Kill the first instance uncleanly (`kill -9`, bypassing the exit trap) to leave a stale lock file behind, then start `monitor.sh` again — confirm it starts cleanly with a "stale lock cleared" log line, not a refusal.
+- [DEFERRED-TO-UAT] Manually write a lock file containing a PID that is alive but is *not* a `monitor.sh` process (e.g. the current shell's own PID) — confirm `monitor.sh` recognizes the mismatch, logs a warning, and starts anyway (does not refuse).
+- [DEFERRED-TO-UAT] Start and then cleanly stop `monitor.sh` (Ctrl-C, or the normal `teardown.sh` path) — confirm the lock file is removed and a subsequent normal start shows no stale-lock warning at all.
+- [DEFERRED-TO-UAT] Record the observed output of all four scenarios in this task file (append under this step) as the evidence a future `/uat-generate` pass can build cases from.
 
 ## Acceptance Criteria
 
-- [ ] A second `monitor.sh` instance started against an already-running instance's `STATE_DIR` refuses to start with a clear message; the first instance is unaffected.
-- [ ] A stale lock (dead PID) never blocks startup — `monitor.sh` clears it and proceeds, with a log line explaining why.
-- [ ] A lock file whose PID is alive but is not a `monitor.sh` process never blocks startup — treated as a mismatch, overridden, logged.
-- [ ] Any ambiguity in the liveness/identity check (e.g. `ps` failing) fails open toward starting, never toward refusing — this guard must never become the reason a legitimate `monitor.sh` fails to boot.
-- [ ] A clean shutdown (Ctrl-C, `teardown.sh`, or the fleet-wide auto-teardown branch) removes the lock file, leaving no stale-lock warning on the next normal start.
-- [ ] Two separate conductor setups (different `conductor.conf` → different `STATE_DIR`) on the same machine are unaffected by each other's locks.
-- [ ] `bash -n scripts/monitor.sh` passes cleanly.
-- [ ] No change to `scripts/monitor.sh`'s dispatch loop, `is_idle`, `check_usage`, or any code inside the main `for name in "${AGENT_NAMES[@]}"` body — that surface is reserved for TASK-120/TASK-121.
+<!-- Updated: 2026-09-13 -->
+<!-- Static gates confirmed directly; the five runtime-behavior criteria require an actually-running monitor.sh (real PIDs, real kill -9, real Ctrl-C) — deferred to UAT same as Step 2 above. -->
+
+- [DEFERRED-TO-UAT] A second `monitor.sh` instance started against an already-running instance's `STATE_DIR` refuses to start with a clear message; the first instance is unaffected.
+- [DEFERRED-TO-UAT] A stale lock (dead PID) never blocks startup — `monitor.sh` clears it and proceeds, with a log line explaining why.
+- [DEFERRED-TO-UAT] A lock file whose PID is alive but is not a `monitor.sh` process never blocks startup — treated as a mismatch, overridden, logged.
+- [DEFERRED-TO-UAT] Any ambiguity in the liveness/identity check (e.g. `ps` failing) fails open toward starting, never toward refusing — this guard must never become the reason a legitimate `monitor.sh` fails to boot.
+- [DEFERRED-TO-UAT] A clean shutdown (Ctrl-C, `teardown.sh`, or the fleet-wide auto-teardown branch) removes the lock file, leaving no stale-lock warning on the next normal start.
+- [DEFERRED-TO-UAT] Two separate conductor setups (different `conductor.conf` → different `STATE_DIR`) on the same machine are unaffected by each other's locks.
+- [x] `bash -n scripts/monitor.sh` passes cleanly.
+- [x] No change to `scripts/monitor.sh`'s dispatch loop, `is_idle`, `check_usage`, or any code inside the main `for name in "${AGENT_NAMES[@]}"` body — that surface is reserved for TASK-120/TASK-121.
 
 ## Notes
 

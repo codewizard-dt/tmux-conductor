@@ -87,128 +87,161 @@ while [[ $# -gt 0 ]]; do
 done
 
 # ---------------------------------------------------------------------------
-# Copy hook scripts to the stable install dir
+# Concern 1: install + register the Claude Code and Codex hooks
 # ---------------------------------------------------------------------------
-# One script per Claude Code lifecycle event we care about. We copy (not
-# symlink) so the installed hooks survive repo deletion/relocation, and we
-# re-chmod +x because `cp` preserves source perms but we can't assume the
-# working tree is executable (e.g. after a tarball extract).
-mkdir -p "$INSTALL_DIR"
-for script in on-session-start.js on-prompt-submit.js on-stop.js on-stop-failure.js on-notification.js; do
-  cp "$HOOK_DIR/$script" "$INSTALL_DIR/$script"
-  chmod +x "$INSTALL_DIR/$script"
-done
+# Run in a subshell so a failure here (missing HOOK_DIR file, jq error, etc.)
+# does not abort the whole script — dev-commands skill install (Concern 2,
+# below) is independent and must still be attempted regardless. `set -euo
+# pipefail` inside the subshell preserves fail-fast behavior *within* this
+# concern; the subshell boundary keeps that failure from propagating out.
+hooks_status=0
+(
+  set -euo pipefail
 
-# Copy the shared helper that the per-event scripts require() at runtime.
-mkdir -p "$INSTALL_DIR/lib"
-cp "$HOOK_DIR/lib/write-state.js" "$INSTALL_DIR/lib/write-state.js"
+  # -------------------------------------------------------------------------
+  # Copy hook scripts to the stable install dir
+  # -------------------------------------------------------------------------
+  # One script per Claude Code lifecycle event we care about. We copy (not
+  # symlink) so the installed hooks survive repo deletion/relocation, and we
+  # re-chmod +x because `cp` preserves source perms but we can't assume the
+  # working tree is executable (e.g. after a tarball extract).
+  mkdir -p "$INSTALL_DIR"
+  for script in on-session-start.js on-prompt-submit.js on-stop.js on-stop-failure.js on-notification.js; do
+    cp "$HOOK_DIR/$script" "$INSTALL_DIR/$script"
+    chmod +x "$INSTALL_DIR/$script"
+  done
 
-# ---------------------------------------------------------------------------
-# Ensure every hook script under ~/.claude/hooks/ is executable
-# ---------------------------------------------------------------------------
-# Foreign hooks (e.g. serena-bash-grep-block.js) dropped in by other tools or
-# rsynced from a host may lack +x, which makes Claude Code fail the hook with
-# "Permission denied". We own the hooks directory at install time, so fix the
-# whole tree — not just the files we copied.
-HOOKS_ROOT="$(dirname "$INSTALL_DIR")"
-if [ -d "$HOOKS_ROOT" ]; then
-  find "$HOOKS_ROOT" -type f \( -name '*.js' -o -name '*.sh' \) -exec chmod +x {} +
+  # Copy the shared helper that the per-event scripts require() at runtime.
+  mkdir -p "$INSTALL_DIR/lib"
+  cp "$HOOK_DIR/lib/write-state.js" "$INSTALL_DIR/lib/write-state.js"
+
+  # -------------------------------------------------------------------------
+  # Ensure every hook script under ~/.claude/hooks/ is executable
+  # -------------------------------------------------------------------------
+  # Foreign hooks (e.g. serena-bash-grep-block.js) dropped in by other tools or
+  # rsynced from a host may lack +x, which makes Claude Code fail the hook with
+  # "Permission denied". We own the hooks directory at install time, so fix the
+  # whole tree — not just the files we copied.
+  HOOKS_ROOT="$(dirname "$INSTALL_DIR")"
+  if [ -d "$HOOKS_ROOT" ]; then
+    find "$HOOKS_ROOT" -type f \( -name '*.js' -o -name '*.sh' \) -exec chmod +x {} +
+  fi
+
+  # -------------------------------------------------------------------------
+  # Ensure the settings directory and file exist
+  # -------------------------------------------------------------------------
+  # jq requires valid JSON input, so on a fresh machine we seed an empty object.
+  # mkdir -p handles the case where ~/.claude itself doesn't yet exist.
+  mkdir -p "$(dirname "$SETTINGS_FILE")"
+  [ -f "$SETTINGS_FILE" ] || echo '{}' > "$SETTINGS_FILE"
+
+  # -------------------------------------------------------------------------
+  # Merge hooks into settings.json via a single jq invocation
+  # -------------------------------------------------------------------------
+  # The jq program itself (helper defs + pipeline) lives in
+  # hooks/register-hooks.jq alongside this script, so the bash file stays free
+  # of embedded DSL. For each event it:
+  #   1. Initialize .hooks and .hooks.<Event> to [] if missing.
+  #   2. Drop any top-level entry whose hooks[].command either
+  #        (a) equals the new command we're about to register, or
+  #        (b) matches .*/hooks/on-(session-start|prompt-submit|stop|stop-failure)\.(sh|js)$
+  #            AND does NOT start with "$install_dir/" (stale repo-path cleanup).
+  #   3. Append the freshly-built entry.
+  #
+  # SessionStart carries a matcher; the other three events don't.
+  #
+  # Writing to a temp file first and then `mv`-ing is an atomic-replace pattern:
+  # if jq errors out, the original settings.json is left intact.
+  JQ_PROGRAM="$(cd "$(dirname "$0")" && pwd)/hooks/register-hooks.jq"
+  TMP_FILE="$(mktemp)"
+  INSTALL_DIR_CMD="${INSTALL_DIR/#$HOME/\~}"
+  jq --arg install_dir "$INSTALL_DIR" --arg install_dir_cmd "$INSTALL_DIR_CMD" -f "$JQ_PROGRAM" "$SETTINGS_FILE" > "$TMP_FILE"
+
+  # Atomic swap — only reached if jq exited 0 (set -e above).
+  mv "$TMP_FILE" "$SETTINGS_FILE"
+
+  echo "Conductor hooks installed to $INSTALL_DIR and registered in $SETTINGS_FILE"
+
+  # -------------------------------------------------------------------------
+  # Install and register Codex hooks
+  # -------------------------------------------------------------------------
+  # Codex supports the lifecycle events we need for status tracking:
+  # SessionStart(startup|resume|clear), UserPromptSubmit, and Stop.
+  mkdir -p "$CODEX_INSTALL_DIR"
+  for script in on-session-start.js on-prompt-submit.js on-stop.js; do
+    cp "$HOOK_DIR/$script" "$CODEX_INSTALL_DIR/$script"
+    chmod +x "$CODEX_INSTALL_DIR/$script"
+  done
+
+  mkdir -p "$CODEX_INSTALL_DIR/lib"
+  cp "$HOOK_DIR/lib/write-state.js" "$CODEX_INSTALL_DIR/lib/write-state.js"
+
+  CODEX_HOOKS_ROOT="$(dirname "$CODEX_INSTALL_DIR")"
+  if [ -d "$CODEX_HOOKS_ROOT" ]; then
+    find "$CODEX_HOOKS_ROOT" -type f \( -name '*.js' -o -name '*.sh' \) -exec chmod +x {} +
+  fi
+
+  mkdir -p "$(dirname "$CODEX_HOOKS_FILE")"
+  [ -f "$CODEX_HOOKS_FILE" ] || echo '{}' > "$CODEX_HOOKS_FILE"
+
+  CODEX_JQ_PROGRAM="$(cd "$(dirname "$0")" && pwd)/hooks/register-codex-hooks.jq"
+  CODEX_TMP_FILE="$(mktemp)"
+  CODEX_INSTALL_DIR_CMD="${CODEX_INSTALL_DIR/#$HOME/\~}"
+  jq --arg install_dir "$CODEX_INSTALL_DIR" --arg install_dir_cmd "$CODEX_INSTALL_DIR_CMD" -f "$CODEX_JQ_PROGRAM" "$CODEX_HOOKS_FILE" > "$CODEX_TMP_FILE"
+  mv "$CODEX_TMP_FILE" "$CODEX_HOOKS_FILE"
+
+  echo "Conductor Codex hooks installed to $CODEX_INSTALL_DIR and registered in $CODEX_HOOKS_FILE"
+) || hooks_status=$?
+
+if [[ $hooks_status -ne 0 ]]; then
+  echo "Warning: hook installation failed (exit $hooks_status) — continuing to attempt dev-commands skill installation independently" >&2
 fi
 
 # ---------------------------------------------------------------------------
-# Ensure the settings directory and file exist
-# ---------------------------------------------------------------------------
-# jq requires valid JSON input, so on a fresh machine we seed an empty object.
-# mkdir -p handles the case where ~/.claude itself doesn't yet exist.
-mkdir -p "$(dirname "$SETTINGS_FILE")"
-[ -f "$SETTINGS_FILE" ] || echo '{}' > "$SETTINGS_FILE"
-
-# ---------------------------------------------------------------------------
-# Merge hooks into settings.json via a single jq invocation
-# ---------------------------------------------------------------------------
-# The jq program itself (helper defs + pipeline) lives in
-# hooks/register-hooks.jq alongside this script, so the bash file stays free
-# of embedded DSL. For each event it:
-#   1. Initialize .hooks and .hooks.<Event> to [] if missing.
-#   2. Drop any top-level entry whose hooks[].command either
-#        (a) equals the new command we're about to register, or
-#        (b) matches .*/hooks/on-(session-start|prompt-submit|stop|stop-failure)\.(sh|js)$
-#            AND does NOT start with "$install_dir/" (stale repo-path cleanup).
-#   3. Append the freshly-built entry.
-#
-# SessionStart carries a matcher; the other three events don't.
-#
-# Writing to a temp file first and then `mv`-ing is an atomic-replace pattern:
-# if jq errors out, the original settings.json is left intact.
-JQ_PROGRAM="$(cd "$(dirname "$0")" && pwd)/hooks/register-hooks.jq"
-TMP_FILE="$(mktemp)"
-INSTALL_DIR_CMD="${INSTALL_DIR/#$HOME/\~}"
-jq --arg install_dir "$INSTALL_DIR" --arg install_dir_cmd "$INSTALL_DIR_CMD" -f "$JQ_PROGRAM" "$SETTINGS_FILE" > "$TMP_FILE"
-
-# Atomic swap — only reached if jq exited 0 (set -e above).
-mv "$TMP_FILE" "$SETTINGS_FILE"
-
-echo "Conductor hooks installed to $INSTALL_DIR and registered in $SETTINGS_FILE"
-
-# ---------------------------------------------------------------------------
-# Install and register Codex hooks
-# ---------------------------------------------------------------------------
-# Codex supports the lifecycle events we need for status tracking:
-# SessionStart(startup|resume|clear), UserPromptSubmit, and Stop.
-mkdir -p "$CODEX_INSTALL_DIR"
-for script in on-session-start.js on-prompt-submit.js on-stop.js; do
-  cp "$HOOK_DIR/$script" "$CODEX_INSTALL_DIR/$script"
-  chmod +x "$CODEX_INSTALL_DIR/$script"
-done
-
-mkdir -p "$CODEX_INSTALL_DIR/lib"
-cp "$HOOK_DIR/lib/write-state.js" "$CODEX_INSTALL_DIR/lib/write-state.js"
-
-CODEX_HOOKS_ROOT="$(dirname "$CODEX_INSTALL_DIR")"
-if [ -d "$CODEX_HOOKS_ROOT" ]; then
-  find "$CODEX_HOOKS_ROOT" -type f \( -name '*.js' -o -name '*.sh' \) -exec chmod +x {} +
-fi
-
-mkdir -p "$(dirname "$CODEX_HOOKS_FILE")"
-[ -f "$CODEX_HOOKS_FILE" ] || echo '{}' > "$CODEX_HOOKS_FILE"
-
-CODEX_JQ_PROGRAM="$(cd "$(dirname "$0")" && pwd)/hooks/register-codex-hooks.jq"
-CODEX_TMP_FILE="$(mktemp)"
-CODEX_INSTALL_DIR_CMD="${CODEX_INSTALL_DIR/#$HOME/\~}"
-jq --arg install_dir "$CODEX_INSTALL_DIR" --arg install_dir_cmd "$CODEX_INSTALL_DIR_CMD" -f "$CODEX_JQ_PROGRAM" "$CODEX_HOOKS_FILE" > "$CODEX_TMP_FILE"
-mv "$CODEX_TMP_FILE" "$CODEX_HOOKS_FILE"
-
-echo "Conductor Codex hooks installed to $CODEX_INSTALL_DIR and registered in $CODEX_HOOKS_FILE"
-
-# ---------------------------------------------------------------------------
-# Install dev-commands skill
+# Concern 2: install the dev-commands skill
 # ---------------------------------------------------------------------------
 # The dev-commands skill is a read-only bundle of documentation (SKILL.md)
 # and a standalone bash script (scripts/dev-commands.sh) that agents invoke
 # proactively to query background process state. Skills require no registration
 # in settings.json — Claude Code discovers them by directory presence alone.
-# This installation step is independent of hook installation and does not
-# depend on jq or settings.json manipulation.
-SKILLS_SOURCE_DIR="$(cd "$(dirname "$0")/skills/dev-commands" && pwd)"
+# This installation step is independent of hook installation — it runs in its
+# own subshell below, and its success/failure is tracked separately, so
+# neither concern can abort the other.
+skill_status=0
+(
+  set -euo pipefail
 
-# Ensure the target directory exists
-mkdir -p "$SKILLS_DIR"
+  SKILLS_SOURCE_DIR="$(cd "$(dirname "$0")/skills/dev-commands" && pwd)"
 
-# Copy SKILL.md (the skill metadata and documentation)
-if [ -f "$SKILLS_SOURCE_DIR/SKILL.md" ]; then
-  cp "$SKILLS_SOURCE_DIR/SKILL.md" "$SKILLS_DIR/SKILL.md"
-else
-  echo "Warning: SKILL.md not found at $SKILLS_SOURCE_DIR/SKILL.md (skipping skill installation)" >&2
+  # Ensure the target directory exists
+  mkdir -p "$SKILLS_DIR"
+
+  # Copy SKILL.md (the skill metadata and documentation)
+  if [ -f "$SKILLS_SOURCE_DIR/SKILL.md" ]; then
+    cp "$SKILLS_SOURCE_DIR/SKILL.md" "$SKILLS_DIR/SKILL.md"
+  else
+    echo "Warning: SKILL.md not found at $SKILLS_SOURCE_DIR/SKILL.md (skipping skill installation)" >&2
+    exit 1
+  fi
+
+  # Copy the scripts directory (containing dev-commands.sh)
+  if [ -d "$SKILLS_SOURCE_DIR/scripts" ]; then
+    mkdir -p "$SKILLS_DIR/scripts"
+    cp "$SKILLS_SOURCE_DIR/scripts"/* "$SKILLS_DIR/scripts/"
+    # Ensure all scripts are executable
+    chmod +x "$SKILLS_DIR/scripts"/*
+  else
+    echo "Warning: scripts directory not found at $SKILLS_SOURCE_DIR/scripts (skipping script installation)" >&2
+    exit 1
+  fi
+
+  echo "Dev-commands skill installed to $SKILLS_DIR"
+) || skill_status=$?
+
+if [[ $skill_status -ne 0 ]]; then
+  echo "Warning: dev-commands skill installation failed (exit $skill_status)" >&2
 fi
 
-# Copy the scripts directory (containing dev-commands.sh)
-if [ -d "$SKILLS_SOURCE_DIR/scripts" ]; then
-  mkdir -p "$SKILLS_DIR/scripts"
-  cp "$SKILLS_SOURCE_DIR/scripts"/* "$SKILLS_DIR/scripts/"
-  # Ensure all scripts are executable
-  chmod +x "$SKILLS_DIR/scripts"/*
-else
-  echo "Warning: scripts directory not found at $SKILLS_SOURCE_DIR/scripts (skipping script installation)" >&2
+if [[ $hooks_status -ne 0 || $skill_status -ne 0 ]]; then
+  exit 1
 fi
-
-echo "Dev-commands skill installed to $SKILLS_DIR"

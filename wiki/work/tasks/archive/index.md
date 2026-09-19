@@ -4,6 +4,19 @@ Terminal task files (`done` or `trashed`) moved here by `/wiki-archive` to reduc
 
 | ID | Title | Final Status | Archived |
 |----|-------|--------------|----------|
+| [[TASK-0168]] | Update stale agent-status-observability wiki pages, then run a full audit of the shipped transitions.jsonl feature | done | 2026-09-18 |
+| [[TASK-050]] | App Platform live deploy runbook for app/ (api + frontend), invite-gated signups from day one | trashed | 2026-09-17 |
+| [[TASK-129]] | Port isolation for scripts/verify-sqlite-migration.sh | done | 2026-09-17 |
+| [[TASK-155]] | Add a Bash >=4 self-check guard to scripts/lib/db.sh | done | 2026-09-17 |
+| [[TASK-136]] | Audit every Direct Input focus-transition scenario | done | 2026-09-13 |
+| [[TASK-137]] | Fix modal-open Direct Input autofocus race | done | 2026-09-13 |
+| [[TASK-138]] | Fix xterm mousedown focus-steal while Direct Input is active | done | 2026-09-13 |
+| [[TASK-139]] | Verify all Direct Input focus scenarios after the fix | done | 2026-09-13 |
+| [[TASK-152]] | Merge AgentTypeBadge and RoleBadge into one combined header pill in AgentDetailModal | done | 2026-09-13 |
+| [[TASK-142]] | Widen detectAgentStatus's return type to expose detection reason and matched pattern | done | 2026-09-13 |
+| [[TASK-143]] | Add transitions.jsonl log to the host-server, capturing reason + pane snapshot per status change | done | 2026-09-13 |
+| [[TASK-145]] | Document transitions.jsonl and add it to the diagnostic bundle | done | 2026-09-13 |
+| [[TASK-144]] | Mirror transitions.jsonl logging in monitor.sh's is_idle() for the hookless/regex-fallback path | done | 2026-09-13 |
 | [[TASK-071]] | Checkpoint UI — AgentDetailModal checkpoint list with timestamps + per-checkpoint rollback button | done | 2026-09-02 |
 | [[TASK-074]] | Token/cost badge — compact usage badge on agent card header in dashboard | done | 2026-09-02 |
 | [[TASK-114]] | Role badge — colour-coded role badge on the agent card in the dashboard | done | 2026-09-02 |
@@ -133,3 +146,17 @@ Terminal task files (`done` or `trashed`) moved here by `/wiki-archive` to reduc
 | [[TASK-120]] | Collapse monitor.sh's 15s dispatch loop into the host-server's 2s status-poll loop | done | 2026-09-02 |
 | [[TASK-066]] | Diff panel UI — unified diff in AgentDetailModal (colour-coded additions/deletions) | done | 2026-09-02 |
 | [[TASK-117]] | Capture a representative period of real liveUpdateMetrics data from /api/perf/live-updates | done | 2026-09-02 |
+| [[TASK-134]] | Clone button in AgentDetailModal | trashed | 2026-09-13 |
+| [[TASK-150]] | Unify badge/status colors into one cohesive, collision-free palette | done | 2026-09-13 |
+| [[TASK-148]] | Collapse AgentDetailModal actions into a 3-dot dropdown and add Clone | done | 2026-09-13 |
+| [[TASK-153]] | Flatten the Skills panel's nested details into a flat list with a +N more toggle | done | 2026-09-13 |
+| [[TASK-154]] | Emphasize agent/project name in the modal header and surface the most recent dispatched command | done | 2026-09-13 |
+| [[TASK-157]] | Consolidate Terminal/Skills/Diff/Usage/Checkpoints into one tabbed panel in AgentDetailModal | done | 2026-09-13 |
+| [[TASK-159]] | Make SQLite the sole source of truth for bg-process definitions and links | done | 2026-09-13 |
+| [[TASK-156]] | Add project_id to bg_processes and a project-filtered listing endpoint | done | 2026-09-13 |
+| [[TASK-160]] | Create the ~/.claude/skills/dev-commands skill + bash script (list/status/tail) | done | 2026-09-13 |
+| [[TASK-161]] | Extend AddBgProcessForm.tsx with a required project selector and group BgProcessSection by project | done | 2026-09-13 |
+| [[TASK-141]] | Replace Cmd/Ctrl+Arrow agent-switch hotkey to stop conflicting with terminal cursor navigation | done | 2026-09-18 |
+| [[TASK-149]] | Fix Cmd/Ctrl/Option+Arrow cursor navigation in the Direct Input terminal | done | 2026-09-18 |
+| [[TASK-0163]] | Fix copy/paste reliability in the Direct Input terminal | done | 2026-09-18 |
+| [[TASK-0165]] | Handle Cmd+Backspace and Option+Backspace in the Direct Input terminal | done | 2026-09-18 |

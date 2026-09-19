@@ -2,9 +2,10 @@
 id: local-observability
 title: Local Observability
 aliases: [Local Metrics, Observability]
-updated: 2026-07-04
+updated: 2026-09-13
 sources:
   - ../../raw/research/application-latency-structure/index-2.md
+  - ../../raw/research/transition-observability/index.md
 tags: [observability, metrics, logging, performance]
 ---
 
@@ -37,6 +38,9 @@ Use `FASTIFY_STRUCTURED_LOGS=1` to enable Fastify's structured request logger fo
 | Input-to-echo latency | under 500 ms for interactive panes | echo is absent or repeatedly exceeds 1500 ms |
 | Tmux operation timeouts | 0 | any timeout appears in `logs/observability.jsonl` |
 
+`observability.jsonl`'s `status_transition` event (added since this page was first written) is deliberately thin — `{agentId, agent, previousState, nextState}` only, no reason/pattern/pane-text — by design it stays the perf/timing surface. A separate, dedicated `logs/transitions.jsonl` is the recommended home for the richer, occasionally-sensitive (pane-text-bearing) transition-analysis record, so it doesn't dilute this file's perf-metric focus. See [[Observability for Agent Status Transitions]].
+
 relates_to::[[Focused Terminal Transport]]
 relates_to::[[Dashboard Performance Benchmarking]]
 relates_to::[[Agent State Determination]]
+relates_to::[[Observability for Agent Status Transitions]]

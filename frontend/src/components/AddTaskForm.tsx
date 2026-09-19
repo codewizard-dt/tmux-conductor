@@ -25,10 +25,42 @@ export default function AddTaskForm({ agentId, onAdded, projectId, projectName }
     const el = textareaRef.current;
     if (!el) return;
     el.style.height = 'auto';
+    // AgentInfoTabs keeps every tab panel mounted and toggles `hidden` (display:none)
+    // rather than unmounting the inactive ones (TASK-157-ish "always mounted" tab
+    // design), so this effect can fire while the Queued Tasks panel — and this
+    // textarea inside it — is display:none. scrollHeight reads 0 for any element
+    // in a display:none subtree; writing that straight to `style.height` would
+    // pin the textarea at ~0px (masked only by the CSS min-h-7 floor) until the
+    // next value change recomputes it. Skip the write when scrollHeight is 0 so a
+    // hidden mount never clobbers the height — it gets measured for real once the
+    // tab is switched to and the textarea is actually laid out (its own next
+    // value change, or the layout effect below, re-runs the measurement).
     const maxH = 88;
-    el.style.height = `${String(Math.min(el.scrollHeight, maxH))}px`;
-    el.style.overflowY = el.scrollHeight > maxH ? 'auto' : 'hidden';
+    if (el.scrollHeight > 0) {
+      el.style.height = `${String(Math.min(el.scrollHeight, maxH))}px`;
+      el.style.overflowY = el.scrollHeight > maxH ? 'auto' : 'hidden';
+    }
   }, [value]);
+
+  // Re-measure once the textarea actually becomes visible (e.g. switching into the
+  // Queued Tasks tab after mounting while its panel was `hidden`), since the effect
+  // above only re-runs on `value` changes and may have skipped its write while
+  // hidden. A ResizeObserver fires when a display:none element's box resolves to
+  // its real size, which naturally covers the tab-switch case with no visibility
+  // plumbing threaded down from AgentInfoTabs.
+  React.useEffect(() => {
+    const el = textareaRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const maxH = 88;
+    const observer = new ResizeObserver(() => {
+      if (el.scrollHeight === 0) return;
+      el.style.height = 'auto';
+      el.style.height = `${String(Math.min(el.scrollHeight, maxH))}px`;
+      el.style.overflowY = el.scrollHeight > maxH ? 'auto' : 'hidden';
+    });
+    observer.observe(el);
+    return () => { observer.disconnect(); };
+  }, []);
 
   function insertAtCaret(text: string) {
     const el = textareaRef.current;
@@ -170,7 +202,7 @@ export default function AddTaskForm({ agentId, onAdded, projectId, projectName }
               }
             }}
             onPaste={handlePaste}
-            className="flex-1 resize-none overflow-hidden rounded-[7px] border border-line-input bg-card px-2.5 py-1 font-mono text-[12px] text-ink placeholder:text-muted-2 outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/10 disabled:opacity-40"
+            className="min-h-7 flex-1 resize-none overflow-hidden rounded-[7px] border border-line-input bg-card px-2.5 py-1 font-mono text-[12px] text-ink placeholder:text-muted-2 outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/10 disabled:opacity-40"
             disabled={busy}
             aria-label="New task text"
           />

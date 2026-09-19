@@ -21,3 +21,8 @@ Terminal roadmap files (`done`) moved here by `/wiki-archive` to reduce director
 | [[ROADMAP-017]] | Competitive-audit follow-ups — dispatch latency, perf-budget calibration, UI/UX & task history | done | 2026-09-02 |
 | [[ROADMAP-010]] | Agent observability & UX — token tracking, session recording, role templates | done | 2026-09-02 |
 | [[ROADMAP-007]] | Git workflow — worktree isolation, diff review, checkpoint & rollback | done | 2026-09-02 |
+| [[ROADMAP-018]] | Direct Input Focus Reliability | done | 2026-09-13 |
+| [[ROADMAP-019]] | Agent Status Transition Observability | done | 2026-09-13 |
+| [[ROADMAP-021]] | Simplify the AgentDetailModal | done | 2026-09-13 |
+| [[ROADMAP-020]] | Shared Dev Commands — Full Implementation | done | 2026-09-13 |
+| [[ROADMAP-0022]] | Resolve Modifier-Key Conflicts in the Direct Input Terminal | done | 2026-09-18 |

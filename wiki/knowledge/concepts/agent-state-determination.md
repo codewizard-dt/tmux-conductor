@@ -2,10 +2,12 @@
 id: agent-state-determination
 title: Agent State Determination
 aliases: [Agent Status Detection, Agent State Detection]
-updated: 2026-07-04
+updated: 2026-09-18
 sources:
   - ../../raw/research/application-latency-structure/index.md
   - ../../raw/research/application-latency-structure/index-2.md
+  - ../../raw/research/transition-observability/index.md
+  - ../../raw/research/detect-agent-status-reason-mapping/index.md
 tags: [agents, state, status, performance]
 ---
 
@@ -19,5 +21,10 @@ The dashboard should treat `status` as the authoritative contract and avoid re-i
 
 Observability for this concept should record status transitions with previous/current status, detection reason, state-file age, agent profile (`claude`, `codex`, `custom`), whether a pane capture was needed, and detection duration. This makes dashboard state regressions diagnosable rather than relying on visual reports.
 
+**Shipped as of 2026-09-18**: the observability gap is closed. `logs/transitions.jsonl` is live from both detectors — the host-server's `pollAndDiff` and `scripts/monitor.sh`'s poll loop each emit one JSONL record per detected status transition. `detectAgentStatus()`'s 18 `return` sites are mapped onto the 8-value `DetectionReason` union per [[detectAgentStatus Return-Site to DetectionReason Mapping]]. See [[Observability for Agent Status Transitions]] for the transition stream's shape and [[Testing strategy for monitor.sh's emit_transition_jsonl / transition-diff logic]] for its test coverage.
+
 relates_to::[[Dashboard Performance Benchmarking]]
 relates_to::[[Local Observability]]
+relates_to::[[Observability for Agent Status Transitions]]
+relates_to::[[detectAgentStatus Return-Site to DetectionReason Mapping]]
+relates_to::[[Testing strategy for monitor.sh's emit_transition_jsonl / transition-diff logic]]

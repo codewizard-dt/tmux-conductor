@@ -229,6 +229,7 @@ State is stored in a mix of SQLite and plain-text files on the host filesystem:
 - `logs/state/<agent>.state` — per-agent idle/busy state
 - `logs/dispatch.jsonl` — append-only dispatch audit log
 - `logs/hooks.jsonl` — append-only hook transition log
+- `logs/transitions.jsonl` — append-only unified transition log, emitted from both the host-server's `pollAndDiff` and `monitor.sh`'s poll loop
 
 To reset the task queue: clear the `tasks` table in `data/conductor.db`. To reset agent state: delete `logs/state/*.state`.
 
@@ -246,6 +247,7 @@ curl http://localhost:8788/api/status
 
 - **Dispatch log:** `logs/dispatch.jsonl` — one JSONL record per dispatch (`ts`, `agent`, `command`, `state`, `state_age_s`, `detection`, `queue`, `queue_remaining`, `pane_tail`).
 - **Hook log:** `logs/hooks.jsonl` — one JSONL record per state transition (`ts`, `agent`, `event`, `prev_state`, `new_state`).
+- **Transition log:** `logs/transitions.jsonl` — one JSONL record per detected agent status transition, emitted from both the host-server's `pollAndDiff` (`ts`, `agentId`, `agent`, `from`, `to`, `reason`, `matchedPattern`, `stateFileAgeS`, `windowPresent`, `queuedTasks`, `paneTail`) and `monitor.sh`'s poll loop (`ts`, `agent`, `from`, `to`, `reason`, `stateFileAgeS`, `paneTail`).
 
 ### Troubleshooting
 

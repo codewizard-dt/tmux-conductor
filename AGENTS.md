@@ -52,6 +52,7 @@ All scripts below live in `scripts/` except `install-hooks.sh` (repo root).
 | `install-hooks.sh` (repo root) | Copies JS hook scripts plus `hooks/lib/write-state.js` into `~/.Codex/hooks/tmux-conductor/` and merge-registers them in `~/.Codex/settings.json` with dedup-by-command (preserves foreign hook entries; also prunes stale `.sh` registrations from prior installs) |
 | `$LOG_DIR/dispatch.jsonl` | Verbose dispatch log (host). One JSONL record per dispatch: `ts`, `agent`, `command`, `state`, `state_age_s`, `detection`, `queue`, `queue_remaining`, `pane_tail` |
 | `$CONDUCTOR_LOG_DIR/hooks.jsonl` | Hook transition log. One JSONL record per hook event: `ts`, `agent`, `event`, `prev_state`, `new_state` |
+| `$LOG_DIR/transitions.jsonl` | Unified transition log. One JSONL record per detected agent status transition, emitted from both the host-server's `pollAndDiff` (fields: `ts`, `agentId`, `agent`, `from`, `to`, `reason`, `matchedPattern`, `stateFileAgeS`, `windowPresent`, `queuedTasks`, `paneTail`) and `monitor.sh`'s poll loop (fields: `ts`, `agent`, `from`, `to`, `reason`, `stateFileAgeS`, `paneTail`) |
 
 ### Key Design Decisions
 
@@ -67,6 +68,7 @@ All scripts below live in `scripts/` except `install-hooks.sh` (repo root).
 - Usage monitoring runs before every dispatch; when all agents hit limits, auto-teardown triggers
 - Task queue is SQL-backed (`tasks` table in SQLite). Agent scoping is via a foreign key to the `agents` table; `pop_task_sql()` selects scoped rows first, then global rows — replacing the old `agentname: command` plain-text prefix convention.
 - Verbose dispatch logging is enabled by default. `monitor.sh` appends one JSONL record to `$LOG_DIR/dispatch.jsonl` for every dispatch (fields: `ts`, `agent`, `command`, `state`, `state_age_s`, `detection`, `queue`, `queue_remaining`, `pane_tail`). Task pops are SQL DELETEs against the `tasks` table; `queue_remaining` reflects the SQL row count after the pop. The hook scripts (`on-stop.js`, etc.) append one JSONL record to `$CONDUCTOR_LOG_DIR/hooks.jsonl` for every state transition (fields: `ts`, `agent`, `event`, `prev_state`, `new_state`). `LOG_DIR` is configurable in `conductor.conf`; `CONDUCTOR_LOG_DIR` defaults to `./logs` and can be overridden per-agent via env.
+- Unified transition observability (ROADMAP-019): every agent status transition, from both detection paths, lands as one JSONL record in `$LOG_DIR/transitions.jsonl` — emitted from the host-server's `pollAndDiff` (hook-based signal; fields `ts`, `agentId`, `agent`, `from`, `to`, `reason`, `matchedPattern`, `stateFileAgeS`, `windowPresent`, `queuedTasks`, `paneTail`) and mirrored from `monitor.sh`'s `is_idle()` poll loop (regex-fallback signal; fields `ts`, `agent`, `from`, `to`, `reason`, `stateFileAgeS`, `paneTail`), so downstream analysis gets a single stream regardless of which detector fired.
 
 ## Prerequisites
 

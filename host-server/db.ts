@@ -287,7 +287,7 @@ function runMigrations(db: Database.Database): void {
         id INTEGER PRIMARY KEY,
         name TEXT NOT NULL UNIQUE CHECK (name GLOB '[A-Za-z0-9_-]*'),
         workdir TEXT NOT NULL,
-        default_launch_cmd TEXT NOT NULL DEFAULT 'claude --dangerously-skip-permissions',
+        default_launch_cmd TEXT NOT NULL DEFAULT 'claude --dangerously-skip-permissions --append-system-prompt-file ~/.claude/rules/agent-teams-preference.md',
         created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))
       );
       CREATE TABLE IF NOT EXISTS agents (
@@ -495,7 +495,7 @@ export function listProjects(db: Database.Database): Project[] {
 export function createProject(db: Database.Database, data: { name: string; workdir: string; defaultLaunchCmd?: string }): Project {
   const row = db.prepare(
     `INSERT INTO projects (name, workdir, default_launch_cmd) VALUES (?, ?, ?) RETURNING *`
-  ).get(data.name, data.workdir, data.defaultLaunchCmd ?? 'claude --dangerously-skip-permissions') as ProjectRow;
+  ).get(data.name, data.workdir, data.defaultLaunchCmd ?? 'claude --dangerously-skip-permissions --append-system-prompt-file ~/.claude/rules/agent-teams-preference.md') as ProjectRow;
   return mapProject(row);
 }
 
@@ -520,11 +520,11 @@ export function deleteProject(db: Database.Database, id: number, force = false):
   db.prepare(`DELETE FROM projects WHERE id=?`).run(id);
 }
 
-export function nextAgentName(db: Database.Database, projectId: number): string {
+export function nextAgentName(db: Database.Database, projectId: number, role: string = 'generic'): string {
   const project = db.prepare(`SELECT name FROM projects WHERE id=?`).get(projectId) as { name: string } | undefined;
   if (!project) throw new Error(`Project ${String(projectId)} not found`);
-  const existing = db.prepare(`SELECT name FROM agents WHERE name GLOB ?`).all(project.name + '-*') as { name: string }[];
-  const prefix = project.name + '-';
+  const prefix = `${project.name}-${role}-`;
+  const existing = db.prepare(`SELECT name FROM agents WHERE name GLOB ?`).all(prefix + '*') as { name: string }[];
   let max = 0;
   for (const a of existing) {
     if (a.name.startsWith(prefix)) {
@@ -532,7 +532,27 @@ export function nextAgentName(db: Database.Database, projectId: number): string 
       if (!isNaN(n) && n > max) max = n;
     }
   }
-  return `${project.name}-${String(max + 1)}`;
+  return `${prefix}${String(max + 1)}`;
+}
+
+/**
+ * Derive a unique name for a clone of `source`, starting from
+ * `${source.name}-copy` and, on collision, trying `-copy-2`, `-copy-3`, …
+ * until a free name is found. Collision scope mirrors the DB's uniqueness
+ * indexes (idx_agents_project_name / idx_agents_null_name): scoped to
+ * `source.projectId` when set, to project_id IS NULL otherwise.
+ */
+export function deriveCloneName(db: Database.Database, source: Agent): string {
+  const rows = source.projectId != null
+    ? db.prepare(`SELECT name FROM agents WHERE project_id = ?`).all(source.projectId) as { name: string }[]
+    : db.prepare(`SELECT name FROM agents WHERE project_id IS NULL`).all() as { name: string }[];
+  const existing = new Set(rows.map((r) => r.name));
+
+  const base = `${source.name}-copy`;
+  if (!existing.has(base)) return base;
+  let n = 2;
+  while (existing.has(`${base}-${String(n)}`)) n++;
+  return `${base}-${String(n)}`;
 }
 
 // ─── Agents CRUD ──────────────────────────────────────────────────────────────
@@ -652,6 +672,12 @@ export function deleteAgent(db: Database.Database, id: number): void {
 
 export function updateAgentName(db: Database.Database, id: number, newName: string): Agent {
   const updated = db.prepare(`UPDATE agents SET name=? WHERE id=?`).run(newName, id);
+  if (updated.changes === 0) throw new Error(`Agent ${String(id)} not found`);
+  return findAgentById(db, id);
+}
+
+export function updateAgentRole(db: Database.Database, id: number, role: string): Agent {
+  const updated = db.prepare(`UPDATE agents SET role=? WHERE id=?`).run(role, id);
   if (updated.changes === 0) throw new Error(`Agent ${String(id)} not found`);
   return findAgentById(db, id);
 }

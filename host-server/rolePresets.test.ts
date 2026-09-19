@@ -328,3 +328,58 @@ void test('applyRoleFragmentToWorktree logs a warning and does not throw when th
     console.warn = originalWarn;
   }
 });
+
+// TASK-167: PATCH /agents/:id (host-server/index.ts) accepts { name?, role? }
+// and validates role the same way POST /agents does. index.ts is a
+// top-level-await script that calls fastify.listen() unconditionally at
+// import time (see host-server/sseRolePayloadParity.test.ts's own comment on
+// this same constraint, and its "no harness to trigger deterministically"
+// framing) — importing it here to exercise the route over real HTTP would
+// also collide with a live dev-server instance already bound to its
+// configured port. The route's own DB-layer behavior (a role/name update
+// actually landing) is covered behaviorally in db.test.ts's
+// updateAgentRole/updateAgentName tests instead; these pin the route's
+// request-validation shape and branching statically, the same way the
+// ROLE_VALUES-drift test above does.
+void test('PATCH /agents/:id rejects an invalid role with the same "role must be one of: ..." message shape POST /agents uses', () => {
+  const indexSource = fs.readFileSync(path.join(__dirname, 'index.ts'), 'utf8');
+  const roleMessageOccurrences = indexSource.match(/role must be one of: \$\{ROLE_VALUES\.join\(', '\)\}/g) ?? [];
+  assert.ok(
+    roleMessageOccurrences.length >= 2,
+    `expected the exact "role must be one of: \${ROLE_VALUES.join(', ')}" 400 error message at both POST /agents and PATCH /agents/:id, found ${String(roleMessageOccurrences.length)} occurrence(s)`,
+  );
+  assert.match(
+    indexSource,
+    /api\.patch<\{ Params: \{ id: string \}; Body: \{ name\?: string; role\?: string \} \}>\('\/agents\/:id',[\s\S]{0,600}?if \(newRole !== undefined && \(typeof newRole !== 'string' \|\| !ROLE_VALUES\.includes\(newRole\)\)\) \{\s*\n\s*return reply\.status\(400\)\.send\(\{ error: `role must be one of: \$\{ROLE_VALUES\.join\(', '\)\}` \}\);/,
+    'expected PATCH /agents/:id to validate role against ROLE_VALUES and return a 400 with the "role must be one of: ..." message',
+  );
+});
+
+void test('PATCH /agents/:id returns 400 when the body has neither name nor role', () => {
+  const indexSource = fs.readFileSync(path.join(__dirname, 'index.ts'), 'utf8');
+  assert.match(
+    indexSource,
+    /api\.patch<\{ Params: \{ id: string \}; Body: \{ name\?: string; role\?: string \} \}>\('\/agents\/:id',[\s\S]{0,300}?if \(newName === undefined && newRole === undefined\) \{\s*\n\s*return reply\.status\(400\)\.send\(\{ error: 'at least one of name or role is required' \}\);/,
+    'expected PATCH /agents/:id to 400 with "at least one of name or role is required" when both fields are absent',
+  );
+});
+
+void test('PATCH /agents/:id applies a name change and a role change independently (a body with both updates both, not just one)', () => {
+  const indexSource = fs.readFileSync(path.join(__dirname, 'index.ts'), 'utf8');
+  // The rename block is its own top-level `if`, gated on newName...
+  assert.match(
+    indexSource,
+    /if \(newName !== undefined && newName !== oldName\) \{/,
+    'expected PATCH /agents/:id to gate its rename logic on `newName !== undefined && newName !== oldName`',
+  );
+  // ...and closes with `renamed = true;` immediately followed by a SIBLING
+  // (not nested — same indentation, not inside the rename block's braces)
+  // `if (newRole !== undefined)` that independently calls updateAgentRole.
+  // This is what makes a body carrying both name and role update both rather
+  // than the role update being unreachable once a rename has run.
+  assert.match(
+    indexSource,
+    /renamed = true;\n {4}\}\n\n {4}if \(newRole !== undefined\) \{\n {6}updated = updateAgentRole\(db, entry\.id, newRole\);\n {4}\}/,
+    'expected the role-change `if` to immediately follow the rename block\'s closing brace at the same indentation (a sibling, not nested inside it) — the body-carries-both-fields case depends on this',
+  );
+});

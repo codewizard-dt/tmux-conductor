@@ -11,6 +11,7 @@ REPO="$(cd "$SCRIPT_DIR/.." && pwd)"
 VERIFY_DIR="$REPO/tmp/verify"
 mkdir -p "$VERIFY_DIR"
 export CONDUCTOR_DB="$VERIFY_DIR/conductor-verify.db"
+VERIFY_PORT="${VERIFY_PORT:-18788}"
 # Clean slate — remove any leftover DB from a previous run
 rm -f "$CONDUCTOR_DB" "$CONDUCTOR_DB-shm" "$CONDUCTOR_DB-wal"
 
@@ -36,12 +37,52 @@ BACKEND_PID=""
 start_backend() {
   echo "[backend] Starting..."
   cd "$REPO/host-server"
-  CONDUCTOR_DB="$CONDUCTOR_DB" node --import tsx/esm index.ts &>"$VERIFY_DIR/backend.log" &
+  CONDUCTOR_DB="$CONDUCTOR_DB" BACKEND_PORT="$VERIFY_PORT" node --import tsx/esm index.ts &>"$VERIFY_DIR/backend.log" &
   BACKEND_PID=$!
   # Wait up to 15s for the backend to be ready
   local i=0
   while (( i < 30 )); do
-    if curl -sf http://localhost:8788/api/status >/dev/null 2>&1; then
+    if ! kill -0 "$BACKEND_PID" 2>/dev/null; then
+      echo "[backend] ERROR: spawned backend process exited before becoming ready — check $VERIFY_DIR/backend.log" >&2
+      cd "$REPO"
+      BACKEND_PID=""
+      return 1
+    fi
+    if curl -sf http://localhost:$VERIFY_PORT/api/status >/dev/null 2>&1; then
+      # Cross-check process identity: confirm the process actually listening on
+      # $VERIFY_PORT traces back to $BACKEND_PID, not just that something answers
+      # HTTP 200 there (a stray process from a crashed prior run could be squatting
+      # on the port). Empirically verified (spawn + ps tree): `node --import tsx/esm
+      # index.ts` does NOT fork — $! is the PID that actually binds the listening
+      # socket — so a direct match is expected. Still fall back to a parent-PID
+      # check in case some environment forks after all.
+      local listen_pids owner_pid matched=0
+      listen_pids="$(lsof -nP -iTCP:$VERIFY_PORT -sTCP:LISTEN -t 2>/dev/null)"
+      if [[ -z "$listen_pids" ]]; then
+        echo "[backend] ERROR: port $VERIFY_PORT answered the readiness probe but no listening process was found via lsof" >&2
+        cd "$REPO"
+        kill "$BACKEND_PID" 2>/dev/null || true
+        BACKEND_PID=""
+        return 1
+      fi
+      while IFS= read -r owner_pid; do
+        [[ -z "$owner_pid" ]] && continue
+        if [[ "$owner_pid" == "$BACKEND_PID" ]]; then
+          matched=1
+          break
+        fi
+        if [[ "$(ps -o ppid= -p "$owner_pid" 2>/dev/null | tr -d ' ')" == "$BACKEND_PID" ]]; then
+          matched=1
+          break
+        fi
+      done <<< "$listen_pids"
+      if (( matched != 1 )); then
+        echo "[backend] ERROR: port $VERIFY_PORT is occupied by an unrelated process (listening PID(s): $listen_pids, expected $BACKEND_PID) — refusing to proceed" >&2
+        cd "$REPO"
+        kill "$BACKEND_PID" 2>/dev/null || true
+        BACKEND_PID=""
+        return 1
+      fi
       echo "[backend] Ready (PID $BACKEND_PID)"
       cd "$REPO"
       return 0
@@ -169,6 +210,8 @@ check_pop_race() {
 
   # Ensure a racer agent exists
   sqlc "INSERT OR IGNORE INTO agents(name,workdir,launch_cmd) VALUES('racer','$VERIFY_DIR/demo-repo','bash')"
+  local racer_id
+  racer_id="$(sqlc "SELECT id FROM agents WHERE name='racer'")"
 
   # Insert 500 global queued tasks (no agent/project scope)
   local count_before
@@ -212,7 +255,7 @@ check_pop_race() {
     source '$db_sh'
     while true; do
       POPPED_TASK=''
-      pop_task_sql 'racer' || break
+      pop_task_sql '$racer_id' || break
       echo \"\$POPPED_TASK\" >> '$out1'
     done
   " &
@@ -223,7 +266,7 @@ check_pop_race() {
     source '$db_sh'
     while true; do
       POPPED_TASK=''
-      pop_task_sql 'racer' || break
+      pop_task_sql '$racer_id' || break
       echo \"\$POPPED_TASK\" >> '$out2'
     done
   " &
@@ -285,22 +328,28 @@ check_pop_race() {
 
   # Pop three times and verify order
   local pop1 kind1 pop2 kind2 pop3 kind3
+  # Pass both t1's agent id and its project id, matching how a real dispatch
+  # call resolves both from load_agents' AGENT_IDS/AGENT_PROJECT_IDS for a
+  # given agent — omitting project_id leaves pop_task_sql's project-scoped
+  # branch permanently dead (project_pred defaults to '0'), which previously
+  # caused pop2 to silently consume the global task instead of the
+  # project-scoped one, leaving pop3 with nothing.
   POPPED_TASK=""; LAST_QUEUE_KIND=""
-  if ! pop_task_sql "t1"; then
+  if ! pop_task_sql "$t1_id" "$proj_id"; then
     echo "[check_pop_race] FAIL: precedence pop1 returned nothing"
     return 1
   fi
   pop1="$POPPED_TASK"; kind1="$LAST_QUEUE_KIND"
 
   POPPED_TASK=""; LAST_QUEUE_KIND=""
-  if ! pop_task_sql "t1"; then
+  if ! pop_task_sql "$t1_id" "$proj_id"; then
     echo "[check_pop_race] FAIL: precedence pop2 returned nothing"
     return 1
   fi
   pop2="$POPPED_TASK"; kind2="$LAST_QUEUE_KIND"
 
   POPPED_TASK=""; LAST_QUEUE_KIND=""
-  if ! pop_task_sql "t1"; then
+  if ! pop_task_sql "$t1_id" "$proj_id"; then
     echo "[check_pop_race] FAIL: precedence pop3 returned nothing"
     return 1
   fi
@@ -365,6 +414,14 @@ check_dispatch() {
     echo "[check_dispatch] Initialized git repo at $VERIFY_DIR/demo-repo"
   fi
 
+  # conductor.sh spawns project-scoped agents under a `${project}-${agent}`
+  # window name (matching host-server's agentWindowName / db.sh's load_agents
+  # AGENT_WINDOW_NAMES), NOT the bare agent name — capture-pane below must
+  # target that computed name or it silently polls a nonexistent window.
+  local window_name
+  window_name="$(sqlc "SELECT COALESCE(p.name || '-' || a.name, a.name) FROM agents a LEFT JOIN projects p ON a.project_id=p.id WHERE a.name='$agent_name'")"
+  echo "[check_dispatch] Computed window name: $window_name"
+
   # Write idle state file so monitor sees the agent as idle from the start
   local conf_state_dir
   conf_state_dir="$(bash -c "source '$REPO/conductor.conf' && echo \"\$STATE_DIR\"")"
@@ -412,11 +469,20 @@ check_dispatch() {
     return 1
   }
 
-  # Enqueue a marker task via the backend API
+  # Enqueue a marker task via the backend API. POST /api/tasks only recognizes
+  # `agentId` (an integer) — it has no `agentName` field, so a body carrying
+  # `agentName` silently creates a fully unscoped/global task instead of one
+  # targeted at this agent (Fastify ignores unrecognized body fields rather
+  # than rejecting them). That skipped both the immediate-dispatch fast path
+  # (which requires a resolved agentId) and any idle-transition trigger (the
+  # agent's state file was written to 'idle' before this task even existed,
+  # so no future transition would ever fire to re-check the queue) — the
+  # enqueue silently "succeeded" with a real task id, but never targeted the
+  # only path that would actually dispatch it in this check's time window.
   local task_resp task_id
-  task_resp="$(curl -s -X POST http://localhost:8788/api/tasks \
+  task_resp="$(curl -s -X POST http://localhost:$VERIFY_PORT/api/tasks \
     -H 'Content-Type: application/json' \
-    -d "{\"command\":\"echo POPPED-OK\",\"agentName\":\"$agent_name\"}" 2>&1)"
+    -d "{\"command\":\"echo POPPED-OK\",\"agentId\":$agent_db_id}" 2>&1)"
   task_id="$(echo "$task_resp" | grep -o '"id":[0-9]*' | head -1 | grep -o '[0-9]*')"
   echo "[check_dispatch] Task enqueue response: $task_resp"
   echo "[check_dispatch] Enqueued task id='$task_id' for $agent_name"
@@ -434,7 +500,7 @@ check_dispatch() {
   echo "[check_dispatch] Waiting up to ${max_wait}s for dispatch..."
   while (( elapsed < max_wait )); do
     local pane_out
-    pane_out="$(tmux capture-pane -p -t "$verify_session:$agent_name" 2>/dev/null || true)"
+    pane_out="$(tmux capture-pane -p -t "$verify_session:$window_name" 2>/dev/null || true)"
     if echo "$pane_out" | grep -q "POPPED-OK"; then
       dispatched=1
       break
@@ -451,8 +517,8 @@ check_dispatch() {
   else
     echo "[check_dispatch] FAIL: capture-pane did not show POPPED-OK within ${max_wait}s"
     echo "[check_dispatch] Final pane output:"
-    tmux capture-pane -p -t "$verify_session:$agent_name" 2>/dev/null || echo "(capture failed)"
-    echo "[check_dispatch] DB tasks still queued: $(sqlc "SELECT command,status FROM tasks WHERE command='echo POPPED-OK'")"
+    tmux capture-pane -p -t "$verify_session:$window_name" 2>/dev/null || echo "(capture failed)"
+    echo "[check_dispatch] DB tasks still queued: $(sqlc "SELECT command || ' | status=' || status FROM tasks WHERE command='echo POPPED-OK'")"
     echo "[check_dispatch] DB task count: $(sqlc "SELECT COUNT(*) FROM tasks WHERE status='queued'")"
     echo "[check_dispatch] Agent state file: $(cat "$conf_state_dir/$agent_name.state" 2>/dev/null || echo "(missing)")"
     pass_dispatch=0
@@ -507,7 +573,7 @@ check_schedule() {
   proj_id="$(sqlc "SELECT id FROM projects WHERE name='demo' LIMIT 1")"
   if [[ -z "$proj_id" ]]; then
     local proj_resp
-    proj_resp="$(curl -sf -X POST http://localhost:8788/api/projects \
+    proj_resp="$(curl -sf -X POST http://localhost:$VERIFY_PORT/api/projects \
       -H 'Content-Type: application/json' \
       -d "{\"name\":\"demo\",\"workdir\":\"$VERIFY_DIR/demo-repo\",\"defaultLaunchCmd\":\"bash\"}")"
     proj_id="$(echo "$proj_resp" | grep -o '"id":[0-9]*' | head -1 | grep -o '[0-9]*')"
@@ -516,7 +582,7 @@ check_schedule() {
 
   # Create a schedule: intervalSeconds=5, action=append, skipIfPending=true
   local sched_resp sched_id
-  sched_resp="$(curl -sf -X POST http://localhost:8788/api/schedules \
+  sched_resp="$(curl -sf -X POST http://localhost:$VERIFY_PORT/api/schedules \
     -H 'Content-Type: application/json' \
     -d "{\"name\":\"verify-sched\",\"command\":\"echo SCHED-TICK\",\"intervalSeconds\":5,\"action\":\"append\",\"enabled\":true,\"skipIfPending\":true,\"projectId\":$proj_id}")"
   sched_id="$(echo "$sched_resp" | grep -o '"id":[0-9]*' | head -1 | grep -o '[0-9]*')"
@@ -546,7 +612,7 @@ check_schedule() {
   if [[ "$fired" -eq 0 ]]; then
     echo "[check_schedule] FAIL: schedule did not fire within 15s"
     # Cleanup
-    curl -sf -X DELETE "http://localhost:8788/api/schedules/$sched_id" >/dev/null 2>&1 || true
+    curl -sf -X DELETE "http://localhost:$VERIFY_PORT/api/schedules/$sched_id" >/dev/null 2>&1 || true
     stop_backend
     return 1
   fi
@@ -559,7 +625,7 @@ check_schedule() {
   echo "[check_schedule] After second tick: queued count=$count_after_second_tick"
   if [[ "$count_after_second_tick" -ne 1 ]]; then
     echo "[check_schedule] FAIL: skip_if_pending failed — count=$count_after_second_tick (expected 1)"
-    curl -sf -X DELETE "http://localhost:8788/api/schedules/$sched_id" >/dev/null 2>&1 || true
+    curl -sf -X DELETE "http://localhost:$VERIFY_PORT/api/schedules/$sched_id" >/dev/null 2>&1 || true
     stop_backend
     return 1
   fi
@@ -575,7 +641,7 @@ check_schedule() {
   sqlc "INSERT INTO tasks(command,position,status,project_id) VALUES('plain-3',30.0,'queued',$proj_id)"
 
   local jump_sched_resp jump_sched_id
-  jump_sched_resp="$(curl -sf -X POST http://localhost:8788/api/schedules \
+  jump_sched_resp="$(curl -sf -X POST http://localhost:$VERIFY_PORT/api/schedules \
     -H 'Content-Type: application/json' \
     -d "{\"name\":\"verify-jump\",\"command\":\"echo SCHED-JUMP\",\"intervalSeconds\":5,\"action\":\"jump\",\"enabled\":true,\"skipIfPending\":false,\"projectId\":$proj_id}")"
   jump_sched_id="$(echo "$jump_sched_resp" | grep -o '"id":[0-9]*' | head -1 | grep -o '[0-9]*')"
@@ -598,8 +664,8 @@ check_schedule() {
 
   if [[ "$jump_fired" -eq 0 ]]; then
     echo "[check_schedule] FAIL: jump schedule did not fire within 15s"
-    curl -sf -X DELETE "http://localhost:8788/api/schedules/$sched_id" >/dev/null 2>&1 || true
-    curl -sf -X DELETE "http://localhost:8788/api/schedules/$jump_sched_id" >/dev/null 2>&1 || true
+    curl -sf -X DELETE "http://localhost:$VERIFY_PORT/api/schedules/$sched_id" >/dev/null 2>&1 || true
+    curl -sf -X DELETE "http://localhost:$VERIFY_PORT/api/schedules/$jump_sched_id" >/dev/null 2>&1 || true
     stop_backend
     return 1
   fi
@@ -611,16 +677,16 @@ check_schedule() {
   echo "[check_schedule] head_task_id=$head_task_id, jump_task_id=$jump_task_id"
   if [[ "$head_task_id" != "$jump_task_id" ]]; then
     echo "[check_schedule] FAIL: jump task ($jump_task_id) is not at head (head is $head_task_id)"
-    curl -sf -X DELETE "http://localhost:8788/api/schedules/$sched_id" >/dev/null 2>&1 || true
-    curl -sf -X DELETE "http://localhost:8788/api/schedules/$jump_sched_id" >/dev/null 2>&1 || true
+    curl -sf -X DELETE "http://localhost:$VERIFY_PORT/api/schedules/$sched_id" >/dev/null 2>&1 || true
+    curl -sf -X DELETE "http://localhost:$VERIFY_PORT/api/schedules/$jump_sched_id" >/dev/null 2>&1 || true
     stop_backend
     return 1
   fi
   echo "[check_schedule] Jump task is at queue head — confirmed"
 
   # Cleanup schedules and tasks
-  curl -sf -X DELETE "http://localhost:8788/api/schedules/$sched_id" >/dev/null 2>&1 || true
-  curl -sf -X DELETE "http://localhost:8788/api/schedules/$jump_sched_id" >/dev/null 2>&1 || true
+  curl -sf -X DELETE "http://localhost:$VERIFY_PORT/api/schedules/$sched_id" >/dev/null 2>&1 || true
+  curl -sf -X DELETE "http://localhost:$VERIFY_PORT/api/schedules/$jump_sched_id" >/dev/null 2>&1 || true
   sqlc "DELETE FROM tasks WHERE command IN ('plain-1','plain-2','plain-3','echo SCHED-JUMP','echo SCHED-TICK')"
 
   stop_backend
@@ -645,14 +711,14 @@ check_backlog() {
     proj_id="$(sqlc "SELECT id FROM projects WHERE name='demo' LIMIT 1")"
     if [[ -z "$proj_id" ]]; then
       local proj_resp
-      proj_resp="$(curl -sf -X POST http://localhost:8788/api/projects \
+      proj_resp="$(curl -sf -X POST http://localhost:$VERIFY_PORT/api/projects \
         -H 'Content-Type: application/json' \
         -d "{\"name\":\"demo\",\"workdir\":\"$VERIFY_DIR/demo-repo\",\"defaultLaunchCmd\":\"bash\"}")"
       proj_id="$(echo "$proj_resp" | grep -o '"id":[0-9]*' | head -1 | grep -o '[0-9]*')"
     fi
 
     local agent_resp
-    agent_resp="$(curl -sf -X POST "http://localhost:8788/api/projects/$proj_id/agents" \
+    agent_resp="$(curl -sf -X POST "http://localhost:$VERIFY_PORT/api/projects/$proj_id/agents" \
       -H 'Content-Type: application/json' \
       -d '{}')"
     stop_backend
@@ -725,7 +791,7 @@ check_backlog() {
 
   # DISPATCH CRITERION: pop one restored task and verify it dispatches (via pop_task_sql)
   POPPED_TASK=""
-  pop_task_sql "demo-1" || { echo "[check_backlog] FAIL: pop_task_sql failed on restored task"; return 1; }
+  pop_task_sql "$agent_id" || { echo "[check_backlog] FAIL: pop_task_sql failed on restored task"; return 1; }
   if [[ -z "$POPPED_TASK" ]]; then
     echo "[check_backlog] FAIL: pop_task_sql returned empty task"
     return 1

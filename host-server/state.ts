@@ -6,6 +6,17 @@ import type { ConductorConf } from './config.ts';
 export type AgentType = 'claude' | 'codex' | 'custom';
 export type AgentRunState = 'no-window' | 'exited' | 'idle' | 'busy' | 'awaiting' | 'stalled' | 'starting' | 'unknown';
 
+export type DetectionReason =
+  | 'no-window' | 'exited' | 'starting'
+  | 'state-file' | 'busy-recovered' | 'awaiting-pattern'
+  | 'regex-fallback' | 'inventory-timeout';
+
+export interface DetectedStatus {
+  state: AgentRunState;
+  reason: DetectionReason;
+  matchedPattern?: 'busy' | 'idle' | 'awaiting';
+}
+
 const TMUX_SYNC_TIMEOUT_MS = Number(process.env['TMUX_SYNC_TIMEOUT_MS'] ?? '100');
 const GREP_SYNC_TIMEOUT_MS = Number(process.env['GREP_SYNC_TIMEOUT_MS'] ?? '100');
 
@@ -318,22 +329,22 @@ export function detectAgentStatus(
   precapturedTail?: string,
   windowPresent?: boolean,
   paneCurrentCommand?: string | null,
-): AgentRunState {
+): DetectedStatus {
   const { sessionName, stateDir, pollInterval, stallTimeout } = conf;
   const { type, idlePattern, busyPattern, awaitingPattern } = profileForAgent(conf, launchCmd);
 
   const hasWindow = windowPresent ?? isTmuxWindowPresent(sessionName, windowName);
   if (!hasWindow) {
-    return 'no-window';
+    return { state: 'no-window', reason: 'no-window' };
   }
 
   if (paneCurrentCommand !== undefined && paneCurrentCommand !== null) {
     const cmdName = launchCommandName(launchCmd);
     if (!SHELL_COMMANDS.has(cmdName) && SHELL_COMMANDS.has(paneCurrentCommand.trim())) {
-      return 'exited';
+      return { state: 'exited', reason: 'exited' };
     }
   } else if (isPaneDead(sessionName, windowName, launchCmd)) {
-    return 'exited';
+    return { state: 'exited', reason: 'exited' };
   }
 
   // Lazy, memoized 15-line pane tail — at most one capture-pane spawn per call,
@@ -362,7 +373,7 @@ export function detectAgentStatus(
         // detection. Not age-gated: the dashboard's 2s poll should flag a
         // waiting agent long before the monitor's next pass.
         if (matchesAwaiting(tail)) {
-          return 'awaiting';
+          return { state: 'awaiting', reason: 'awaiting-pattern', matchedPattern: 'awaiting' };
         }
         if (
           type === 'codex' &&
@@ -371,7 +382,7 @@ export function detectAgentStatus(
           idlePattern !== '' &&
           grepMatches(idlePattern, tail)
         ) {
-          return 'idle';
+          return { state: 'idle', reason: 'busy-recovered', matchedPattern: 'idle' };
         }
         // Hook-failure safety net (mirrors monitor.sh): a busy file old enough
         // to rule out the dispatch race whose pane footer reads idle means the
@@ -379,7 +390,7 @@ export function detectAgentStatus(
         // its next poll — the dashboard stays read-only.
         if (ageSeconds > pollInterval * 2) {
           if (idlePattern !== '' && grepMatches(idlePattern, tail)) {
-            return 'idle';
+            return { state: 'idle', reason: 'busy-recovered', matchedPattern: 'idle' };
           }
         }
         // Stall detection uses a separate, longer threshold (STALL_TIMEOUT,
@@ -388,38 +399,44 @@ export function detectAgentStatus(
         if (type !== 'codex' && ageSeconds > stallTimeout) {
           // Old busy file, pane matches nothing we know — stuck in an
           // unrecognized state (crashed TUI, unexpected dialog, …).
-          return 'stalled';
+          return { state: 'stalled', reason: 'inventory-timeout' };
         }
       }
-      return 'busy';
+      return { state: 'busy', reason: 'state-file', matchedPattern: 'busy' };
     }
     if (state === 'awaiting') {
       const tail = tail5();
       if (tail !== '' && !matchesAwaiting(tail)) {
         // Dialog gone — the agent resumed on its own. monitor.sh reverts the
         // state file on its next poll; report busy read-only meanwhile.
-        return 'busy';
+        return { state: 'busy', reason: 'state-file' };
       }
-      return state;
+      return { state: 'awaiting', reason: 'state-file', matchedPattern: 'awaiting' };
     }
     if (state === 'idle') {
       const tail = tail5();
-      if (tail !== '' && busyPattern && grepMatches(busyPattern, tail)) return 'busy';
-      if (matchesAwaiting(tail)) {
-        return 'awaiting';
+      if (tail !== '' && busyPattern && grepMatches(busyPattern, tail)) {
+        return { state: 'busy', reason: 'state-file', matchedPattern: 'busy' };
       }
-      return 'idle';
+      if (matchesAwaiting(tail)) {
+        return { state: 'awaiting', reason: 'awaiting-pattern', matchedPattern: 'awaiting' };
+      }
+      return { state: 'idle', reason: 'state-file', matchedPattern: 'idle' };
     }
   } catch {
     // no state file — fall through to the regex fallback below
   }
 
   const tail = tail5();
-  if (tail === '') return 'starting';
-  if (busyPattern && grepMatches(busyPattern, tail)) return 'busy';
-  if (matchesAwaiting(tail)) return 'awaiting';
-  if (idlePattern && grepMatches(idlePattern, tail)) return 'idle';
-  return 'busy';
+  if (tail === '') return { state: 'starting', reason: 'starting' };
+  if (busyPattern && grepMatches(busyPattern, tail)) {
+    return { state: 'busy', reason: 'regex-fallback', matchedPattern: 'busy' };
+  }
+  if (matchesAwaiting(tail)) return { state: 'awaiting', reason: 'regex-fallback', matchedPattern: 'awaiting' };
+  if (idlePattern && grepMatches(idlePattern, tail)) {
+    return { state: 'idle', reason: 'regex-fallback', matchedPattern: 'idle' };
+  }
+  return { state: 'busy', reason: 'regex-fallback' };
 }
 
 export type AgentMode = 'default' | 'acceptEdits' | 'plan' | 'bypass' | 'unknown';

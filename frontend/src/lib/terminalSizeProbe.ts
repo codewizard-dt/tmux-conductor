@@ -1,21 +1,23 @@
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { syncTerminalSize } from './api'
-import { TERMINAL_FONT_OPTIONS } from './terminalTheme'
+import { SIDEBAR_WIDTH_PX } from './layoutConstants'
+import { fitWithRightEdgeMargin, TERMINAL_FONT_OPTIONS } from './terminalTheme'
 
-// Hidden DOM node reproducing AgentDetailModal's panel geometry (see
-// frontend/src/components/AgentList.tsx — the `fixed inset-4 md:inset-8` overlay panel
-// and its `p-5` body wrapper), so a throwaway xterm Terminal mounted inside it measures
-// the same widest-realistic-panel width regardless of which LogTail surface (compact
-// card or full modal) actually triggers the probe. `visibility: hidden` (not
-// `display: none`) keeps layout/geometry intact while remaining invisible and inert.
+// Hidden DOM node reproducing the Agents page detail pane's geometry (see
+// frontend/src/components/AgentList.tsx — the pane to the right of the fixed-width
+// AgentSidebar, and AgentDetailView's `p-5` body wrapper), so a throwaway xterm Terminal
+// mounted inside it measures the width the steady-state terminal surface actually has.
+// `visibility: hidden` (not `display: none`) keeps layout/geometry intact while remaining
+// invisible and inert.
 let probeMountEl: HTMLDivElement | null = null
 
 function getProbeMount(): HTMLDivElement {
   if (probeMountEl) return probeMountEl
 
   const outer = document.createElement('div')
-  outer.className = 'fixed inset-4 md:inset-8'
+  outer.className = 'fixed inset-y-0 right-0'
+  outer.style.left = `${SIDEBAR_WIDTH_PX.toString()}px`
   outer.style.visibility = 'hidden'
   outer.style.pointerEvents = 'none'
   outer.style.zIndex = '-1'
@@ -61,7 +63,7 @@ export function probeAndSyncTerminalSize(): void {
   const fitAddon = new FitAddon()
   term.loadAddon(fitAddon)
   term.open(mount)
-  fitAddon.fit()
+  fitWithRightEdgeMargin(term, fitAddon)
 
   const { cols, rows } = term
   term.dispose()
@@ -70,7 +72,7 @@ export function probeAndSyncTerminalSize(): void {
 }
 
 // One-shot guard: the shared tmux window size only needs to be computed once per
-// browser session on first terminal render — recomputing on every agent card/modal
+// browser session on first terminal render — recomputing on every agent detail pane
 // mount would be redundant and could resize-thrash other agents' panes.
 let hasProbedOnce = false
 

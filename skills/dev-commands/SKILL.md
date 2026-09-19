@@ -1,9 +1,8 @@
 ---
 name: dev-commands
 description: Query registered background dev processes (list/status/tail) to check if shared infrastructure like dev servers are running and inspect their recent output
-category: tooling
 argument-hint: "{list|status|tail} [options]"
-disable-model-invocation: true
+disable-model-invocation: false
 user-invocable: true
 ---
 

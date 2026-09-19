@@ -1,35 +1,28 @@
 import { useState } from 'react';
 import { API_BASE as API_URL } from '../lib/api';
 import { useAgents } from '../lib/useAgents';
-import { AgentDetailModal, deriveStatus, ProjectBadge, type Agent, type AgentStatus } from './AgentList';
+import { deriveStatus, getStatusColor, isInactiveStatus, ProjectBadge, type Agent } from './AgentList';
 import ConfirmDialog from './ConfirmDialog';
-
-const INACTIVE_STATUSES: AgentStatus[] = ['no-window', 'exited', 'error', 'unknown'];
 
 interface ApiErrorBody {
   error?: string;
 }
 
-export default function InactiveAgentsPanel() {
+interface InactiveAgentsPanelProps {
+  /** Selects an inactive agent so its detail renders in the main pane (same as an active row). */
+  onOpenDetail: (agentId: number) => void;
+  /** The agent currently shown in the detail pane, so a matching row can be highlighted. */
+  selectedId?: number | null;
+}
+
+export default function InactiveAgentsPanel({ onOpenDetail, selectedId = null }: InactiveAgentsPanelProps) {
   const [collapsed, setCollapsed] = useState(true);
   const [rowBusy, setRowBusy] = useState<number | null>(null);
   const [rowError, setRowError] = useState<string | null>(null);
   const [pendingRemove, setPendingRemove] = useState<Agent | null>(null);
-  const [expandedId, setExpandedId] = useState<number | null>(null);
   const { agents } = useAgents();
 
-  const inactiveAgents = agents.filter((a) => INACTIVE_STATUSES.includes(deriveStatus(a)));
-  const expandedAgent = expandedId !== null ? inactiveAgents.find((a) => a.id === expandedId) ?? null : null;
-
-  function navigateExpanded(dir: 'prev' | 'next') {
-    if (expandedId === null) return;
-    const idx = inactiveAgents.findIndex((a) => a.id === expandedId);
-    if (idx === -1) return;
-    const nextIdx = dir === 'next' ? idx + 1 : idx - 1;
-    const nextAgent = inactiveAgents[nextIdx];
-    if (!nextAgent) return;
-    setExpandedId(nextAgent.id);
-  }
+  const inactiveAgents = agents.filter((a) => isInactiveStatus(deriveStatus(a)));
 
   async function handleWake(a: Agent) {
     setRowBusy(a.id);
@@ -73,7 +66,7 @@ export default function InactiveAgentsPanel() {
 
   return (
     <div
-      className="animate-riseIn rounded-card border border-line bg-card px-5 py-4 shadow-card cursor-pointer"
+      className="animate-riseIn mb-4 cursor-pointer border-b border-line pb-3"
       onClick={() => { setCollapsed((v) => !v); }}
     >
       <button
@@ -88,7 +81,7 @@ export default function InactiveAgentsPanel() {
         </span>
       </button>
       {!collapsed && (
-        <div className="mt-3" onClick={(e) => { e.stopPropagation(); }}>
+        <div className="mt-2" onClick={(e) => { e.stopPropagation(); }}>
           {inactiveAgents.length === 0 ? (
             <p className="text-[12px] text-muted-2">None</p>
           ) : (
@@ -97,37 +90,44 @@ export default function InactiveAgentsPanel() {
                 {inactiveAgents.map((a) => {
                   const status = deriveStatus(a);
                   const busy = rowBusy === a.id;
+                  const selected = selectedId === a.id;
                   return (
                     <li
                       key={a.id}
-                      className="flex cursor-pointer items-center gap-3 rounded-[8px] border border-line bg-canvas px-3 py-2"
-                      onClick={() => { setExpandedId(a.id); }}
+                      className={`flex cursor-pointer items-center gap-2 rounded-[8px] border border-r-[4px] border-line bg-canvas px-2.5 py-1.5${selected ? ' ring-2 ring-accent-blue/50' : ''}`}
+                      style={{ borderRightColor: getStatusColor(status) }}
+                      title={a.workdir}
+                      aria-current={selected ? 'true' : undefined}
+                      onClick={() => { onOpenDetail(a.id); }}
                     >
                       <span className="min-w-0 flex-1">
-                        <span className="mb-0.5 flex items-center gap-1.5">
+                        <span className="flex items-center gap-1.5">
                           <ProjectBadge name={a.projectName ?? null} />
-                          <span className="truncate font-mono text-[12px] text-ink">{a.name}</span>
+                          <span className="min-w-0 truncate font-mono text-[12px] text-ink">{a.name}</span>
                         </span>
-                        <span className="block truncate text-[10px] text-muted-2">{a.workdir}</span>
-                      </span>
-                      <span className="flex-shrink-0 text-[10px] font-semibold uppercase tracking-[0.06em] text-muted">
-                        {status === 'no-window' ? 'closed' : status}
+                        <span className="block text-[10px] font-semibold uppercase tracking-[0.06em] text-muted">
+                          {status === 'no-window' ? 'closed' : status}
+                        </span>
                       </span>
                       <button
                         type="button"
                         onClick={(e) => { e.stopPropagation(); void handleWake(a); }}
                         disabled={busy}
-                        className="inline-flex h-7 flex-shrink-0 cursor-pointer items-center rounded-[7px] bg-accent-blue-solid px-3 text-[12px] font-medium text-white transition hover:opacity-85 active:scale-[0.985] disabled:pointer-events-none disabled:opacity-40"
+                        aria-label={`Wake agent ${a.name}`}
+                        className="inline-flex h-7 flex-shrink-0 cursor-pointer items-center rounded-[7px] bg-accent-blue-solid px-2.5 text-[12px] font-medium text-white transition hover:opacity-85 active:scale-[0.985] disabled:pointer-events-none disabled:opacity-40"
                       >
-                        {busy ? 'Working…' : 'Wake agent'}
+                        {busy ? '…' : 'Wake'}
                       </button>
                       <button
                         type="button"
                         onClick={(e) => { e.stopPropagation(); setPendingRemove(a); }}
                         disabled={busy}
-                        className="inline-flex h-7 flex-shrink-0 cursor-pointer items-center rounded-[7px] border border-line bg-card px-3 text-[12px] font-medium text-accent-red transition hover:border-accent-red/30 hover:bg-accent-red/5 active:scale-[0.985] disabled:pointer-events-none disabled:opacity-40"
+                        aria-label={`Remove agent ${a.name}`}
+                        className="inline-flex h-7 w-7 flex-shrink-0 cursor-pointer items-center justify-center rounded-[7px] border border-line bg-card text-accent-red transition hover:border-accent-red/30 hover:bg-accent-red/5 active:scale-[0.985] disabled:pointer-events-none disabled:opacity-40"
                       >
-                        Remove agent
+                        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                          <path d="M2.5 4h11M6 4V2.5h4V4M4 4l.6 9h6.8L12 4M6.5 6.5v4M9.5 6.5v4" />
+                        </svg>
                       </button>
                     </li>
                   );
@@ -145,24 +145,6 @@ export default function InactiveAgentsPanel() {
         onConfirm={() => { if (pendingRemove) void doRemoveInactive(pendingRemove); }}
         onCancel={() => { setPendingRemove(null); }}
       />
-      {expandedAgent && (
-        // AgentDetailModal renders via createPortal to document.body, so its DOM
-        // nodes sit outside this panel — but React's synthetic events still bubble
-        // through the *component* tree, not the DOM tree. Without this stopPropagation
-        // wrapper, clicks inside the modal would bubble up to the panel's own
-        // onClick and toggle the "Inactive Agents" collapse state.
-        <div onClick={(e) => { e.stopPropagation(); }}>
-          <AgentDetailModal
-            agent={expandedAgent}
-            project={expandedAgent.projectName ?? null}
-            projectId={expandedAgent.projectId}
-            status={deriveStatus(expandedAgent)}
-            onClose={() => { setExpandedId(null); }}
-            agentCount={inactiveAgents.length}
-            onNavigate={navigateExpanded}
-          />
-        </div>
-      )}
     </div>
   );
 }

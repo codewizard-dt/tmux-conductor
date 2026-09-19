@@ -1,6 +1,17 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, render, screen, fireEvent } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { cleanup, render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
+
+// AddAgentForm (mounted by NavBar on demand) fetches the project list on mount; mock the
+// API module so no real network runs, following AddAgentForm.test.tsx.
+vi.mock('../lib/api', () => ({
+  API_BASE: 'http://localhost:8788/api',
+  listProjects: vi.fn(),
+  spawnAgentInProject: vi.fn(),
+  createProject: vi.fn(),
+}))
+
+import { listProjects } from '../lib/api'
 import NavBar from './NavBar'
 
 // NavBar reads/writes `document.documentElement.classList` and `localStorage`
@@ -11,11 +22,12 @@ afterEach(() => {
   cleanup()
   document.documentElement.classList.remove('dark')
   localStorage.clear()
+  vi.clearAllMocks()
 })
 
-function renderNavBar() {
+function renderNavBar(initialPath = '/') {
   return render(
-    <MemoryRouter>
+    <MemoryRouter initialEntries={[initialPath]}>
       <NavBar />
     </MemoryRouter>,
   )
@@ -82,5 +94,150 @@ describe('NavBar theme toggle', () => {
     expect(document.documentElement.classList.contains('dark')).toBe(true)
 
     setItemSpy.mockRestore()
+  })
+})
+
+describe('NavBar Add Agent trigger', () => {
+  it.each(['/', '/projects', '/history'])('renders a "+ Add Agent" button in the header on %s', (path) => {
+    vi.mocked(listProjects).mockResolvedValue([])
+
+    renderNavBar(path)
+
+    expect(screen.getByRole('button', { name: '+ Add Agent' })).toBeInTheDocument()
+    // The modal is conditionally mounted, so nothing is fetched until it is opened.
+    expect(listProjects).not.toHaveBeenCalled()
+  })
+
+  it('clicking the trigger opens the Add Agent dialog (and fetches the project list fresh)', async () => {
+    vi.mocked(listProjects).mockResolvedValue([])
+
+    renderNavBar()
+    expect(screen.queryByLabelText('Working Directory')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: '+ Add Agent' }))
+
+    expect(screen.getByText('Add Agent')).toBeInTheDocument()
+    expect(screen.getByLabelText('Working Directory')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Spawn Agent' })).toBeInTheDocument()
+    await waitFor(() => { expect(listProjects).toHaveBeenCalledTimes(1) })
+  })
+
+  it('Escape closes the dialog and unmounts the form; reopening refetches projects', async () => {
+    vi.mocked(listProjects).mockResolvedValue([])
+
+    renderNavBar()
+    fireEvent.click(screen.getByRole('button', { name: '+ Add Agent' }))
+    await waitFor(() => { expect(listProjects).toHaveBeenCalledTimes(1) })
+
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(screen.queryByLabelText('Working Directory')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: '+ Add Agent' }))
+    await waitFor(() => { expect(listProjects).toHaveBeenCalledTimes(2) })
+  })
+
+  it('renders the "+ Add Background Process" trigger right after "+ Add Agent" in the same cluster', () => {
+    renderNavBar()
+
+    const addAgent = screen.getByRole('button', { name: '+ Add Agent' })
+    const addBg = screen.getByRole('button', { name: '+ Add Background Process' })
+    expect(addBg.parentElement).toBe(addAgent.parentElement)
+    expect(addAgent.nextElementSibling).toBe(addBg)
+  })
+
+  it('places the trigger and the theme toggle in a right-aligned cluster, and the toggle still works', () => {
+    renderNavBar()
+
+    const trigger = screen.getByRole('button', { name: '+ Add Agent' })
+    const toggle = screen.getByRole('button', { name: 'Switch to dark mode' })
+    expect(trigger.parentElement).toBe(toggle.parentElement)
+    expect(trigger.parentElement).toHaveClass('ml-auto')
+    expect(toggle).not.toHaveClass('ml-auto')
+
+    fireEvent.click(toggle)
+    expect(document.documentElement.classList.contains('dark')).toBe(true)
+  })
+})
+
+describe('NavBar Add Background Process trigger', () => {
+  beforeEach(() => {
+    // AddBgProcessForm fetches /status (agent list) on mount.
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(new Response(JSON.stringify({ agents: [] }), { status: 200 }))))
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('clicking the trigger opens the Add Background Process dialog (and fetches the project list fresh)', async () => {
+    vi.mocked(listProjects).mockResolvedValue([])
+
+    renderNavBar()
+    expect(screen.queryByRole('button', { name: 'Spawn Process' })).not.toBeInTheDocument()
+    expect(listProjects).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('button', { name: '+ Add Background Process' }))
+
+    expect(screen.getByText('Add Background Process')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Spawn Process' })).toBeInTheDocument()
+    await waitFor(() => { expect(listProjects).toHaveBeenCalledTimes(1) })
+  })
+
+  it('Escape closes the dialog and unmounts the form', async () => {
+    vi.mocked(listProjects).mockResolvedValue([])
+
+    renderNavBar()
+    fireEvent.click(screen.getByRole('button', { name: '+ Add Background Process' }))
+    await waitFor(() => { expect(listProjects).toHaveBeenCalledTimes(1) })
+
+    fireEvent.keyDown(document, { key: 'Escape' })
+
+    expect(screen.queryByRole('button', { name: 'Spawn Process' })).not.toBeInTheDocument()
+  })
+
+  it('a backdrop click closes and unmounts the dialog, but a click inside the card does not', async () => {
+    vi.mocked(listProjects).mockResolvedValue([])
+
+    renderNavBar()
+    fireEvent.click(screen.getByRole('button', { name: '+ Add Background Process' }))
+    await waitFor(() => { expect(listProjects).toHaveBeenCalledTimes(1) })
+
+    fireEvent.click(screen.getByText('Add Background Process'))
+    expect(screen.getByRole('button', { name: 'Spawn Process' })).toBeInTheDocument()
+
+    const backdrop = screen.getByText('Add Background Process').closest('.fixed') as HTMLElement
+    fireEvent.click(backdrop)
+
+    expect(screen.queryByRole('button', { name: 'Spawn Process' })).not.toBeInTheDocument()
+  })
+
+  it('the ✕ Close button closes and unmounts the dialog', async () => {
+    vi.mocked(listProjects).mockResolvedValue([])
+
+    renderNavBar()
+    fireEvent.click(screen.getByRole('button', { name: '+ Add Background Process' }))
+    await waitFor(() => { expect(listProjects).toHaveBeenCalledTimes(1) })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }))
+
+    expect(screen.queryByRole('button', { name: 'Spawn Process' })).not.toBeInTheDocument()
+  })
+
+  it('both triggers open their own dialog independently', async () => {
+    vi.mocked(listProjects).mockResolvedValue([])
+
+    renderNavBar()
+
+    fireEvent.click(screen.getByRole('button', { name: '+ Add Agent' }))
+    expect(screen.getByRole('button', { name: 'Spawn Agent' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Spawn Process' })).not.toBeInTheDocument()
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(screen.queryByRole('button', { name: 'Spawn Agent' })).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: '+ Add Background Process' }))
+    expect(screen.getByRole('button', { name: 'Spawn Process' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Spawn Agent' })).not.toBeInTheDocument()
+
+    await waitFor(() => { expect(listProjects).toHaveBeenCalledTimes(2) })
   })
 })

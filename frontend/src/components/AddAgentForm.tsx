@@ -27,7 +27,12 @@ const inputCls = [
   'disabled:opacity-40',
 ].join(' ');
 
-export default function AddAgentForm() {
+interface AddAgentFormProps {
+  open: boolean;
+  onClose: () => void;
+}
+
+export default function AddAgentForm({ open, onClose }: AddAgentFormProps) {
   const [name, setName] = useState('');
   const [workdir, setWorkdir] = useState('');
   const [launchCmd, setLaunchCmd] = useState<string>(DEFAULT_LAUNCH_COMMAND);
@@ -38,7 +43,6 @@ export default function AddAgentForm() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [collapsed, setCollapsed] = useState(true);
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null);
   const [showAddProject, setShowAddProject] = useState(false);
@@ -61,6 +65,15 @@ export default function AddAgentForm() {
     })();
   }, []);
 
+  useEffect(() => {
+    if (!open) return
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    document.addEventListener('keydown', handler)
+    return () => { document.removeEventListener('keydown', handler) }
+  }, [open, onClose]);
+
   const selectedProject =
     selectedProjectId === null ? null : projects.find((p) => p.id === selectedProjectId) ?? null;
 
@@ -79,6 +92,7 @@ export default function AddAgentForm() {
       setShowAdvanced(false);
       setSuccess(true);
       setTimeout(() => { setSuccess(false); }, 4000);
+      onClose();
     }
 
     if (selectedProject !== null) {
@@ -158,6 +172,12 @@ export default function AddAgentForm() {
     }
   }
 
+  if (!open) return null;
+
+  function handleOverlayClick(e: React.MouseEvent<HTMLDivElement>) {
+    if (e.target === e.currentTarget) onClose();
+  }
+
   return (
     <>
     {showProjPicker && (
@@ -168,25 +188,24 @@ export default function AddAgentForm() {
       />
     )}
     <div
-      className="animate-riseIn rounded-card border border-line bg-card px-5 py-4 shadow-card cursor-pointer"
-      onClick={() => { setCollapsed((v) => !v); }}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+      onClick={handleOverlayClick}
     >
-      <button
-        type="button"
-        onClick={(e) => { e.stopPropagation(); setCollapsed((v) => !v); }}
-        className="flex cursor-pointer items-center gap-1.5 border-0 bg-transparent p-0 text-left"
-        aria-expanded={!collapsed}
-      >
-        <span className="flex items-center gap-1.5 text-muted">
-          <span className="text-[14px] leading-none font-semibold">{collapsed ? '▸' : '▾'}</span>
-          <span className="text-[10px] font-semibold uppercase tracking-[0.08em]">Add Agent</span>
-        </span>
-      </button>
-      {!collapsed && (
+      <div className="animate-riseIn flex max-h-[90vh] w-[560px] flex-col overflow-y-auto rounded-card border border-line bg-card px-5 py-4 shadow-pop">
+        <div className="mb-3 flex items-center justify-between">
+          <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted">Add Agent</span>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            className="cursor-pointer rounded-[6px] border-0 bg-transparent p-1 text-muted hover:text-ink transition"
+          >
+            ✕
+          </button>
+        </div>
         <form
-          onClick={(e) => { e.stopPropagation(); }}
           onSubmit={(e: React.SyntheticEvent<HTMLFormElement>) => { void handleSubmit(e); }}
-          className="mt-4 flex flex-col gap-3"
+          className="flex flex-col gap-3"
         >
           <div className={fieldCls}>
             <label htmlFor="agent-project" className={labelCls}>Project</label>
@@ -327,7 +346,7 @@ export default function AddAgentForm() {
                 type="text"
                 value={name}
                 onChange={(e) => { setName(e.target.value); }}
-                placeholder={selectedProject !== null ? `(auto: ${selectedProject.name}-N)` : 'agent-name'}
+                placeholder={selectedProject !== null ? `(auto: ${selectedProject.name}-${role}-N)` : 'agent-name'}
                 pattern="^[a-zA-Z0-9_-]+$"
                 required={selectedProject === null}
                 className={inputCls}
@@ -450,7 +469,7 @@ export default function AddAgentForm() {
             {success && <p className="text-[12px] text-accent-green">Agent spawned ✓</p>}
           </div>
         </form>
-      )}
+      </div>
     </div>
     </>
   );

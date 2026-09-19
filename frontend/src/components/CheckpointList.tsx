@@ -22,9 +22,11 @@ function formatRelativeTimestamp(tsMs: number): string {
 }
 
 /**
- * Structural mirror of DiffPanel.tsx (both are agent-scoped <details> panels rendered
- * side-by-side in AgentDetailModal, alongside UsageBreakdown — all three share the same
- * "mt-3 flex-shrink-0" / uppercase summary label styling for visual consistency).
+ * Structural mirror of DiffPanel.tsx (both are agent-scoped panels rendered as tabs inside
+ * AgentInfoTabs in AgentDetailView — TASK-157 — alongside UsageBreakdown; all three share the
+ * same "flex-shrink-0" / uppercase heading-label styling for visual consistency). Presence in
+ * the tab strip is gated externally by AgentDetailView on effectiveWorktreePath, synchronously
+ * — unlike DiffPanel/UsageBreakdown, this component needs no onPresenceChange callback.
  */
 function CheckpointList({ agentId }: { agentId: number }) {
   const [checkpoints, setCheckpoints] = useState<AgentCheckpoint[]>([])
@@ -81,15 +83,15 @@ function CheckpointList({ agentId }: { agentId: number }) {
   }
 
   if (loading && !loaded) {
-    return <p className="mt-3 text-[12px] italic text-muted-2">Loading checkpoints…</p>
+    return <p className="text-[12px] italic text-muted-2">Loading checkpoints…</p>
   }
 
+  // TASK-157: no longer a standalone <details> accordion — this is now the Checkpoints tab's
+  // whole panel content, so the heading is a plain label, not a collapsible summary.
   return (
-    <details className="mt-3 flex-shrink-0">
-      <summary className="cursor-pointer text-[11px] font-semibold uppercase tracking-[0.08em] text-muted select-none">
-        Checkpoints
-      </summary>
-      <div className="mt-2 flex items-center gap-2">
+    <div className="flex-shrink-0">
+      <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted">Checkpoints</div>
+      <div className="mb-2 flex items-center gap-2">
         <button
           type="button"
           onClick={() => { load({ cancelled: false }) }}
@@ -99,11 +101,11 @@ function CheckpointList({ agentId }: { agentId: number }) {
         </button>
       </div>
       {error ? (
-        <p className="mt-2 text-[11px] text-accent-red">{error}</p>
+        <p className="text-[11px] text-accent-red">{error}</p>
       ) : checkpoints.length === 0 ? (
-        <p className="mt-2 text-[12px] italic text-muted-2">No checkpoints yet — checkpoints are taken before each task dispatch.</p>
+        <p className="text-[12px] italic text-muted-2">No checkpoints yet — checkpoints are taken before each task dispatch.</p>
       ) : (
-        <ul className="mt-2 flex flex-col gap-1">
+        <ul className="flex flex-col gap-1">
           {checkpoints.map((cp) => (
             <li
               key={cp.id}
@@ -131,7 +133,7 @@ function CheckpointList({ agentId }: { agentId: number }) {
         onConfirm={() => { if (pendingRollback !== null) doRollback(pendingRollback) }}
         onCancel={() => { setPendingRollback(null) }}
       />
-    </details>
+    </div>
   )
 }
 

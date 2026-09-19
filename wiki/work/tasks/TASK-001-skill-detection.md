@@ -2,9 +2,9 @@
 id: TASK-001
 aliases: [TASK-001]
 title: "Skill detection — backend scanner + dashboard surfacing"
-status: in-progress
+status: pending-uat
 created: 2026-06-12
-updated: 2026-06-12
+updated: 2026-09-18
 depends_on: []
 blocks: []
 parallel_safe_with: []

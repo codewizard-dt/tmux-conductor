@@ -14,6 +14,7 @@
   --color-muted-2: #9a9da5;
   --color-line: #e7e8ea;
   --color-line-2: #f0f1f3;
+  --color-line-input: #d5d7db;
   --color-accent: #4f5a78;
   --color-accent-red: #e5484d;
   --color-accent-green: #30a46c;
@@ -21,6 +22,45 @@
   --color-accent-amber: #e0901a;
   --color-accent-violet: #8b5cf6;
   --color-accent-rose: #f43f5e;
+  --color-accent-amber-on-solid: #9c5807;
+  --color-accent-blue-solid-bg: #3b6ef6;
+  --color-accent-green-solid-bg: #30a46c;
+  --color-accent-red-solid-bg: #e5484d;
+  --color-status-idle-bg: #dff3e6;
+  --color-status-idle-text: #0f6b3d;
+  --color-status-warn-bg: #fdf0da;
+  --color-status-warn-text: #8a5a06;
+  --color-status-error-text: #c62828;
+  --color-banner-warn-text: #7a4c06;
+  --color-badge-neutral-bg: #e4e5e9;
+  --color-badge-neutral-text: #5b5e68;
+  --color-badge-type-claude-bg: #ede9fe;
+  --color-badge-type-claude-text: #5b21b6;
+  --color-button-primary-bg: #0b0b0d;
+  --color-button-primary-text: #ffffff;
+  --project-badge-bg-s: 65%;
+  --project-badge-bg-l: 94%;
+  --project-badge-text-s: 55%;
+  --project-badge-text-l: 32%;
+  --role-badge-frontend-bg: hsl(285 65% 94%);
+  --role-badge-frontend-text: hsl(285 55% 32%);
+  --role-badge-devops-bg: hsl(305 65% 94%);
+  --role-badge-devops-text: hsl(305 55% 32%);
+  --role-badge-qa-bg: hsl(190 65% 94%);
+  --role-badge-qa-text: hsl(190 55% 32%);
+  --role-badge-backend-bg: hsl(95 65% 94%);
+  --role-badge-backend-text: hsl(95 55% 32%);
+  --role-badge-security-bg: hsl(115 65% 94%);
+  --role-badge-security-text: hsl(115 55% 32%);
+  --color-status-busy-bg: rgba(59, 110, 246, 0.10);
+  --color-status-busy-text: #3b6ef6;
+  --color-status-neutral-bg: rgba(79, 90, 120, 0.08);
+  --color-status-neutral-text: #4f5a78;
+  --color-badge-type-codex-bg: rgba(20, 126, 105, 0.10);
+  --color-badge-type-codex-text: #0f766e;
+  --color-status-error-bg: rgba(229, 72, 77, 0.10);
+  --color-status-success-bg: rgba(48, 164, 108, 0.10);
+  --color-status-success-text: #30a46c;
 }
 
 .dark {
@@ -35,6 +75,7 @@
   --color-muted-2: #6f727d;
   --color-line: #2b2d36;
   --color-line-2: #363842;
+  --color-line-input: #6b7086;
   --color-accent: #8891b8;
   --color-accent-red: #ff6b70;
   --color-accent-green: #3ddc91;
@@ -42,6 +83,45 @@
   --color-accent-amber: #f2a93c;
   --color-accent-violet: #a78bfa;
   --color-accent-rose: #fb7185;
+  --color-accent-amber-on-solid: #9c5807;
+  --color-status-idle-bg: #173226;
+  --color-status-idle-text: #4fd88f;
+  --color-status-warn-bg: #3a2c0f;
+  --color-status-warn-text: #f0b429;
+  --color-status-error-text: #ff6b70;
+  --color-banner-warn-text: #f0b429;
+  --color-badge-neutral-bg: #2c2e37;
+  --color-badge-neutral-text: #b7bac4;
+  --color-badge-type-claude-bg: #2f2748;
+  --color-badge-type-claude-text: #c4b5fd;
+  --color-accent-blue-solid-bg: #2f5fe0;
+  --color-accent-green-solid-bg: #0f7a44;
+  --color-accent-red-solid-bg: #d43a3f;
+  --color-button-primary-bg: #3d4150;
+  --color-button-primary-text: #ffffff;
+  --project-badge-bg-s: 50%;
+  --project-badge-bg-l: 18%;
+  --project-badge-text-s: 55%;
+  --project-badge-text-l: 78%;
+  --role-badge-frontend-bg: hsl(285 50% 18%);
+  --role-badge-frontend-text: hsl(285 55% 78%);
+  --role-badge-devops-bg: hsl(305 50% 18%);
+  --role-badge-devops-text: hsl(305 55% 78%);
+  --role-badge-qa-bg: hsl(190 50% 18%);
+  --role-badge-qa-text: hsl(190 55% 78%);
+  --role-badge-backend-bg: hsl(95 50% 18%);
+  --role-badge-backend-text: hsl(95 55% 78%);
+  --role-badge-security-bg: hsl(115 50% 18%);
+  --role-badge-security-text: hsl(115 55% 78%);
+  --color-status-busy-bg: rgba(108, 147, 255, 0.10);
+  --color-status-busy-text: #6c93ff;
+  --color-status-neutral-bg: rgba(136, 145, 184, 0.08);
+  --color-status-neutral-text: #8891b8;
+  --color-badge-type-codex-bg: #134e4a;
+  --color-badge-type-codex-text: #99f6e4;
+  --color-status-error-bg: rgba(255, 107, 112, 0.10);
+  --color-status-success-bg: rgba(61, 220, 145, 0.10);
+  --color-status-success-text: #3ddc91;
 }
 
 @layer base {
@@ -66,6 +146,9 @@
 }
 
 @layer utilities {
+  .border-line-input {
+    border-color: var(--color-line-input);
+  }
   .scrollbar-none {
     scrollbar-width: none;
   }
@@ -90,6 +173,55 @@
   .scrollbar-dark::-webkit-scrollbar-thumb:hover {
     background: rgba(255,255,255,0.32);
   }
+}
+
+/* NOT inside @layer utilities: these selectors (.xterm-viewport, .xterm-rows) are
+   never typed literally as a React className anywhere in frontend/src — xterm.js
+   generates them itself at runtime — so Tailwind v4's content-based CSS build
+   treats them as unused and strips them if they live inside @layer utilities like
+   the rules above. Left as plain global rules so they survive the production
+   build. */
+
+/* xterm.js's @xterm/addon-fit FitAddon always reserves a fixed 14px for the
+   terminal's own .xterm-viewport scrollbar when computing cols (see
+   ViewportConstants.DEFAULT_SCROLL_BAR_WIDTH in the xterm.js source — the addon
+   has no way to measure the real OS/browser scrollbar). The unstyled native
+   scrollbar xterm.css renders on .xterm-viewport is wider than that on most
+   desktop browsers, so the rightmost column(s) of every LogTail terminal render
+   underneath it and get visually clipped. Narrow it below 14px (matching
+   .scrollbar-dark above) so it fits inside what FitAddon already reserved. */
+.xterm-viewport {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,0.18) transparent;
+}
+.xterm-viewport::-webkit-scrollbar {
+  width: 6px;
+}
+.xterm-viewport::-webkit-scrollbar-track {
+  background: transparent;
+}
+.xterm-viewport::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.18);
+  border-radius: 3px;
+}
+.xterm-viewport::-webkit-scrollbar-thumb:hover {
+  background: rgba(255,255,255,0.32);
+}
+/* xterm.js's DOM renderer (the only renderer @xterm/xterm 6 ships — no canvas/webgl
+   core) sizes each `.xterm-rows > div` row to `cols * <a single measured cell
+   width>` via an inline `width` + `overflow: hidden`, then renders real Unicode
+   glyphs as literal text. Box-drawing runs (────), bold spans, and status-line
+   icons (✔) routinely render a couple of percent wider per character than the
+   plain-digit glyph that measurement was taken from — xterm has no equivalent of
+   the canvas renderer's `customGlyphs` procedural drawing to guarantee an exact
+   fit for the DOM renderer. `fitWithRightEdgeMargin` (terminalTheme.ts) already
+   reserves a few spare columns so the resulting overshoot lands inside
+   `xtermContainerRef`'s own outer `overflow-hidden` instead of past it — this
+   lets a row's content spill horizontally into that reserved slack rather than
+   being clipped a second time at the row's own (tighter) boundary. Row height
+   stays clipped (vertical overflow was never the reported bug). */
+.xterm-rows > div {
+  overflow: visible !important;
 }
 
 @media (prefers-reduced-motion: reduce) {

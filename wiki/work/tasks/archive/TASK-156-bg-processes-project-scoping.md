@@ -2,7 +2,7 @@
 id: TASK-156
 aliases: [TASK-156]
 title: "Add project_id to bg_processes (migration + BgProcess/BgProcessRow/mapBgProcess) and a project-filtered listing endpoint"
-status: pending-uat
+status: done
 created: 2026-09-13
 updated: 2026-09-13
 depends_on: []

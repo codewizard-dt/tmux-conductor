@@ -6,6 +6,7 @@ updated: 2026-09-04
 sources:
   - ../../../raw/research/stop-hook-subagent-detection/index.md
   - ../../../raw/research/bug-0001-background-agent-detection/index.md
+  - ../../../raw/research/detect-active-claude-code-sessions-kanban/index.md
 confidence: extracted
 tags: [hooks, claude-code, state-tracking]
 ---
@@ -23,6 +24,10 @@ A `Notification` hook (`on-notification.sh`) existed briefly (added 2026-04-16, 
 **`hooks/on-notification.js` (Node.js, not the earlier `.sh`) was re-added** as part of the `derived_from::[[BUG-0001]]` fix, scoped narrowly to just `agent_needs_input` (writes a sentinel file under `$STATE_DIR/<agent>.pending-agents/`) and `agent_completed` (FIFO-removes the oldest sentinel) — every other `notification_type` stays a no-op, so the full `done`/`working`/`wait`/`dispatching` vocabulary TASK-009 removed stays collapsed. `host-server/pendingAgents.ts::hasPendingBackgroundAgents()` gates two dispatch call sites in `host-server/index.ts` on this sentinel directory being empty/stale.
 
 **As of 2026-09-04, this fix is confirmed incomplete for its primary case**: current Claude Code docs establish `agent_needs_input` fires *only* when a background agent needs a decision, never as a general "still running" signal — so an autonomous background agent that never needs input never gets a sentinel written for it. See `relates_to::[[bug-0001-background-agent-detection]]` for the full finding and a proposed pane-text-based complementary fix (mirroring `AWAITING_PATTERN`).
+
+## Global install doesn't mean global coverage (confirmed 2026-09-13)
+
+`install-hooks.sh` merges these hooks into `~/.claude/settings.json` at **user scope**, so they technically fire for every Claude Code session on the machine — not just ones `conductor.sh`/`spawn.sh` spawn. But `write-state.js` resolves `AGENT_NAME` from `CONDUCTOR_AGENT_NAME` (only set by tmux-conductor's own spawn scripts) or, failing that, `tmux display-message -p '#W'` (only works inside *some* tmux pane) — and if neither resolves, it calls `process.exit(0)` before writing anything. Even when a tmux window name is found, it writes to the hardcoded default `STATE_DIR` (`/conductor-state`), not a real writable path outside a container context. **Net effect: the globally-installed hooks are silent no-ops for the majority of ad-hoc, non-conductor-spawned sessions** (a plain terminal tab, an IDE integrated terminal, or a tmux pane in an unrelated session) — so "the hooks already fire everywhere" is not the same as "tmux-conductor already sees every session." See `relates_to::[[claude-code-session-discovery]]` for the actual solution (`claude agents --json`, which needs none of this).
 
 ## Debugging
 

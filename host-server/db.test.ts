@@ -9,9 +9,12 @@ import {
   deriveCloneName,
   createBgProcess,
   listBgProcesses,
+  listAgents,
   listProjects,
   deleteBgProcess,
   updateBgProcess,
+  updateAgentName,
+  updateAgentRole,
   deleteAgent,
 } from './db.ts';
 import type Database from 'better-sqlite3';
@@ -292,6 +295,64 @@ void test('TASK-161-uat-fix: updateBgProcess applies a partial update (workdir/l
 
     // (f) A nonexistent id throws rather than silently no-op-ing.
     assert.throws(() => { updateBgProcess(db, bg.id + 999, { workdir: '/tmp/nope' }); });
+  } finally {
+    db.close();
+  }
+});
+
+// TASK-167: updateAgentRole is the DB-layer half of PATCH /agents/:id's role
+// change (see host-server/index.ts's PATCH /agents/:id route, which validates
+// the new role against ROLE_VALUES before calling this). index.ts is a
+// top-level-await script that calls fastify.listen() unconditionally at
+// import time (see host-server/sseRolePayloadParity.test.ts's own comment on
+// this same constraint), so the route can't be exercised over real HTTP from
+// this test process without colliding with a live dev-server instance —
+// this covers the behavior that CAN be tested directly: the DB row actually
+// changing. The route's own request-validation shape is pinned statically in
+// rolePresets.test.ts instead.
+void test('TASK-167: updateAgentRole updates only the role column, leaves name/workdir/launchCmd untouched, and a nonexistent id throws', () => {
+  const db = openDb(':memory:');
+  try {
+    const agent = createAgent(db, { name: 'role-agent', workdir: '/tmp/role-agent', launchCmd: 'claude', role: 'qa' });
+    assert.equal(agent.role, 'qa');
+
+    const updated = updateAgentRole(db, agent.id, 'devops');
+    assert.equal(updated.role, 'devops');
+    assert.equal(updated.name, 'role-agent');
+    assert.equal(updated.workdir, '/tmp/role-agent');
+    assert.equal(updated.launchCmd, 'claude');
+
+    // Round-trips through a fresh read too, not just the UPDATE...RETURNING result.
+    const reloaded = listAgents(db).find((a) => a.id === agent.id);
+    assert.ok(reloaded);
+    assert.equal(reloaded.role, 'devops');
+
+    assert.throws(() => { updateAgentRole(db, agent.id + 999, 'qa'); });
+  } finally {
+    db.close();
+  }
+});
+
+// TASK-167: PATCH /agents/:id can update name and role together in one
+// request — index.ts's rename block and role block are independent `if`s,
+// not mutually exclusive (see the route: `if (newName !== undefined && ...)
+// { ... }` followed by a separate `if (newRole !== undefined) { ... }`).
+// updateAgentName and updateAgentRole are each standalone DB writes, so
+// calling both against the same row is the direct DB-layer proxy for that
+// combined-update behavior.
+void test('TASK-167: updateAgentName and updateAgentRole can both apply to the same agent row (PATCH /agents/:id name+role combined update)', () => {
+  const db = openDb(':memory:');
+  try {
+    const agent = createAgent(db, { name: 'combo-agent', workdir: '/tmp/combo-agent', launchCmd: 'claude' });
+    assert.equal(agent.role, 'generic');
+
+    const renamed = updateAgentName(db, agent.id, 'combo-agent-renamed');
+    const reRoled = updateAgentRole(db, agent.id, 'security');
+
+    assert.equal(renamed.name, 'combo-agent-renamed');
+    assert.equal(reRoled.id, agent.id);
+    assert.equal(reRoled.name, 'combo-agent-renamed');
+    assert.equal(reRoled.role, 'security');
   } finally {
     db.close();
   }

@@ -47,7 +47,7 @@ else
   echo "Could not fetch $endpoint" > "$OUT_DIR/perf-live-updates.error"
 fi
 
-for file in logs/observability.jsonl logs/hooks.jsonl logs/dispatch.jsonl; do
+for file in logs/observability.jsonl logs/hooks.jsonl logs/dispatch.jsonl logs/transitions.jsonl; do
   if [[ -f "$file" ]]; then
     cp "$file" "$OUT_DIR/$(basename "$file")"
   fi

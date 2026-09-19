@@ -2,7 +2,7 @@ export const LAUNCH_COMMAND_PRESETS = [
   {
     id: 'claude',
     label: 'Claude',
-    command: 'claude --dangerously-skip-permissions',
+    command: 'claude --dangerously-skip-permissions --append-system-prompt-file ~/.claude/rules/agent-teams-preference.md',
   },
   {
     id: 'codex',

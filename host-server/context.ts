@@ -26,6 +26,7 @@ export interface AgentContext {
   contextTokens: number | null;
   contextPct: number | null;  // 0..100, capped
   contextLimit: number;
+  contextLimitConfident: boolean; // true when contextLimit came from an explicit pane-header annotation or a model-specific table match; false when it fell back to the generic conductor.conf default
 }
 
 // Cache parsed transcript info keyed by path → invalidated when mtime/size change,
@@ -341,13 +342,40 @@ function parseContextSize(s: string): number | null {
  *   "Opus 4.8 (1M context) with high effort…" (session header on start or /clear)
  * Returns LAST match so the most-recent event wins.
  */
+
+// Known context-window sizes by exact model ID prefix, ordered [idPrefix, tokens].
+// Matched via id.startsWith(prefix) after lowercasing (see modelContextLimit()).
+// Source: https://platform.claude.com/docs/en/build-with-claude/context-windows#context-window-sizes-by-model
+// Re-check this table against that page whenever a new Claude model ships.
+const CLAUDE_MODEL_CONTEXT_WINDOWS: Array<[string, number]> = [
+  ['claude-sonnet-5', 1_000_000],
+  ['claude-sonnet-4-6', 1_000_000],
+  ['claude-sonnet-4-5', 200_000],
+  ['claude-opus-5', 1_000_000],
+  ['claude-opus-4-8', 1_000_000],
+  ['claude-opus-4-7', 1_000_000],
+  ['claude-opus-4-6', 1_000_000],
+  ['claude-haiku-4-5', 200_000],
+  ['claude-fable-5', 1_000_000],
+  ['claude-mythos-5', 1_000_000],
+];
+
 // Known context-window sizes by model family. Used as a fallback when the
 // session header has scrolled off the pane and is not in the 15-line tail.
-function modelContextLimit(modelIdOrDisplay: string | null): number | null {
+// Exported for direct unit coverage (host-server/context.test.ts, TASK-132).
+export function modelContextLimit(modelIdOrDisplay: string | null): number | null {
   if (!modelIdOrDisplay) return null;
-  const id = modelIdOrDisplay.toLowerCase();
-  if (id.includes('opus')) return 1_000_000;
-  return null; // sonnet/haiku/fable all fit within the conf default (200k)
+  let id = modelIdOrDisplay.toLowerCase().trim();
+  if (!id.startsWith('claude-')) {
+    // Pane-derived display name, e.g. "Sonnet 5" or "Opus 4.8" -> normalize to
+    // an ID-shaped string ("claude-sonnet-5" / "claude-opus-4-8") so both call
+    // sites (raw model ID and display name) share the one table below.
+    id = 'claude-' + id.replace(/\s+/g, '-').replace(/\./g, '-');
+  }
+  for (const [prefix, tokens] of CLAUDE_MODEL_CONTEXT_WINDOWS) {
+    if (id.startsWith(prefix)) return tokens;
+  }
+  return null;
 }
 
 function parsePaneTail(tail: string): PaneInfo {
@@ -395,7 +423,7 @@ export function getAgentContext(
 ): AgentContext {
   const pane = paneTail ? parsePaneTail(paneTail) : { model: null, contextLimit: null, hasSwitch: false };
   const effectiveLimit = pane.contextLimit ?? modelContextLimit(pane.model) ?? contextLimit;
-  const emptyWithLimit: AgentContext = { model: null, modelId: null, contextTokens: null, contextPct: null, contextLimit: effectiveLimit };
+  const emptyWithLimit: AgentContext = { model: null, modelId: null, contextTokens: null, contextPct: null, contextLimit: effectiveLimit, contextLimitConfident: false };
 
   const memo = agentMemo.get(agentName) ?? { transcriptPath: null, sessionId: null, trusted: false, lastGood: null, prevModel: null };
   agentMemo.set(agentName, memo);
@@ -492,8 +520,8 @@ export function getAgentContext(
     }
     return emptyWithLimit;
   }
-
   const resolvedLimit = pane.contextLimit ?? modelContextLimit(info.modelId) ?? (effectiveLimit > 0 ? effectiveLimit : contextLimit);
+  const contextLimitConfident = pane.contextLimit != null || modelContextLimit(info.modelId) != null;
   const contextPct = resolvedLimit > 0
     ? Math.min(100, Math.round((info.contextTokens / resolvedLimit) * 100))
     : null;
@@ -506,6 +534,7 @@ export function getAgentContext(
     contextTokens: info.contextTokens,
     contextPct,
     contextLimit: resolvedLimit,
+    contextLimitConfident,
   };
   if (ctx.model != null || ctx.contextPct != null) memo.lastGood = ctx;
   if (ctx.model) memo.prevModel = ctx.model;
@@ -517,7 +546,7 @@ export function getCodexAgentContext(
   contextLimit: number,
 ): AgentContext {
   const sessionPath = resolveCodexSessionPath(workdir);
-  const empty: AgentContext = { model: null, modelId: null, contextTokens: null, contextPct: null, contextLimit };
+  const empty: AgentContext = { model: null, modelId: null, contextTokens: null, contextPct: null, contextLimit, contextLimitConfident: false };
   if (!sessionPath) return empty;
 
   const info = readCodexInfo(sessionPath);
@@ -533,5 +562,6 @@ export function getCodexAgentContext(
       ? Math.min(100, Math.round((contextTokens / resolvedLimit) * 100))
       : null,
     contextLimit: resolvedLimit,
+    contextLimitConfident: info.contextLimit != null,
   };
 }

@@ -2,9 +2,9 @@
 id: TASK-012
 aliases: [TASK-012]
 title: "Replace tail polling with SSE push for terminal output"
-status: in-progress
+status: pending-uat
 created: 2026-06-12
-updated: 2026-06-12
+updated: 2026-09-18
 depends_on: []
 blocks: []
 parallel_safe_with: [TASK-001, TASK-009, TASK-010, TASK-011]

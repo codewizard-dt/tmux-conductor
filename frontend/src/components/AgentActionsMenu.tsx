@@ -17,7 +17,7 @@ interface AgentActionsMenuProps {
 const TONE_CLASSES: Record<NonNullable<AgentActionsMenuItem['tone']>, string> = {
   default: 'text-ink hover:bg-canvas',
   danger: 'text-accent-red hover:bg-accent-red/5',
-  warning: 'text-[#c07a10] hover:bg-[#e0901a]/10',
+  warning: 'text-[var(--color-status-warn-text)] hover:bg-[var(--color-accent-amber)]/10',
 }
 
 /**
@@ -155,15 +155,15 @@ export default function AgentActionsMenu({ items }: AgentActionsMenuProps) {
         aria-label="Agent actions"
         onClick={handleTriggerClick}
         onKeyDown={handleTriggerKeyDown}
-        className="flex h-7 w-7 cursor-pointer items-center justify-center rounded-[7px] text-muted-2 transition hover:bg-canvas hover:text-ink"
+        className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-[7px] text-muted transition hover:bg-canvas hover:text-ink"
       >
-        <EllipsisVertical size={16} aria-hidden="true" />
+        <EllipsisVertical size={18} aria-hidden="true" />
       </button>
       {open && (
         <div
           role="menu"
           aria-label="Agent actions"
-          className="absolute right-0 top-full z-20 mt-1 min-w-[168px] rounded-[8px] border border-line bg-card py-1 shadow-pop"
+          className="absolute right-0 top-full z-20 mt-1 min-w-[184px] rounded-[8px] border border-line bg-card py-1 shadow-pop"
         >
           {items.map((item, index) => (
             <button
@@ -177,7 +177,7 @@ export default function AgentActionsMenu({ items }: AgentActionsMenuProps) {
               onClick={() => { selectItem(index) }}
               onKeyDown={(e) => { handleItemKeyDown(e, index) }}
               onMouseEnter={() => { if (!item.disabled) setFocusedIndex(index) }}
-              className={`block w-full cursor-pointer whitespace-nowrap px-3 py-1.5 text-left text-[12px] font-medium transition disabled:cursor-not-allowed disabled:opacity-40 ${TONE_CLASSES[item.tone ?? 'default']}`}
+              className={`block w-full cursor-pointer whitespace-nowrap px-3 py-2 text-left text-[13px] font-medium transition disabled:cursor-not-allowed disabled:opacity-40 ${TONE_CLASSES[item.tone ?? 'default']}`}
             >
               {item.label}
             </button>

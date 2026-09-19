@@ -128,7 +128,12 @@ export default function AgentInfoTabs({ tabs, activeId, onActiveIdChange, tabLis
           id={panelElementId(tab.id)}
           aria-labelledby={tabElementId(tab.id)}
           tabIndex={0}
-          className={tab.id === effectiveActiveId ? undefined : 'hidden'}
+          // Always a flex column that fills remaining height and scrolls its own overflow —
+          // this is what lets the Terminal panel's `fillContainer` LogTail actually grow to
+          // fill the modal, and gives every other panel independent scrolling now that they
+          // are no longer stacked siblings under one shared `overflow-hidden` ancestor.
+          // Applying this to hidden panels too is harmless: `hidden` sets display:none.
+          className={`flex min-h-0 flex-1 flex-col overflow-y-auto${tab.id === effectiveActiveId ? '' : ' hidden'}`}
         >
           {tab.content}
         </div>

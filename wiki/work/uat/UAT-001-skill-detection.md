@@ -2,10 +2,10 @@
 id: UAT-001
 aliases: [UAT-001]
 title: "UAT: Skill detection — backend scanner + dashboard surfacing"
-status: pending
+status: failed
 task: TASK-001
 created: 2026-06-12
-updated: 2026-06-12
+updated: 2026-09-18
 ---
 
 # UAT-001 — UAT: Skill detection — backend scanner + dashboard surfacing
@@ -42,7 +42,7 @@ implements::[[TASK-001]]
   curl -sS 'http://localhost:8788/api/skills' | jq '{user_count: (.user | length), plugin_count: (.plugin | length), sample: .user[0]}'
   ```
 - **Expected Result**: HTTP 200. Output shows `user_count` ≥ 1 (at least 56 on this host), `plugin_count` ≥ 0, and `sample` contains `name` (string), `userInvocable` (boolean), `autoOnly` (boolean), `source` = `"user"`.
-- [ ] Pass
+- [x] Pass <!-- 2026-09-13: live GET /api/skills returned user_count=64, plugin_count=0, sample={name:"anti-slop",userInvocable:true,autoOnly:false,source:"user",...} — all criteria met -->
 
 ---
 
@@ -57,7 +57,7 @@ implements::[[TASK-001]]
   curl -sS 'http://localhost:8788/api/skills' | jq '[.user[] | select((.name | type) != "string" or (.userInvocable | type) != "boolean" or (.autoOnly | type) != "boolean" or (.source != "user"))] | length'
   ```
 - **Expected Result**: Output is `0` — no skills with invalid field types or wrong source value.
-- [ ] Pass
+- [x] Pass <!-- 2026-09-13: live command returned 0 — exact match -->
 
 ---
 
@@ -72,7 +72,7 @@ implements::[[TASK-001]]
   curl -sS 'http://localhost:8788/api/agents/tmux-conductor/skills' | jq '{agent: .agent, workdir: .workdir, project_count: (.project | length), user_count: (.user | length), typecheck: (.project[] | select(.name == "typecheck"))}'
   ```
 - **Expected Result**: HTTP 200. `agent` = `"tmux-conductor"`, `workdir` = `/Users/davidtaylor/Repositories/tmux-conductor`, `project_count` ≥ 1, `user_count` ≥ 1. The `typecheck` object is present with `source` = `"project"`, `userInvocable` = `true`, `autoOnly` = `false`, `title` = `"typecheck"`.
-- [ ] Pass
+- [FAIL: auto-fix-declined: diagnosed via Serena (`host-server/index.ts:1727`) — the route is `GET /agents/:id/skills`, deliberately numeric-id-addressed (matching every other `/agents/:id/...` route added since agent names became per-project-unique, not globally unique). This is intentional current design, not a bug — a correct fix means rewriting this test's Command to use a real numeric agent id, which is off-limits for auto-plus (never edit UAT Steps/Command). Also no agent is named exactly "tmux-conductor" anymore (that name is now the *project*; agents in this workdir are "tmux-conductor-2", "roadmap", etc., ids 15/27/28/29/30/31) — a human should pick a live id and update this test's Command] <!-- 2026-09-13 -->
 
 ---
 
@@ -87,7 +87,7 @@ implements::[[TASK-001]]
   curl -sS 'http://localhost:8788/api/agents/tmux-conductor/skills' | jq '[.project[] | select(.source != "project")] | length'
   ```
 - **Expected Result**: Output is `0` — every skill in `project` has `source = "project"`.
-- [ ] Pass
+- [FAIL: auto-fix-declined: same intentional id-addressed route as UAT-API-003 — fixing this test requires rewriting its Command with a real numeric agent id, which auto-plus may not do] <!-- 2026-09-13 -->
 
 ---
 
@@ -106,7 +106,7 @@ implements::[[TASK-001]]
   curl -sS 'http://localhost:8788/api/agents/tmux-conductor/skills' | jq '.user | length'
   ```
 - **Expected Result**: Both commands return the same integer (e.g. `56`).
-- [ ] Pass
+- [FAIL: auto-fix-declined: same intentional id-addressed route as UAT-API-003 — fixing this test requires rewriting its Command with a real numeric agent id, which auto-plus may not do] <!-- 2026-09-13 -->
 
 ---
 
@@ -121,7 +121,7 @@ implements::[[TASK-001]]
   curl -sS -o /dev/null -w '%{http_code}' 'http://localhost:8788/api/agents/no-such-agent/skills'
   ```
 - **Expected Result**: Output is `404`.
-- [ ] Pass
+- [FAIL: auto-fix-declined: sanity-checked the actual 404 path is intact — `GET /agents/999999/skills` correctly returns 404 {"error":"agent 999999 not found"}. This test's failure is purely its Command passing a name ("no-such-agent") instead of a non-numeric-parseable id, which 400s on type validation before reaching the lookup. Fixing means rewriting the Command (e.g. to a nonexistent numeric id), which auto-plus may not do] <!-- 2026-09-13 -->
 
 ---
 
@@ -136,7 +136,7 @@ implements::[[TASK-001]]
   curl -sS 'http://localhost:8788/api/agents/no-such-agent/skills' | jq '.error'
   ```
 - **Expected Result**: Output is `"agent 'no-such-agent' not found in conductor.conf"`.
-- [ ] Pass
+- [FAIL: auto-fix-declined: same root cause as UAT-EDGE-001 — the real 404 path returns {"error":"agent 999999 not found"} for a genuinely nonexistent numeric id (verified live), so the app behavior is fine; this test's Command needs a numeric id to reach that path, which auto-plus may not edit] <!-- 2026-09-13 -->
 
 ---
 
@@ -152,7 +152,7 @@ implements::[[TASK-001]]
   curl -sS 'http://localhost:8788/api/agents/wetware/skills' | jq '{project_count: (.project | length), ok: (has("project") and has("user") and has("agent") and has("workdir"))}'
   ```
 - **Expected Result**: `project_count` = `0`, `ok` = `true`. No error.
-- [ ] Pass
+- [FAIL: auto-fix-declined: same intentional id-addressed route as UAT-API-003 — fixing this test requires rewriting its Command with a real numeric agent id for the "wetware" project's agent, which auto-plus may not do] <!-- 2026-09-13 -->
 
 ---
 
@@ -167,7 +167,7 @@ implements::[[TASK-001]]
   4. Scroll down past the diff section.
   5. Observe whether a `<details>` element with a `<summary>` containing "Skills" is present.
 - **Expected Result**: A "Skills (N)" summary heading is visible in the modal, where N is a positive integer.
-- [ ] Pass
+- [FAIL: auto-fix-declined: verified live via Playwright against agent tmux-conductor-2's detail modal — a "SKILLS (65)" heading is genuinely present and correct in substance, but the DOM shape this test asserts (a `<details>`/`<summary>` accordion below the diff area) was superseded by TASK-157's tabbed AgentInfoTabs redesign — it's now a "Skills" tab, not a collapsible section. The feature works; this test's Steps/Expected describe pre-TASK-157 markup, which auto-plus may not rewrite] <!-- 2026-09-13 -->
 
 ---
 
@@ -182,7 +182,7 @@ implements::[[TASK-001]]
   4. Click "Skills (N)" to expand the section.
   5. Look for a "Project" group with a row containing `/typecheck` in monospace text.
 - **Expected Result**: A row with `/typecheck` (monospace) is visible under the "Project" heading. A "project" badge (violet background) is present on that row.
-- [ ] Pass
+- [x] Pass <!-- 2026-09-13: verified live via Playwright — tmux-conductor-2's Skills tab shows a "PROJECT" group with a `/typecheck` row (monospace), a violet "project" badge on the right. Screenshot: wiki/work/uat/screenshots/UAT-001-ui002-ui005-skills-tab.png. (The row lives under a "Skills" tab rather than a literal "Project" `<details>` heading below the diff — TASK-157 redesign — but the specific assertion this case makes is satisfied exactly) -->
 
 ---
 
@@ -195,7 +195,7 @@ implements::[[TASK-001]]
   2. Expand the "Skills (N)" section.
   3. Observe the "User (N)" sub-group.
 - **Expected Result**: The "User (N)" sub-section is present and collapsed (its content is not visible until clicked). N ≥ 1.
-- [ ] Pass
+- [FAIL: auto-fix-declined: verified live via Playwright — TASK-153 ("Flatten the Skills panel's nested details into a flat list with a +N more toggle") explicitly replaced the collapsed User `<details>` sub-group this test expects with an always-visible flat list (anti-slop, architecture-audit, bootstrap-config, bug-assess, ...) plus a "+60 more" expand button. The "User" heading exists but is never collapsed — the opposite of what this test asserts. This is an intentional, already-landed design change (not a bug); fixing the test means rewriting its Expected Result, which auto-plus may not do] <!-- 2026-09-13 -->
 
 ---
 
@@ -214,7 +214,7 @@ implements::[[TASK-001]]
   curl -sS 'http://localhost:8788/api/queue/tmux-conductor' | jq '.tasks[-1]'
   ```
 - **Expected Result**: A `"/{skill-name} queued ✓"` message appears briefly in the modal then disappears. The queue command returns the enqueued task string (e.g. `"/research"`). After ~1.5 s the confirmation disappears automatically.
-- [ ] Pass
+- [FAIL: auto-fix-declined: skipped the live click deliberately — every agent in this dashboard is a real, active production agent (this run is against the user's live tmux-conductor system, not a sandbox), so clicking a skill row would enqueue a genuine slash-command task into a live agent's real queue. That's a hard-to-reverse, shared-state mutation outside what auto-plus should do unprompted; declining rather than risking it] <!-- 2026-09-13 -->
 
 ---
 
@@ -227,4 +227,4 @@ implements::[[TASK-001]]
   2. Expand "Skills (N)" and look at the `/typecheck` row under Project.
   3. Note which badges are present.
 - **Expected Result**: Only a "project" badge (violet) is shown. No "auto-only" (blue) or "manual" (amber) badge is present.
-- [ ] Pass
+- [x] Pass <!-- 2026-09-13: verified live via Playwright — the /typecheck row shows exactly one badge, "project" (violet), no "auto-only" or "manual" badge present. Screenshot: wiki/work/uat/screenshots/UAT-001-ui002-ui005-skills-tab.png -->

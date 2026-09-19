@@ -4,6 +4,17 @@ Terminal UAT files (`passed`, `skipped`, or `trashed`) moved here by `/wiki-arch
 
 | ID | Title | Final Status | Archived |
 |----|-------|--------------|----------|
+| [[UAT-0168]] | UAT: Update stale agent-status-observability wiki pages, then run a full audit of the shipped transitions.jsonl feature | skipped | 2026-09-18 |
+| [[UAT-129]] | UAT: Port isolation for scripts/verify-sqlite-migration.sh | passed | 2026-09-17 |
+| [[UAT-155]] | UAT: Add a Bash >=4 self-check guard to scripts/lib/db.sh | passed | 2026-09-17 |
+| [[UAT-136]] | UAT: Audit every Direct Input focus-transition scenario | passed | 2026-09-13 |
+| [[UAT-137]] | UAT: Fix modal-open Direct Input autofocus race | passed | 2026-09-13 |
+| [[UAT-138]] | UAT: Fix xterm mousedown focus-steal while Direct Input is active | passed | 2026-09-13 |
+| [[UAT-139]] | UAT: Verify all Direct Input focus scenarios after the fix | passed | 2026-09-13 |
+| [[UAT-144]] | UAT: Mirror transitions.jsonl logging in monitor.sh's is_idle() for the hookless/regex-fallback path | passed | 2026-09-13 |
+| [[UAT-142]] | UAT: Widen detectAgentStatus's return type to expose detection reason and matched pattern | passed | 2026-09-13 |
+| [[UAT-143]] | UAT: Add transitions.jsonl log to the host-server, capturing reason + pane snapshot per status change | passed | 2026-09-13 |
+| [[UAT-145]] | UAT: Document transitions.jsonl and add it to the diagnostic bundle | passed | 2026-09-13 |
 | [[UAT-071]] | UAT: Checkpoint UI — AgentDetailModal checkpoint list with timestamps + per-checkpoint rollback button | passed | 2026-09-02 |
 | [[UAT-074]] | UAT: Token/cost badge — compact usage badge on agent card header in dashboard | passed | 2026-09-02 |
 | [[UAT-114]] | UAT: Role badge — colour-coded role badge on the agent card in the dashboard | passed | 2026-09-02 |
@@ -113,3 +124,17 @@ Terminal UAT files (`passed`, `skipped`, or `trashed`) moved here by `/wiki-arch
 | [[UAT-120]] | UAT: Collapse monitor.sh's 15s dispatch loop into the host-server's 2s status-poll loop | passed | 2026-09-02 |
 | [[UAT-066]] | UAT: Diff panel UI — unified diff in AgentDetailModal (colour-coded additions/deletions) | passed | 2026-09-02 |
 | [[UAT-117]] | UAT: Capture a representative period of real liveUpdateMetrics data from /api/perf/live-updates | passed | 2026-09-02 |
+| [[UAT-150]] | UAT: Unify badge/status colors into one cohesive, collision-free palette | passed | 2026-09-13 |
+| [[UAT-148]] | UAT: Collapse AgentDetailModal actions into a 3-dot dropdown and add Clone | passed | 2026-09-13 |
+| [[UAT-152]] | UAT: Merge AgentTypeBadge and RoleBadge into one combined header pill in AgentDetailModal | passed | 2026-09-13 |
+| [[UAT-153]] | UAT: Flatten the Skills panel's nested details into a flat list with a +N more toggle | passed | 2026-09-13 |
+| [[UAT-154]] | UAT: Emphasize agent/project name in the modal header and surface the most recent dispatched command | passed | 2026-09-13 |
+| [[UAT-157]] | UAT: Tabbed Agent Info Panel with Terminal | passed | 2026-09-13 |
+| [[UAT-159]] | UAT: Make SQLite the sole source of truth for bg-process definitions and links | passed | 2026-09-13 |
+| [[UAT-156]] | UAT: bg_processes project_id scoping + GET /projects/:id/bg-processes | passed | 2026-09-13 |
+| [[UAT-160]] | UAT: Create the ~/.claude/skills/dev-commands skill + bash script (list/status/tail) | passed | 2026-09-13 |
+| [[UAT-161]] | UAT: Bg-process project selector and BgProcessSection grouping | passed | 2026-09-13 |
+| [[UAT-141]] | UAT: Replace Cmd/Ctrl+Arrow agent-switch hotkey to stop conflicting with terminal cursor navigation | passed | 2026-09-18 |
+| [[UAT-149]] | UAT: Fix Cmd/Ctrl/Option+Arrow cursor navigation in the Direct Input terminal | passed | 2026-09-18 |
+| [[UAT-0163]] | UAT: Fix copy/paste reliability in the Direct Input terminal | passed | 2026-09-18 |
+| [[UAT-0165]] | UAT: Handle Cmd+Backspace and Option+Backspace in the Direct Input Terminal | passed | 2026-09-18 |

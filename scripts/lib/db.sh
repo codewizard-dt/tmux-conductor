@@ -4,6 +4,21 @@
 
 set -euo pipefail
 
+# Fail fast and clearly when sourced under a bash too old to run load_agents/
+# load_bg below (declare -gA requires bash >= 4.2). Without this, the only
+# symptom is bash's own cryptic "declare: -g: invalid option" with no mention
+# of bash version or PATH — install.sh checks this once at install time
+# (see install.sh's PATH-bash preflight), but nothing re-checks it at the
+# moment a runtime script actually starts, and PATH can silently regress
+# (explicit /bin/bash invocation, a minimal cron/launchd PATH, a pre-install
+# environment). Every scripts/*.sh entry point sources this file before doing
+# anything bash4-specific of its own, so one guard here covers all of them.
+if [ -z "${BASH_VERSINFO:-}" ] || [ "${BASH_VERSINFO[0]}" -lt 4 ]; then
+  echo "FATAL: this script requires bash >= 4 (found: ${BASH_VERSION:-unknown})." >&2
+  echo "  Remedy: install bash >= 4 via your package manager (macOS: brew install bash) and ensure it precedes any older bash on PATH." >&2
+  exit 1
+fi
+
 # ---------------------------------------------------------------------------
 # 1. DB path resolution (at source time)
 # ---------------------------------------------------------------------------

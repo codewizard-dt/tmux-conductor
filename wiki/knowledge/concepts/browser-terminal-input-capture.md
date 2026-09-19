@@ -27,8 +27,12 @@ Clicking inside the terminal a second time, or drag-selecting text, moves focus 
 
 **Rule:** a wrapper-captures-input design must actively keep focus off xterm's helper textarea — re-focus the wrapper on `mouseup` inside the terminal (`mouseup`, not `mousedown`, so drag-select still completes), and never treat "focus is somewhere inside my subtree" as proof that capture is still working.
 
+**Confirmed at the source (2026-09-13):** xterm.js's `CoreBrowserTerminal.open()` wires `MouseService.bindMouse(..., () => this.focus())`, invoked from the terminal's own mousedown handler; `focus()` calls `this.textarea.focus({ preventScroll: true })` unconditionally, and the helper textarea is created with `tabIndex = 0` regardless of any terminal option. **`disableStdin` does not prevent this** — it only gates `CoreService.triggerDataEvent`, i.e. it stops keystroke *data* reaching the pty/`onData`, not the mousedown→focus binding. See `derived_from::[[direct-input-mode-focus-reliability]]`.
+
+> **Shipped-without-mitigation note:** this collision's prescribed fix (mouseup re-focus) was never implemented when `tmux-conductor`'s `LogTail.tsx` later added `onDoubleClick={onToggleExpand}` on its terminal container (see `[[log-tail]]`'s "double-click-to-fullscreen" section) — so the exact failure this page predicted shipped as a live regression once Direct Input was already active and a mousedown landed anywhere inside the terminal, not only on double-click.
+
 ## Corollary — snapshot repaint versus selection
 
 A mirror that repaints by writing `\x1bc` (RIS, full terminal reset) plus the whole snapshot on every frame resets the buffer each time. Selections survive only while no frames arrive. If user selection matters, gate the repaint on `term.hasSelection()` the same way it is already gated on the user having scrolled up.
 
-relates_to::[[log-tail]] relates_to::[[xterm-js]] relates_to::[[terminal-keyboard-clipboard]] relates_to::[[ansi-terminal-emulation-browser]] relates_to::[[focused-terminal-transport]]
+relates_to::[[log-tail]] relates_to::[[xterm-js]] relates_to::[[terminal-keyboard-clipboard]] relates_to::[[ansi-terminal-emulation-browser]] relates_to::[[focused-terminal-transport]] relates_to::[[direct-input-mode-focus-reliability]]

@@ -2,9 +2,9 @@
 id: TASK-011
 aliases: [TASK-011]
 title: "Immediate dispatch for tasks enqueued to an idle agent with an empty queue"
-status: in-progress
+status: pending-uat
 created: 2026-06-12
-updated: 2026-06-12
+updated: 2026-09-18
 depends_on: []
 blocks: []
 parallel_safe_with: [TASK-001, TASK-007, TASK-008, TASK-009, TASK-010]

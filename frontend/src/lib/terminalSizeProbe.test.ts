@@ -16,6 +16,10 @@ vi.mock('@xterm/xterm', () => {
     loadAddon = vi.fn()
     open = vi.fn()
     dispose = vi.fn()
+    resize = vi.fn(function (this: { cols: number; rows: number }, cols: number, rows: number) {
+      this.cols = cols
+      this.rows = rows
+    })
   }
   return { Terminal: MockTerminal }
 })
@@ -30,6 +34,7 @@ vi.mock('./api', () => ({
 }))
 
 import { syncTerminalSize } from './api'
+import { SIDEBAR_WIDTH_PX } from './layoutConstants'
 import { maybeProbeOnFirstRender, registerResizeListener } from './terminalSizeProbe'
 
 afterAll(() => {
@@ -47,7 +52,8 @@ describe('terminalSizeProbe — first-render and resize guards (TASK-130)', () =
     maybeProbeOnFirstRender()
 
     expect(vi.mocked(syncTerminalSize)).toHaveBeenCalledTimes(1)
-    expect(vi.mocked(syncTerminalSize)).toHaveBeenCalledWith(137, 41)
+    // 137 - RIGHT_EDGE_COLUMN_MARGIN (6, see terminalTheme.ts's fitWithRightEdgeMargin)
+    expect(vi.mocked(syncTerminalSize)).toHaveBeenCalledWith(131, 41)
   })
 
   it('does not probe again on subsequent maybeProbeOnFirstRender calls (e.g. opening a second agent terminal)', () => {
@@ -93,12 +99,23 @@ describe('terminalSizeProbe — first-render and resize guards (TASK-130)', () =
     expect(mount).not.toBeNull()
 
     // The bordered wrapper must live inside the `p-5` body-padding element, which must in turn
-    // live inside the `fixed inset-4 md:inset-8` panel-geometry element — the full ancestry the
-    // real modal's terminal actually renders inside (AgentList.tsx's AgentDetailModal).
+    // live inside the pane-geometry element — the full ancestry the real terminal actually
+    // renders inside (AgentList.tsx's AgentDetailView, in the detail pane right of the sidebar).
     const inner = capture?.parentElement ?? null
     expect(inner?.className).toBe('p-5')
 
-    const outer = inner?.parentElement ?? null
-    expect(outer?.className).toBe('fixed inset-4 md:inset-8')
+    const outer = inner?.parentElement as HTMLElement | null
+    expect(outer?.className).toBe('fixed inset-y-0 right-0')
+  })
+
+  // TASK-0173: the terminal now renders in the pane to the right of the sidebar, not in a
+  // near-full-viewport overlay, so the probe's hidden node must start at the sidebar's edge —
+  // otherwise it over-measures and tmux windows get sized wider than the visible terminal.
+  it('positions the probe node to the right of the sidebar using the shared SIDEBAR_WIDTH_PX (TASK-0173)', () => {
+    const outer = document.body.querySelector<HTMLElement>('.fixed.inset-y-0.right-0')
+    expect(outer).not.toBeNull()
+    expect(outer?.style.left).toBe(`${SIDEBAR_WIDTH_PX.toString()}px`)
+    expect(outer?.style.visibility).toBe('hidden')
+    expect(outer?.style.pointerEvents).toBe('none')
   })
 })
