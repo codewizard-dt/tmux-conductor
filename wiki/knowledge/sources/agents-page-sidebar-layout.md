@@ -24,3 +24,5 @@ relates_to::[[nav-bar]]
 relates_to::[[inactive-agents-panel]]
 relates_to::[[add-bg-process-form]]
 relates_to::[[react-router-outlet-sidebar-layout]]
+relates_to::[[sidebar-hover-expand]] — follow-up: a minimized rail with hover-to-expand was not part of this refactor (2026-09-20)
+relates_to::[[agent-sidebar]]

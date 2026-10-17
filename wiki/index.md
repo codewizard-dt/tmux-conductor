@@ -1,6 +1,6 @@
 ---
 title: Wiki Index
-updated: 2026-09-13
+updated: 2026-09-20
 ---
 
 # Wiki Index — Home Map
@@ -52,6 +52,7 @@ The wiki is split into two domains with opposite organizing laws:
 - [Sequencing TASK-141, TASK-149, and a Direct Input Copy/Paste Fix](knowledge/sources/terminal-cmd-ctrl-execution-plan.md) — confirms against live code that paste is still broken two ways (no capture-phase listener wired in; still truncates to one line) while copy is likely already working via xterm.js's own built-in handler — nothing in this app blocks or implements it; recommends verify-copy-then-fix-paste, sequenced after TASK-141/TASK-149
 - [An Orchestrator Agent That Routes Commands/Tasks to Other Agents](knowledge/sources/orchestrator-agent-routing.md) — today's task routing is pure SQL precedence with no content/capability matching; round 1 recommended a deterministic tag-match tier; round 2 found an established coding-agent-orchestrator tool ecosystem (dmux, claude-vibe-squad, corellis, herdr) whose dominant shape is ephemeral worker-per-task, not routing into a persistent pool — see the linked concept pages
 - [Agents Page Sidebar Layout Refactor Research](knowledge/sources/agents-page-sidebar-layout.md) — Kanban-to-sidebar refactor backing: project grouping, status coloring, and modal internals all already exist and mostly need relocation not new build; React Router already supports the sidebar+Outlet detail-pane shape; scope addendum covers moving Add Agent/Add Background Process into NavBar (the latter needs new open/onClose state) and relocating InactiveAgentsPanel into a collapsible sidebar section
+- [Sidebar Hover-to-Expand When Minimized (Research)](knowledge/sources/sidebar-hover-expand.md) — the sidebar has no minimized state today (fixed 320px), so this is a minimize toggle plus hover-expand; must be an overlay flyout, not a reflow, because `LogTail`'s ResizeObserver refits xterm on width change while `terminalSizeProbe` hard-codes the sidebar width and only re-syncs on window resize; recommends hover-intent + focus-within + Esc-dismiss (WCAG 1.4.13) and a compact rail row mode
 
 ### Concepts
 - [ANSI Terminal Emulation in the Browser](knowledge/concepts/ansi-terminal-emulation-browser.md) — why `<pre>` falls short; stateful terminal emulator model; xterm-256color + truecolor support
@@ -81,6 +82,8 @@ The wiki is split into two domains with opposite organizing laws:
 - [Multi-Agent Orchestration Patterns (Orchestrator-Worker, Supervisor, Handoff)](knowledge/concepts/multi-agent-orchestration-patterns.md) — deterministic routing first, LLM routing only when the correct agent isn't derivable from the task text; MAST failure taxonomy explains ~40% of multi-agent pilot failures; the ~5-8-worker hierarchical-escalation threshold is contradicted for coding-agent fleets specifically (see next entry)
 - [Ephemeral Worker-Per-Task Coding Agent Orchestration](knowledge/concepts/ephemeral-worker-per-task-orchestration.md) — the dominant shape in purpose-built coding-agent-orchestrator tools (dmux, Claude Squad, Vibe Kanban, claude-vibe-squad): provision a fresh git worktree + terminal per task rather than routing into a persistent pool; corellis targets 20+ agent fleets; herdr decentralizes routing to the agents themselves
 - [React Router Sidebar + Outlet Detail-Pane Layout](knowledge/concepts/react-router-outlet-sidebar-layout.md) — canonical `layout` route + `index` route + `:id` child route shape for "sidebar list, click item → detail renders in main content area"; expressible with this app's existing classic `<Routes>/<Route>` API without adopting loaders
+- [Hover-Expand Collapsed Sidebar as an Overlay Flyout](knowledge/concepts/hover-expand-overlay-flyout-pattern.md) — rail keeps its docked width and the full panel floats over content (no reflow); hover-intent delays, mouseenter/mouseleave semantics, focus-within + Esc-dismiss (WCAG 1.4.13), compact rail variant so hidden controls leave the tab order
+- [Terminal Size Is Coupled to Layout Width (Two Independent Paths)](knowledge/concepts/terminal-size-coupling-to-layout-width.md) — `LogTail`'s ResizeObserver refits the local xterm on any container-width change, but the host tmux size only re-syncs on window resize via a probe hard-coded to `SIDEBAR_WIDTH_PX`; docked-width changes must re-probe, overlays must not change the docked width (inferred from code)
 
 ### Entities
 - People — [knowledge/entities/people/](knowledge/entities/people/)
@@ -103,6 +106,7 @@ The wiki is split into two domains with opposite organizing laws:
   - [NavBar](knowledge/entities/components/nav-bar.md) — sticky top bar with nav links and a right-aligned theme toggle; identified as the destination for Agents-page "Add Agent"/"Add Background Process" triggers
   - [InactiveAgentsPanel](knowledge/entities/components/inactive-agents-panel.md) — standalone collapsible card listing no-window/exited/unknown agents, each opening its own AgentDetailModal instance; behavior reusable as-is for a sidebar-docked collapsible section
   - [AddBgProcessForm](knowledge/entities/components/add-bg-process-form.md) — always-rendered inline bg-process form with no open/onClose props, unlike AddAgentForm; needs real (small) modal-conversion work
+  - [AgentSidebar](knowledge/entities/components/agent-sidebar.md) — fixed-320px `<aside>` in `AgentList.tsx` holding filter, docked InactiveAgentsPanel, and project-grouped status-bordered rows; no minimized state today; width is also baked into `terminalSizeProbe` and two tests
 
 ---
 

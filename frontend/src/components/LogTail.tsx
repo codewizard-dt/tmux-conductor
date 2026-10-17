@@ -703,6 +703,7 @@ export default function LogTail({ agentId, agentName, maxHeightClass, focused, f
         <>
         <div
           ref={captureRef}
+          data-terminal-capture="true"
           tabIndex={interacting ? 0 : -1}
           onKeyDown={interacting ? handleKeyDown : undefined}
           onBlur={interacting ? handleBlur : undefined}

@@ -34,3 +34,4 @@ Entry format: `- [UAT-NNN — Title](UAT-NNN-slug.md) — verifies TASK-NNN · s
 - [UAT-0174 — UAT: Preserve Cmd+Shift+Arrow cycling and notification-driven open/arm-interact against the pane selection](UAT-0174-preserve-cycling-and-notification-open-in-pane.md) — verifies TASK-0174 · pending
 - [UAT-0177 — UAT: Relocate InactiveAgentsPanel into a collapsible section at the top of the sidebar](UAT-0177-inactive-agents-into-sidebar-top.md) — verifies TASK-0177 · pending
 - [UAT-0178 — UAT: Repoint InactiveAgentsPanel's open-detail action at the detail pane and retire the modal wrapper](UAT-0178-inactive-agents-open-detail-via-pane.md) — verifies TASK-0178 · pending
+- [UAT-0179 — UAT: Add a sidebar minimize toggle with a hover-to-expand overlay flyout and a sticky sidebar header](UAT-0179-sidebar-minimize-hover-flyout.md) — verifies TASK-0179 · pending

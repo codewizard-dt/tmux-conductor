@@ -11,13 +11,18 @@ import { fitWithRightEdgeMargin, TERMINAL_FONT_OPTIONS } from './terminalTheme'
 // `visibility: hidden` (not `display: none`) keeps layout/geometry intact while remaining
 // invisible and inert.
 let probeMountEl: HTMLDivElement | null = null
+// The probe's positioned outer node, kept so setSidebarDockedWidth can move its left edge.
+let probeOuterEl: HTMLDivElement | null = null
+// Docked (not hover-expanded) sidebar width the probe mirrors; changes when the sidebar is
+// minimized to a rail.
+let dockedSidebarWidthPx = SIDEBAR_WIDTH_PX
 
 function getProbeMount(): HTMLDivElement {
   if (probeMountEl) return probeMountEl
 
   const outer = document.createElement('div')
   outer.className = 'fixed inset-y-0 right-0'
-  outer.style.left = `${SIDEBAR_WIDTH_PX.toString()}px`
+  outer.style.left = `${dockedSidebarWidthPx.toString()}px`
   outer.style.visibility = 'hidden'
   outer.style.pointerEvents = 'none'
   outer.style.zIndex = '-1'
@@ -43,6 +48,7 @@ function getProbeMount(): HTMLDivElement {
   outer.appendChild(inner)
   document.body.appendChild(outer)
 
+  probeOuterEl = outer
   probeMountEl = mount
   return mount
 }
@@ -80,6 +86,18 @@ export function maybeProbeOnFirstRender(): void {
   if (hasProbedOnce) return
   hasProbedOnce = true
   probeAndSyncTerminalSize()
+}
+
+/**
+ * Tells the probe the sidebar's docked width changed (minimize/restore). Hover-expanding the
+ * rail is an overlay and must not call this. Re-probes only if a first probe already ran — the
+ * pending first-render probe otherwise picks up the new width itself.
+ */
+export function setSidebarDockedWidth(px: number): void {
+  if (px === dockedSidebarWidthPx) return
+  dockedSidebarWidthPx = px
+  if (probeOuterEl) probeOuterEl.style.left = `${px.toString()}px`
+  if (hasProbedOnce) probeAndSyncTerminalSize()
 }
 
 // Single debounced window-resize listener: a genuine viewport resize always re-probes,

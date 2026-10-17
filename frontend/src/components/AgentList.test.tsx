@@ -35,6 +35,13 @@ function MockLogTail(props: { agentId: number; interactSignal?: number; onIntera
   return <div data-testid="mock-log-tail" data-agent-id={props.agentId} data-interact-signal={props.interactSignal} />
 }
 vi.mock('./LogTail', () => ({ default: MockLogTail }))
+// TASK-0179: AgentList tells the terminal size probe how wide the docked sidebar is. Keep the real
+// module (its other exports are untouched) and replace only the setter with a spy so the
+// minimize/hover tests can assert exactly when it is called.
+vi.mock('../lib/terminalSizeProbe', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../lib/terminalSizeProbe')>()),
+  setSidebarDockedWidth: vi.fn(),
+}))
 
 import AgentList, {
   agentMatchesFilter,
@@ -55,7 +62,15 @@ import AgentList, {
 } from './AgentList'
 import InactiveAgentsPanel from './InactiveAgentsPanel'
 import AgentsPage from '../pages/AgentsPage'
-import { SIDEBAR_WIDTH_PX } from '../lib/layoutConstants'
+import {
+  HOVER_CLOSE_DELAY_MS,
+  HOVER_OPEN_DELAY_MS,
+  HOVER_OPEN_DELAY_TYPING_MS,
+  SIDEBAR_MINIMIZED_STORAGE_KEY,
+  SIDEBAR_RAIL_WIDTH_PX,
+  SIDEBAR_WIDTH_PX,
+} from '../lib/layoutConstants'
+import { setSidebarDockedWidth } from '../lib/terminalSizeProbe'
 // RTL's auto-cleanup registration relies on vitest's `test.globals: true`, which this repo
 // does not set (see vitest.setup.ts's own comment on the same constraint for jest-dom) — so
 // without this, render() output from one test leaks into the next test's DOM within this
@@ -3506,5 +3521,501 @@ describe('AgentList sidebar row status right border (TASK-0171)', () => {
     const after = rowFor('flip-agent')
     expect(after.style.borderRightColor).not.toBe(colorBefore)
     expect(after.className).toBe(classBefore)
+  })
+})
+
+// ── Sidebar minimize + hover flyout (TASK-0179) ───────────────────────────
+//
+// Fake timers are installed only AFTER every awaited step (render, findBy*, a real-timer click):
+// RTL's waitFor/findBy poll with the real setTimeout, which vitest's fake clock would freeze.
+// Hover cases then drive the hook's open/close delays with act(() => advanceTimersByTime()).
+describe('AgentList sidebar minimize + hover flyout (TASK-0179)', () => {
+  const MAC_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko)'
+  const LINUX_UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko)'
+
+  function stubSidebarFetch(agents: Agent[]) {
+    class MockEventSource {
+      addEventListener() { /* no-op */ }
+      removeEventListener() { /* no-op */ }
+      close() { /* no-op */ }
+    }
+    vi.stubGlobal('EventSource', MockEventSource)
+    vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string) => {
+      if (url.includes('/queue/')) {
+        return Promise.resolve({ ok: true, json: () => ({ agent: 'x', tasks: [] }) })
+      }
+      if (url.includes('/skills')) {
+        return Promise.resolve({ ok: true, json: () => ({ agent: 'x', project: [], user: [] }) })
+      }
+      if (url.includes('/checkpoints')) {
+        return Promise.resolve({ ok: true, json: () => ({ checkpoints: [] }) })
+      }
+      return Promise.resolve({
+        ok: true,
+        json: () => ({
+          session: 'test-session', sessionAlive: true, sessionExists: true,
+          agents, bgProcesses: [], timestamp: new Date().toISOString(),
+        }),
+      })
+    }))
+  }
+
+  const groupedAgents = (): Agent[] => [
+    { ...baseAgent(null), id: 1, name: 'zeta-loose', projectId: null, projectName: null, state: 'busy' },
+    { ...baseAgent(null), id: 2, name: 'beta-api', projectId: 20, projectName: 'Beta', state: 'busy' },
+    { ...baseAgent(null), id: 3, name: 'alpha-ui', projectId: 10, projectName: 'Alpha', state: 'busy' },
+  ]
+
+  /** Renders the list and resolves the sidebar `aside`, its docked wrapper, and its rows. */
+  async function renderSidebar(agents: Agent[] = groupedAgents(), opts: { minimized?: boolean } = {}) {
+    if (opts.minimized) localStorage.setItem(SIDEBAR_MINIMIZED_STORAGE_KEY, '1')
+    stubSidebarFetch(agents)
+    render(<AgentList />)
+    const sidebar = await screen.findByRole('complementary', { name: 'Agents' })
+    await within(sidebar).findByRole('button', { name: `${agents[0]?.name ?? 'x'} detail` })
+    const wrapper = sidebar.parentElement as HTMLElement
+    return { sidebar, wrapper }
+  }
+
+  // Project group headers are the only <p>s in the sidebar (label + count, e.g. "Alpha1").
+  const groupHeaders = (sidebar: HTMLElement): (string | null)[] =>
+    Array.from(sidebar.querySelectorAll('p')).map((p) => p.textContent)
+  const fullHeaders = ['Alpha1', 'Beta1', 'Unassigned1']
+  const docked = (wrapper: HTMLElement): string => wrapper.style.width
+  const row = (sidebar: HTMLElement, name: string): HTMLElement =>
+    within(sidebar).getByRole('button', { name: `${name} detail` })
+  const railW = `${SIDEBAR_RAIL_WIDTH_PX.toString()}px`
+  const fullW = `${SIDEBAR_WIDTH_PX.toString()}px`
+
+  function advance(ms: number) {
+    act(() => { vi.advanceTimersByTime(ms) })
+  }
+  /** Hover the wrapper long enough for the flyout to open (default, non-typing delay). */
+  function hoverOpen(wrapper: HTMLElement) {
+    fireEvent.mouseEnter(wrapper)
+    advance(HOVER_OPEN_DELAY_MS)
+  }
+
+  beforeEach(() => {
+    localStorage.clear()
+    vi.mocked(setSidebarDockedWidth).mockClear()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.restoreAllMocks()
+    vi.unstubAllGlobals()
+    localStorage.clear()
+  })
+
+  it('defaults to the expanded 320px sidebar with the filter and an un-pressed Minimize toggle', async () => {
+    const { sidebar, wrapper } = await renderSidebar()
+
+    expect(sidebar.style.width).toBe('320px')
+    expect(docked(wrapper)).toBe(fullW)
+    expect(within(sidebar).getByLabelText('Filter agents')).toBeInTheDocument()
+    const toggle = within(sidebar).getByRole('button', { name: 'Minimize sidebar' })
+    expect(toggle).toHaveAttribute('aria-expanded', 'true')
+    expect(toggle).toHaveAttribute('aria-controls', 'agents-sidebar')
+    expect(groupHeaders(sidebar)).toEqual(fullHeaders)
+  })
+
+  it('the toggle minimizes to a 56px rail of glyph rows (no filter or group labels) and restores on the second click', async () => {
+    const { sidebar, wrapper } = await renderSidebar()
+
+    fireEvent.click(within(sidebar).getByRole('button', { name: 'Minimize sidebar' }))
+
+    expect(docked(wrapper)).toBe(railW)
+    expect(sidebar.style.width).toBe(railW)
+    const expandToggle = within(sidebar).getByRole('button', { name: 'Expand sidebar' })
+    expect(expandToggle).toHaveAttribute('aria-expanded', 'false')
+    expect(within(sidebar).queryByRole('button', { name: 'Minimize sidebar' })).toBeNull()
+    expect(within(sidebar).queryByLabelText('Filter agents')).toBeNull()
+    expect(groupHeaders(sidebar)).toEqual([])
+    // Rows survive as rail items: a bare initial, still addressable by the same accessible name.
+    expect(row(sidebar, 'alpha-ui').textContent).toBe('A')
+    expect(row(sidebar, 'zeta-loose').textContent).toBe('Z')
+
+    fireEvent.click(expandToggle)
+
+    expect(docked(wrapper)).toBe(fullW)
+    expect(sidebar.style.width).toBe(fullW)
+    expect(within(sidebar).getByRole('button', { name: 'Minimize sidebar' })).toHaveAttribute('aria-expanded', 'true')
+    expect(within(sidebar).getByLabelText('Filter agents')).toBeInTheDocument()
+    expect(groupHeaders(sidebar)).toEqual(fullHeaders)
+  })
+
+  it('persists the minimized state in localStorage as "1" and "0"', async () => {
+    const { sidebar } = await renderSidebar()
+    expect(SIDEBAR_MINIMIZED_STORAGE_KEY).toBe('conductor:sidebarMinimized')
+
+    fireEvent.click(within(sidebar).getByRole('button', { name: 'Minimize sidebar' }))
+    expect(localStorage.getItem('conductor:sidebarMinimized')).toBe('1')
+
+    fireEvent.click(within(sidebar).getByRole('button', { name: 'Expand sidebar' }))
+    expect(localStorage.getItem('conductor:sidebarMinimized')).toBe('0')
+  })
+
+  it('starts minimized on a fresh render when localStorage already holds "1"', async () => {
+    const { sidebar, wrapper } = await renderSidebar(groupedAgents(), { minimized: true })
+
+    expect(docked(wrapper)).toBe(railW)
+    expect(sidebar.style.width).toBe(railW)
+    expect(within(sidebar).getByRole('button', { name: 'Expand sidebar' })).toHaveAttribute('aria-expanded', 'false')
+    expect(within(sidebar).queryByLabelText('Filter agents')).toBeNull()
+  })
+
+  it('falls back to the expanded sidebar (without crashing) when reading localStorage throws', async () => {
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('storage blocked') })
+
+    const { sidebar, wrapper } = await renderSidebar()
+
+    expect(docked(wrapper)).toBe(fullW)
+    expect(within(sidebar).getByLabelText('Filter agents')).toBeInTheDocument()
+  })
+
+  it('still toggles for the session when writing localStorage throws', async () => {
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('quota') })
+    const { sidebar, wrapper } = await renderSidebar()
+
+    fireEvent.click(within(sidebar).getByRole('button', { name: 'Minimize sidebar' }))
+
+    expect(docked(wrapper)).toBe(railW)
+  })
+
+  it('hover opens a 320px flyout after the open delay while the docked wrapper stays 56px, then closes after the close delay', async () => {
+    const { sidebar, wrapper } = await renderSidebar(groupedAgents(), { minimized: true })
+    vi.useFakeTimers()
+
+    fireEvent.mouseEnter(wrapper)
+    advance(HOVER_OPEN_DELAY_MS - 1)
+    expect(sidebar.style.width).toBe(railW)
+    advance(1)
+
+    expect(sidebar.style.width).toBe(fullW)
+    expect(docked(wrapper)).toBe(railW)
+    expect(within(sidebar).getByLabelText('Filter agents')).toBeInTheDocument()
+    expect(groupHeaders(sidebar)).toEqual(fullHeaders)
+
+    fireEvent.mouseLeave(wrapper)
+    advance(HOVER_CLOSE_DELAY_MS - 1)
+    expect(sidebar.style.width).toBe(fullW)
+    advance(1)
+
+    expect(sidebar.style.width).toBe(railW)
+    expect(docked(wrapper)).toBe(railW)
+    expect(within(sidebar).queryByLabelText('Filter agents')).toBeNull()
+  })
+
+  it('a graze (mouse enters then leaves before the open delay) never opens the flyout', async () => {
+    const { sidebar, wrapper } = await renderSidebar(groupedAgents(), { minimized: true })
+    vi.useFakeTimers()
+
+    fireEvent.mouseEnter(wrapper)
+    advance(HOVER_OPEN_DELAY_MS - 1)
+    fireEvent.mouseLeave(wrapper)
+    advance(HOVER_OPEN_DELAY_MS + HOVER_CLOSE_DELAY_MS + 500)
+
+    expect(sidebar.style.width).toBe(railW)
+    expect(within(sidebar).queryByLabelText('Filter agents')).toBeNull()
+  })
+
+  it('hover does nothing while the sidebar is expanded', async () => {
+    const { sidebar, wrapper } = await renderSidebar()
+    vi.useFakeTimers()
+
+    hoverOpen(wrapper)
+    fireEvent.mouseLeave(wrapper)
+    advance(HOVER_CLOSE_DELAY_MS + 500)
+
+    expect(sidebar.style.width).toBe(fullW)
+    expect(docked(wrapper)).toBe(fullW)
+  })
+
+  it('keyboard focus on a rail row opens the flyout immediately (no timer)', async () => {
+    const { sidebar, wrapper } = await renderSidebar(groupedAgents(), { minimized: true })
+    expect(sidebar.style.width).toBe(railW)
+
+    act(() => { row(sidebar, 'alpha-ui').focus() })
+
+    expect(sidebar.style.width).toBe(fullW)
+    expect(docked(wrapper)).toBe(railW)
+    expect(within(sidebar).getByLabelText('Filter agents')).toBeInTheDocument()
+  })
+
+  it('Escape closes an open flyout and moves focus to the toggle', async () => {
+    const { sidebar, wrapper } = await renderSidebar(groupedAgents(), { minimized: true })
+    vi.useFakeTimers()
+    hoverOpen(wrapper)
+    expect(sidebar.style.width).toBe(fullW)
+    const openRow = row(sidebar, 'alpha-ui')
+    act(() => { openRow.focus() })
+
+    fireEvent.keyDown(openRow, { key: 'Escape' })
+
+    expect(sidebar.style.width).toBe(railW)
+    expect(document.activeElement).toBe(within(sidebar).getByRole('button', { name: 'Expand sidebar' }))
+  })
+
+  it('focusing a rail row opens the flyout and restores focus to the same agent\'s full row (never <body>)', async () => {
+    const { sidebar } = await renderSidebar(groupedAgents(), { minimized: true })
+    const railRow = row(sidebar, 'alpha-ui')
+    expect(railRow.textContent).toBe('A')
+
+    act(() => { railRow.focus() })
+
+    expect(sidebar.style.width).toBe(fullW)
+    const fullRow = row(sidebar, 'alpha-ui')
+    expect(fullRow).not.toBe(railRow)
+    expect(railRow.isConnected).toBe(false)
+    expect(fullRow.textContent).not.toBe('A')
+    expect(document.activeElement).not.toBe(document.body)
+    expect(document.activeElement).toBe(fullRow)
+    expect(document.activeElement).toHaveAttribute('data-agent-id', '3')
+    expect(document.activeElement).toHaveAttribute('aria-label', 'alpha-ui detail')
+    expect(sidebar.contains(document.activeElement)).toBe(true)
+  })
+
+  it('does not steal focus when the flyout opens by hover while focus is elsewhere', async () => {
+    const { sidebar, wrapper } = await renderSidebar(groupedAgents(), { minimized: true })
+    vi.useFakeTimers()
+
+    hoverOpen(wrapper)
+
+    expect(sidebar.style.width).toBe(fullW)
+    expect(sidebar.contains(document.activeElement)).toBe(false)
+  })
+
+  it('Escape after a focus-open returns focus to the toggle and closes the flyout back to the 56px rail', async () => {
+    const { sidebar, wrapper } = await renderSidebar(groupedAgents(), { minimized: true })
+    act(() => { row(sidebar, 'alpha-ui').focus() })
+    expect(sidebar.style.width).toBe(fullW)
+    const fullRow = row(sidebar, 'alpha-ui')
+    expect(document.activeElement).toBe(fullRow)
+
+    fireEvent.keyDown(fullRow, { key: 'Escape' })
+
+    expect(sidebar.style.width).toBe(railW)
+    expect(docked(wrapper)).toBe(railW)
+    expect(document.activeElement).toBe(within(sidebar).getByRole('button', { name: 'Expand sidebar' }))
+    expect(document.activeElement).not.toBe(document.body)
+  })
+
+  it('clicking a rail row selects the agent and shows its detail pane while the sidebar stays a rail', async () => {
+    const { sidebar, wrapper } = await renderSidebar(groupedAgents(), { minimized: true })
+
+    fireEvent.click(row(sidebar, 'beta-api'))
+
+    const pane = await screen.findByRole('region', { name: 'beta-api detail' })
+    expect(sidebar.contains(pane)).toBe(false)
+    expect(row(sidebar, 'beta-api')).toHaveAttribute('aria-current', 'true')
+    expect(sidebar.style.width).toBe(railW)
+    expect(docked(wrapper)).toBe(railW)
+  })
+
+  it('clicking a row inside the open flyout selects the agent and closes the flyout', async () => {
+    const { sidebar, wrapper } = await renderSidebar(groupedAgents(), { minimized: true })
+    vi.useFakeTimers()
+    hoverOpen(wrapper)
+    expect(sidebar.style.width).toBe(fullW)
+
+    fireEvent.click(row(sidebar, 'alpha-ui'))
+
+    expect(screen.getByRole('region', { name: 'alpha-ui detail' })).toBeInTheDocument()
+    expect(sidebar.style.width).toBe(railW)
+    expect(docked(wrapper)).toBe(railW)
+  })
+
+  it('typing guard: with focus inside the detail pane, hover opens the flyout after 450ms, not 100ms', async () => {
+    const { sidebar, wrapper } = await renderSidebar(groupedAgents(), { minimized: true })
+    fireEvent.click(row(sidebar, 'beta-api'))
+    const pane = await screen.findByRole('region', { name: 'beta-api detail' })
+    const tab = within(pane).getByRole('tab', { name: 'Skills' })
+    act(() => { tab.focus() })
+    expect(pane.contains(document.activeElement)).toBe(true)
+    expect(HOVER_OPEN_DELAY_TYPING_MS).toBeGreaterThan(HOVER_OPEN_DELAY_MS)
+    vi.useFakeTimers()
+
+    fireEvent.mouseEnter(wrapper)
+    advance(HOVER_OPEN_DELAY_MS)
+    expect(sidebar.style.width).toBe(railW)
+    advance(HOVER_OPEN_DELAY_TYPING_MS - HOVER_OPEN_DELAY_MS - 1)
+    expect(sidebar.style.width).toBe(railW)
+    advance(1)
+
+    expect(sidebar.style.width).toBe(fullW)
+    expect(docked(wrapper)).toBe(railW)
+  })
+
+  describe('Cmd/Ctrl+B shortcut', () => {
+    const press = (target: Element | Document, init: KeyboardEventInit) =>
+      fireEvent.keyDown(target, { key: 'b', ...init })
+
+    it('Meta+B toggles the sidebar on mac, and Ctrl+B is ignored there', async () => {
+      vi.spyOn(window.navigator, 'userAgent', 'get').mockReturnValue(MAC_UA)
+      const { wrapper } = await renderSidebar()
+
+      expect(press(document.body, { ctrlKey: true })).toBe(true)
+      expect(docked(wrapper)).toBe(fullW)
+
+      // fireEvent returns false when a handler called preventDefault.
+      expect(press(document.body, { metaKey: true })).toBe(false)
+      expect(docked(wrapper)).toBe(railW)
+      press(document.body, { metaKey: true })
+      expect(docked(wrapper)).toBe(fullW)
+    })
+
+    it('Ctrl+B toggles the sidebar off mac, and Meta+B is ignored there', async () => {
+      vi.spyOn(window.navigator, 'userAgent', 'get').mockReturnValue(LINUX_UA)
+      const { wrapper } = await renderSidebar()
+
+      press(document.body, { metaKey: true })
+      expect(docked(wrapper)).toBe(fullW)
+
+      press(document.body, { ctrlKey: true })
+      expect(docked(wrapper)).toBe(railW)
+      press(document.body, { ctrlKey: true })
+      expect(docked(wrapper)).toBe(fullW)
+    })
+
+    it('ignores extra modifiers (Shift/Alt) and other keys', async () => {
+      vi.spyOn(window.navigator, 'userAgent', 'get').mockReturnValue(LINUX_UA)
+      const { wrapper } = await renderSidebar()
+
+      press(document.body, { ctrlKey: true, shiftKey: true })
+      press(document.body, { ctrlKey: true, altKey: true })
+      fireEvent.keyDown(document.body, { key: 'k', ctrlKey: true })
+
+      expect(docked(wrapper)).toBe(fullW)
+    })
+
+    it('is ignored while typing in the filter input', async () => {
+      vi.spyOn(window.navigator, 'userAgent', 'get').mockReturnValue(LINUX_UA)
+      const { sidebar, wrapper } = await renderSidebar()
+      const filter = within(sidebar).getByLabelText('Filter agents')
+
+      expect(press(filter, { ctrlKey: true })).toBe(true)
+
+      expect(docked(wrapper)).toBe(fullW)
+    })
+
+    describe('inside the Direct Input capture surface', () => {
+      let capture: HTMLElement
+
+      beforeEach(() => {
+        capture = document.createElement('div')
+        capture.setAttribute('data-terminal-capture', 'true')
+        capture.appendChild(document.createElement('span'))
+        document.body.appendChild(capture)
+      })
+
+      afterEach(() => { capture.remove() })
+
+      it('non-mac Ctrl+B is ignored (it is a real tmux prefix keystroke there)', async () => {
+        vi.spyOn(window.navigator, 'userAgent', 'get').mockReturnValue(LINUX_UA)
+        const { wrapper } = await renderSidebar()
+
+        expect(press(capture.firstElementChild as Element, { ctrlKey: true })).toBe(true)
+
+        expect(docked(wrapper)).toBe(fullW)
+      })
+
+      it('mac Cmd+B still toggles', async () => {
+        vi.spyOn(window.navigator, 'userAgent', 'get').mockReturnValue(MAC_UA)
+        const { wrapper } = await renderSidebar()
+
+        press(capture.firstElementChild as Element, { metaKey: true })
+
+        expect(docked(wrapper)).toBe(railW)
+      })
+    })
+  })
+
+  it('rail items show a pulsing attention dot for awaiting and stalled agents but not for a busy one', async () => {
+    const { sidebar } = await renderSidebar([
+      { ...baseAgent(null), id: 1, name: 'aw-agent', state: 'awaiting' },
+      { ...baseAgent(null), id: 2, name: 'st-agent', state: 'stalled' },
+      { ...baseAgent(null), id: 3, name: 'bz-agent', state: 'busy' },
+    ], { minimized: true })
+
+    expect(within(row(sidebar, 'aw-agent')).getByTestId('rail-attention-dot')).toBeInTheDocument()
+    expect(within(row(sidebar, 'st-agent')).getByTestId('rail-attention-dot')).toBeInTheDocument()
+    expect(within(row(sidebar, 'bz-agent')).queryByTestId('rail-attention-dot')).toBeNull()
+  })
+
+  it('keeps the toggle, filter and Inactive Agents section in a sticky header outside the scrolling list', async () => {
+    const { sidebar } = await renderSidebar([
+      ...groupedAgents(),
+      { ...baseAgent(null), id: 9, name: 'sleepy-one', state: 'exited' },
+    ])
+    const inactiveToggle = await within(sidebar).findByRole('button', { name: /Inactive Agents \(1\)/ })
+    const filter = within(sidebar).getByLabelText('Filter agents')
+    const toggle = within(sidebar).getByRole('button', { name: 'Minimize sidebar' })
+    const tokens = (el: Element): string[] => el.className.split(/\s+/)
+
+    expect(tokens(sidebar)).toEqual(expect.arrayContaining(['flex', 'flex-col', 'overflow-hidden']))
+
+    // The one scrolling list is the flex-1 overflow-y-auto region; only the groups live in it.
+    const list = sidebar.querySelector('.min-h-0.flex-1.overflow-y-auto') as HTMLElement
+    expect(list).not.toBeNull()
+    const headers = Array.from(sidebar.querySelectorAll('p'))
+    expect(headers).toHaveLength(3)
+    for (const header of headers) expect(list.contains(header)).toBe(true)
+    expect(list.contains(row(sidebar, 'beta-api'))).toBe(true)
+    expect(list.contains(filter)).toBe(false)
+    expect(list.contains(toggle)).toBe(false)
+    expect(list.contains(inactiveToggle)).toBe(false)
+
+    // The Inactive Agents section is height-capped at 40vh and scrolls on its own.
+    const cap = sidebar.querySelector('[class~="max-h-[40vh]"]') as HTMLElement
+    expect(cap).not.toBeNull()
+    expect(tokens(cap)).toContain('overflow-y-auto')
+    expect(cap.contains(inactiveToggle)).toBe(true)
+    expect(cap.contains(list)).toBe(false)
+    expect(list.contains(cap)).toBe(false)
+  })
+
+  it('syncs the docked width to the terminal size probe on minimize/restore, and not on hover open/close', async () => {
+    const { sidebar, wrapper } = await renderSidebar()
+    vi.mocked(setSidebarDockedWidth).mockClear()
+
+    fireEvent.click(within(sidebar).getByRole('button', { name: 'Minimize sidebar' }))
+    expect(setSidebarDockedWidth).toHaveBeenCalledTimes(1)
+    expect(setSidebarDockedWidth).toHaveBeenLastCalledWith(SIDEBAR_RAIL_WIDTH_PX)
+    expect(SIDEBAR_RAIL_WIDTH_PX).toBe(56)
+    vi.mocked(setSidebarDockedWidth).mockClear()
+
+    vi.useFakeTimers()
+    hoverOpen(wrapper)
+    expect(sidebar.style.width).toBe(fullW)
+    fireEvent.mouseLeave(wrapper)
+    advance(HOVER_CLOSE_DELAY_MS)
+    expect(sidebar.style.width).toBe(railW)
+    expect(setSidebarDockedWidth).not.toHaveBeenCalled()
+    vi.useRealTimers()
+
+    fireEvent.click(within(sidebar).getByRole('button', { name: 'Expand sidebar' }))
+    expect(setSidebarDockedWidth).toHaveBeenCalledTimes(1)
+    expect(setSidebarDockedWidth).toHaveBeenLastCalledWith(SIDEBAR_WIDTH_PX)
+  })
+
+  it('minimize, hover open, un-minimize, minimize again: the flyout stays closed until hovered again', async () => {
+    const { sidebar, wrapper } = await renderSidebar()
+    fireEvent.click(within(sidebar).getByRole('button', { name: 'Minimize sidebar' }))
+    vi.useFakeTimers()
+    hoverOpen(wrapper)
+    expect(sidebar.style.width).toBe(fullW)
+
+    fireEvent.click(within(sidebar).getByRole('button', { name: 'Expand sidebar' }))
+    expect(docked(wrapper)).toBe(fullW)
+    fireEvent.click(within(sidebar).getByRole('button', { name: 'Minimize sidebar' }))
+
+    expect(docked(wrapper)).toBe(railW)
+    expect(sidebar.style.width).toBe(railW)
+    advance(HOVER_OPEN_DELAY_MS + HOVER_CLOSE_DELAY_MS + 500)
+    expect(sidebar.style.width).toBe(railW)
+
+    hoverOpen(wrapper)
+    expect(sidebar.style.width).toBe(fullW)
   })
 })

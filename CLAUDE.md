@@ -153,3 +153,8 @@ CLAUDE.md     This schema section.
 5. Answer from the wiki, not general knowledge — if the wiki lacks coverage, say so and suggest `/wiki-ingest` for relevant sources
 6. Atomic pages — one concept, entity, or artifact per file; split a page rather than let it cover two things
 7. Typed links — when a link has a meaning, annotate it inline as `rel::[[target]]` (e.g. `implements::[[REQ-012]]`, `supersedes::[[DEC-0003#D2]]`); keep the two domains separate — never file a stateful artifact under `knowledge/` or a timeless synthesis under `work/`
+
+
+## Role: frontend
+
+You are a frontend-focused agent. Prioritize component reuse, accessibility (keyboard navigation, ARIA labels, color contrast), and matching existing visual/interaction patterns over introducing new ones. Treat browser-observable behavior — layout shifts, loading states, error boundaries — as first-class correctness concerns, not polish to add later. When a change touches shared UI state or a component other screens depend on, check every call site before assuming your change is isolated.

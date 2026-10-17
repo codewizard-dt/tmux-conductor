@@ -2,7 +2,7 @@
 id: log-tail
 title: LogTail
 aliases: [LogTail.tsx]
-updated: 2026-09-13
+updated: 2026-09-20
 sources:
   - ../../../raw/research/web-terminal-emulators/index.md
   - ../../../raw/research/application-latency-structure/index.md
@@ -11,6 +11,7 @@ sources:
   - ../../../raw/research/agent-detail-modal-redesign/index.md
   - ../../../raw/research/terminal-modifier-arrow-navigation/index.md
   - ../../../raw/research/xterm-scrollbar-flicker/index.md
+  - ../../../raw/research/sidebar-hover-expand/index.md
 confidence: extracted
 tags: [frontend, component, terminal, react]
 ---
@@ -82,3 +83,7 @@ Fix directions and a full Phase-0 audit checklist (other untested focus-transiti
 The `\x1bc`+write full-reset pattern in `applySnapshot` (see above) also causes `.xterm-viewport`'s scrollbar thumb to visibly flash/flicker on every live update while in follow-mode — a known xterm.js issue class (`derived_from::[[xterm-scrollbar-flicker]]`), not a bug specific to this component. The existing `writingRef`-gated scroll-ignore guard (protects *logical* follow-state) does not address this, since the *visual* flash is driven by the raw DOM `scrollTop` churn itself, not by how this component's own `'scroll'` handler reacts to it. Recommended fix: debounce/coalesce `applySnapshot` calls on the two **live**-update paths (WebSocket ~L408, SSE ~L446) to a bounded rate (~150-250ms trailing-edge) while `followRef.current` is true, leaving the "catch up on return to bottom" path (~L325-327) undebounced. No `@xterm/xterm` version change needed or recommended — the complete upstream fix ships only in the unreleased 7.0 line. See `raw/research/xterm-scrollbar-flicker/index.md` for the full comparison and implementation outline.
 
 **Fix shipped (2026-09-13)**: refined by a user live-diagnosis that the flicker only happens when the viewport rests at the literal bottom (`viewportY === baseY`), not merely "on frequent repaints." `LogTail.tsx` now keeps a permanent `BOTTOM_OFFSET_LINES = 2` offset short of the true bottom via a new `scrollNearBottom(term)` helper (`scrollToBottom()` + `scrollLines(-BOTTOM_OFFSET_LINES)`), replacing both prior `scrollToBottom()` call sites (post-repaint snap in `applySnapshot`, and the on-`focused` re-arm effect). The follow-mode `atBottom` check was correspondingly widened from exact equality to `baseY - viewportY <= BOTTOM_OFFSET_LINES`, or the intentional offset would break follow-mode on every repaint. The debounce approach `derived_from::[[xterm-scrollbar-flicker]]` originally recommended was not implemented — kept as a complementary fallback if any residual flicker surfaces under very high-frequency bursts.
+
+## Container-width changes refit locally but never resync the host (researched 2026-09-20)
+
+`LogTail.tsx:386` attaches a `ResizeObserver` to `xtermContainerRef` that calls `fitWithRightEdgeMargin(term, fitAddon)`, so any change in the detail pane's width (e.g. a sidebar dock-width change) refits the *local* xterm immediately. The host-side tmux size is synced only by `terminalSizeProbe` on window `resize`, using a probe hard-coded to `SIDEBAR_WIDTH_PX` — so a width change that isn't a window resize desynchronizes the two. Consequence for the proposed sidebar hover-expand: it must overlay, not push. See `derived_from::[[sidebar-hover-expand]]` and `uses::[[terminal-size-coupling-to-layout-width]]`.

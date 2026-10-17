@@ -34,8 +34,12 @@ vi.mock('./api', () => ({
 }))
 
 import { syncTerminalSize } from './api'
-import { SIDEBAR_WIDTH_PX } from './layoutConstants'
-import { maybeProbeOnFirstRender, registerResizeListener } from './terminalSizeProbe'
+import { SIDEBAR_RAIL_WIDTH_PX, SIDEBAR_WIDTH_PX } from './layoutConstants'
+import {
+  maybeProbeOnFirstRender,
+  registerResizeListener,
+  setSidebarDockedWidth,
+} from './terminalSizeProbe'
 
 afterAll(() => {
   document.body.innerHTML = ''
@@ -117,5 +121,46 @@ describe('terminalSizeProbe — first-render and resize guards (TASK-130)', () =
     expect(outer?.style.left).toBe(`${SIDEBAR_WIDTH_PX.toString()}px`)
     expect(outer?.style.visibility).toBe('hidden')
     expect(outer?.style.pointerEvents).toBe('none')
+  })
+
+  // TASK-0179: minimizing the sidebar to a rail changes the docked width, so the probe node's
+  // left edge must follow and the shared tmux window size must be re-measured.
+  it('setSidebarDockedWidth moves the probe node and re-probes once a first probe has run (TASK-0179)', () => {
+    const before = vi.mocked(syncTerminalSize).mock.calls.length
+
+    setSidebarDockedWidth(SIDEBAR_RAIL_WIDTH_PX)
+
+    const outer = document.body.querySelector<HTMLElement>('.fixed.inset-y-0.right-0')
+    expect(outer?.style.left).toBe(`${SIDEBAR_RAIL_WIDTH_PX.toString()}px`)
+    expect(vi.mocked(syncTerminalSize)).toHaveBeenCalledTimes(before + 1)
+  })
+
+  it('setSidebarDockedWidth with an unchanged width does not re-probe (TASK-0179)', () => {
+    const before = vi.mocked(syncTerminalSize).mock.calls.length
+
+    setSidebarDockedWidth(SIDEBAR_RAIL_WIDTH_PX)
+
+    expect(vi.mocked(syncTerminalSize)).toHaveBeenCalledTimes(before)
+  })
+
+  // Uses a fresh module instance (hasProbedOnce back to false, no probe node yet). Kept last:
+  // it resets the module registry and clears the document, unlike the sequential cases above.
+  it('setSidebarDockedWidth before any first probe records the width without probing (TASK-0179)', async () => {
+    vi.resetModules()
+    document.body.innerHTML = ''
+    const fresh = await import('./terminalSizeProbe')
+    const freshApi = await import('./api')
+
+    // The './api' mock is shared across module resets, so assert on call-count deltas.
+    const before = vi.mocked(freshApi.syncTerminalSize).mock.calls.length
+
+    fresh.setSidebarDockedWidth(SIDEBAR_RAIL_WIDTH_PX)
+    expect(vi.mocked(freshApi.syncTerminalSize)).toHaveBeenCalledTimes(before)
+
+    // The pending first-render probe builds the probe node using the updated docked width.
+    fresh.maybeProbeOnFirstRender()
+    const outer = document.body.querySelector<HTMLElement>('.fixed.inset-y-0.right-0')
+    expect(outer?.style.left).toBe(`${SIDEBAR_RAIL_WIDTH_PX.toString()}px`)
+    expect(vi.mocked(freshApi.syncTerminalSize)).toHaveBeenCalledTimes(before + 1)
   })
 })

@@ -1,7 +1,9 @@
 import { ChevronLeft, ChevronRight, Square, Trash2 } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FocusEvent as ReactFocusEvent, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { API_BASE, addTask, cloneAgent, createWorktreeForAgent, listProjects, renameAgent, updateAgentRole, updateBgProcess, type AgentDisplayStatus, type AgentRunState, type AgentStatusContract, type Project, type Task } from '../lib/api'
-import { SIDEBAR_WIDTH_PX } from '../lib/layoutConstants'
+import { HOVER_OPEN_DELAY_MS, HOVER_OPEN_DELAY_TYPING_MS, SIDEBAR_MINIMIZED_STORAGE_KEY, SIDEBAR_RAIL_WIDTH_PX, SIDEBAR_WIDTH_PX } from '../lib/layoutConstants'
+import { setSidebarDockedWidth } from '../lib/terminalSizeProbe'
+import { useHoverExpand } from '../lib/useHoverExpand'
 import AddTaskForm from './AddTaskForm'
 import InactiveAgentsPanel from './InactiveAgentsPanel'
 import AgentActionsMenu from './AgentActionsMenu'
@@ -1182,6 +1184,7 @@ function AgentItem({ agent, project, selected = false, onExpand }: {
     <div
       role="button"
       tabIndex={0}
+      data-agent-id={agent.id.toString()}
       onClick={() => { onExpand(false) }}
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onExpand(false) } }}
       className={`mb-2 flex flex-col gap-1.5 animate-popIn cursor-pointer select-none rounded-[10px] border border-r-[4px] border-line px-3.5 py-2.5 shadow-card transition-shadow last:mb-0 hover:shadow-card-hover ${selected ? 'bg-canvas ring-2 ring-accent-blue/50' : 'bg-card'}`}
@@ -1241,6 +1244,48 @@ function AgentItem({ agent, project, selected = false, onExpand }: {
         >
           Direct Input — needs you
         </button>
+      )}
+    </div>
+  )
+}
+
+/** Compact sidebar row shown while the sidebar is minimized to a rail: an initial chip, the
+ *  4px status-colored right border, and a pulsing dot when the agent needs the user's input. */
+function AgentRailItem({ agent, selected = false, onSelect }: {
+  agent: Agent
+  /** True when this row's agent is the one rendered in the main detail pane. */
+  selected?: boolean
+  onSelect: () => void
+}) {
+  const status = deriveStatus(agent)
+  const initial = agent.name.charAt(0).toUpperCase()
+
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      data-agent-id={agent.id.toString()}
+      onClick={() => { onSelect() }}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelect() } }}
+      className={`relative mb-1.5 flex cursor-pointer select-none items-center justify-center rounded-[10px] border-r-[4px] py-1.5 last:mb-0 ${selected ? 'bg-canvas ring-2 ring-accent-blue/50' : 'hover:bg-canvas'}`}
+      style={{ borderRightColor: getStatusColor(status) }}
+      aria-current={selected ? 'true' : undefined}
+      aria-label={`${agent.name} detail`}
+      title={`${agent.name} — ${STATUS_CONFIG[status].label}`}
+    >
+      <span
+        aria-hidden="true"
+        className="flex h-8 w-8 items-center justify-center rounded-full bg-card text-[13px] font-semibold text-ink shadow-card"
+      >
+        {initial}
+      </span>
+      {needsAttention(status) && (
+        <span
+          aria-hidden="true"
+          data-testid="rail-attention-dot"
+          className="absolute right-0.5 top-0.5 h-2 w-2 animate-pulse rounded-full motion-reduce:animate-none"
+          style={{ background: status === 'stalled' ? '#e5484d' : '#e0901a' }}
+        />
       )}
     </div>
   )
@@ -1722,69 +1767,189 @@ const groupByProject = (list: Agent[]): { project: string | null; agents: Agent[
 // Left-hand agent list: filter input on top, then the active agents grouped
 // under project headers (unassigned last). Rows are AgentItem so the badges,
 // context meter and "Direct Input" CTA stay defined in exactly one place.
-function AgentSidebar({ agents, filterText, onFilterChange, onExpand, selectedAgentId, totalAgentCount }: {
+function AgentSidebar({ agents, filterText, onFilterChange, onExpand, selectedAgentId, totalAgentCount, minimized, onToggleMinimized, getOpenDelayMs }: {
   agents: Agent[]
   filterText: string
   onFilterChange: (value: string) => void
   onExpand: (agentId: number, armInteract: boolean) => void
   selectedAgentId: number | null
   totalAgentCount: number
+  /** True when the sidebar is docked as a narrow rail; hovering/focusing it opens a flyout overlay. */
+  minimized: boolean
+  onToggleMinimized: () => void
+  getOpenDelayMs: () => number
 }) {
   const groups = groupByProject([...agents].sort(byProjectThenStatus))
+  const containerRef = useRef<HTMLDivElement>(null)
+  const toggleRef = useRef<HTMLButtonElement>(null)
+  const asideRef = useRef<HTMLElement>(null)
+  const focusedAgentIdRef = useRef<string | null>(null)
+  const hover = useHoverExpand({ enabled: minimized, containerRef, getOpenDelayMs })
+  // The rail glyph-only view; the flyout (minimized + hover-open) renders the full sidebar.
+  const railMode = minimized && !hover.open
+
+  // Selecting a row while minimized dismisses the flyout so the terminal is uncovered.
+  const selectAgent = (agentId: number, armInteract: boolean): void => {
+    onExpand(agentId, armInteract)
+    if (minimized) hover.close()
+  }
+
+  const toggleLabel = minimized ? 'Expand sidebar' : 'Minimize sidebar'
+
+  const handleToggle = (): void => {
+    // Disabling the hook leaves its internal `open` untouched, so clear it explicitly.
+    hover.close()
+    onToggleMinimized()
+  }
+
+  const handleKeyDown = (e: ReactKeyboardEvent<HTMLElement>): void => {
+    const wasOpen = hover.open
+    // Focus the toggle BEFORE closing: moving focus inside the container fires the hook's
+    // onFocus (which opens the flyout), so closing afterwards is what makes the close win.
+    if (wasOpen && e.key === 'Escape') toggleRef.current?.focus()
+    hover.containerProps.onKeyDown(e)
+  }
+
+  // Track which agent row holds focus so it can be restored after the rail→flyout swap.
+  const handleFocus = (e: ReactFocusEvent<HTMLElement>): void => {
+    focusedAgentIdRef.current = e.target.closest('[data-agent-id]')?.getAttribute('data-agent-id') ?? null
+    hover.containerProps.onFocus(e)
+  }
+
+  const handleBlur = (e: ReactFocusEvent<HTMLElement>): void => {
+    hover.containerProps.onBlur(e)
+    const next = e.relatedTarget
+    if (next instanceof Node && containerRef.current?.contains(next)) return
+    if (next instanceof Node) {
+      focusedAgentIdRef.current = null
+      return
+    }
+    // A null relatedTarget is also what an unmounting focused row can produce (the rail→flyout
+    // swap), which the layout effect below still needs to see — so clear after that commit.
+    setTimeout(() => {
+      if (!containerRef.current?.contains(document.activeElement)) focusedAgentIdRef.current = null
+    }, 0)
+  }
+
+  // Focusing a rail row opens the flyout, which swaps AgentRailItem for AgentItem (different
+  // components, so React remounts) and drops DOM focus to <body>. Restore it to the same agent's
+  // full row. Only the rail→flyout flip is restored: focusing a rail row on flyout→rail would
+  // re-fire the hook's onFocus and re-open the flyout, and every close path is already covered
+  // (Escape focuses the toggle first; mouseleave never closes while focus is inside).
+  useLayoutEffect(() => {
+    if (railMode) return
+    const agentId = focusedAgentIdRef.current
+    if (agentId === null) return
+    const active = document.activeElement
+    if (active && active !== document.body) return
+    asideRef.current?.querySelector<HTMLElement>(`[data-agent-id="${agentId}"]`)?.focus()
+  }, [railMode])
 
   return (
-    <aside
-      aria-label="Agents"
-      style={{ width: SIDEBAR_WIDTH_PX }}
-      className="flex-shrink-0 overflow-y-auto border-r border-line bg-canvas/40 p-3"
+    <div
+      ref={containerRef}
+      className="relative flex-shrink-0"
+      style={{ width: minimized ? SIDEBAR_RAIL_WIDTH_PX : SIDEBAR_WIDTH_PX }}
+      {...hover.containerProps}
+      onKeyDown={handleKeyDown}
+      onFocus={handleFocus}
+      onBlur={handleBlur}
     >
-      {totalAgentCount > 0 && (
-        <input
-          type="text"
-          value={filterText}
-          onChange={(e) => { onFilterChange(e.target.value) }}
-          placeholder="Filter agents by name, project, role, or branch…"
-          aria-label="Filter agents"
-          className="mb-4 w-full rounded-[8px] border border-line-input bg-card px-3 py-1.5 font-mono text-[12px] text-ink placeholder:text-muted-2 outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/10 disabled:opacity-40"
-        />
-      )}
-      {/* Collapsible inactive-agents section, docked between the filter and the project
-          groups. It reads its own agent list, so it is unaffected by the filter. */}
-      {totalAgentCount > 0 && (
-        <InactiveAgentsPanel
-          onOpenDetail={(id) => { onExpand(id, false) }}
-          selectedId={selectedAgentId}
-        />
-      )}
-      {totalAgentCount === 0 ? (
-        <p className="text-[13px] italic text-muted-2">No agents registered.</p>
-      ) : filterText.trim() !== '' && agents.length === 0 ? (
-        <p className="text-[13px] italic text-muted-2">No agents match your filter.</p>
-      ) : agents.length === 0 ? (
-        // Agents are registered but every one is inactive (no active rows to group).
-        <p className="text-[13px] italic text-muted-2">No active agents.</p>
-      ) : (
-        <div className="flex flex-col gap-4">
-          {groups.map((group) => (
-            <div key={group.project ?? '__unassigned__'}>
-              <p className="mb-1.5 flex items-baseline justify-between px-1 text-[12px] font-semibold uppercase tracking-[0.06em] text-muted-2">
-                <span className="truncate">{group.project ?? 'Unassigned'}</span>
-                <span className="ml-2 flex-shrink-0 font-mono text-[10px] font-medium normal-case tracking-normal">{group.agents.length}</span>
-              </p>
-              {group.agents.map((agent) => (
-                <AgentItem
-                  key={agent.id}
-                  agent={agent}
-                  project={projectLabelFor(agent)}
-                  selected={selectedAgentId === agent.id}
-                  onExpand={(armInteract) => { onExpand(agent.id, armInteract) }}
-                />
+      <aside
+        ref={asideRef}
+        id="agents-sidebar"
+        aria-label="Agents"
+        style={{ width: railMode ? SIDEBAR_RAIL_WIDTH_PX : SIDEBAR_WIDTH_PX }}
+        className={`absolute inset-y-0 left-0 flex flex-col overflow-hidden border-r border-line transition-[width] duration-150 motion-reduce:transition-none ${minimized ? 'z-30 bg-canvas shadow-lg' : 'bg-canvas/40'}`}
+      >
+        {/* Sticky header: the toggle, filter and Inactive Agents section stay pinned while
+            only the agent list below scrolls. */}
+        <div className={`flex-shrink-0 ${railMode ? 'p-2 pb-0' : 'p-3 pb-0'}`}>
+          <div className={`mb-2 flex ${railMode ? 'justify-center' : 'justify-end'}`}>
+            <button
+              type="button"
+              ref={toggleRef}
+              onClick={handleToggle}
+              aria-controls="agents-sidebar"
+              aria-expanded={!minimized}
+              aria-label={toggleLabel}
+              title={`${toggleLabel} (Ctrl+B)`}
+              className="flex h-7 w-7 cursor-pointer items-center justify-center rounded-[7px] border border-line-input bg-card text-[14px] font-semibold text-muted-2 outline-none transition hover:text-ink focus-visible:ring-2 focus-visible:ring-accent/40"
+            >
+              <span aria-hidden="true">{minimized ? '›' : '‹'}</span>
+            </button>
+          </div>
+          {!railMode && totalAgentCount > 0 && (
+            <input
+              type="text"
+              value={filterText}
+              onChange={(e) => { onFilterChange(e.target.value) }}
+              placeholder="Filter agents by name, project, role, or branch…"
+              aria-label="Filter agents"
+              className="mb-4 w-full rounded-[8px] border border-line-input bg-card px-3 py-1.5 font-mono text-[12px] text-ink placeholder:text-muted-2 outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/10 disabled:opacity-40"
+            />
+          )}
+          {/* Collapsible inactive-agents section, docked between the filter and the project
+              groups. It reads its own agent list, so it is unaffected by the filter. */}
+          {!railMode && totalAgentCount > 0 && (
+            <div className="max-h-[40vh] overflow-y-auto">
+              <InactiveAgentsPanel
+                onOpenDetail={(id) => { selectAgent(id, false) }}
+                selectedId={selectedAgentId}
+              />
+            </div>
+          )}
+        </div>
+        <div className={`min-h-0 flex-1 overflow-y-auto ${railMode ? 'p-2' : 'p-3'}`}>
+          {totalAgentCount === 0 ? (
+            !railMode && <p className="text-[13px] italic text-muted-2">No agents registered.</p>
+          ) : filterText.trim() !== '' && agents.length === 0 ? (
+            !railMode && <p className="text-[13px] italic text-muted-2">No agents match your filter.</p>
+          ) : agents.length === 0 ? (
+            // Agents are registered but every one is inactive (no active rows to group).
+            !railMode && <p className="text-[13px] italic text-muted-2">No active agents.</p>
+          ) : railMode ? (
+            <div className="flex flex-col">
+              {groups.map((group, i) => (
+                <div
+                  key={group.project ?? '__unassigned__'}
+                  className={i > 0 ? 'mt-2 border-t border-line pt-2' : undefined}
+                >
+                  {group.agents.map((agent) => (
+                    <AgentRailItem
+                      key={agent.id}
+                      agent={agent}
+                      selected={selectedAgentId === agent.id}
+                      onSelect={() => { selectAgent(agent.id, false) }}
+                    />
+                  ))}
+                </div>
               ))}
             </div>
-          ))}
+          ) : (
+            <div className="flex flex-col gap-4">
+              {groups.map((group) => (
+                <div key={group.project ?? '__unassigned__'}>
+                  <p className="mb-1.5 flex items-baseline justify-between px-1 text-[12px] font-semibold uppercase tracking-[0.06em] text-muted-2">
+                    <span className="truncate">{group.project ?? 'Unassigned'}</span>
+                    <span className="ml-2 flex-shrink-0 font-mono text-[10px] font-medium normal-case tracking-normal">{group.agents.length}</span>
+                  </p>
+                  {group.agents.map((agent) => (
+                    <AgentItem
+                      key={agent.id}
+                      agent={agent}
+                      project={projectLabelFor(agent)}
+                      selected={selectedAgentId === agent.id}
+                      onExpand={(armInteract) => { selectAgent(agent.id, armInteract) }}
+                    />
+                  ))}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
-      )}
-    </aside>
+      </aside>
+    </div>
   )
 }
 
@@ -1883,6 +2048,57 @@ export default function AgentList() {
   useEffect(() => {
     agentsRef.current = agents
   }, [agents])
+
+  // Sidebar minimize (rail) state — persisted per-browser; storage can be blocked, so
+  // every access is guarded and the sidebar simply defaults to expanded.
+  const [sidebarMinimized, setSidebarMinimized] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem(SIDEBAR_MINIMIZED_STORAGE_KEY) === '1'
+    } catch {
+      return false
+    }
+  })
+  const toggleSidebarMinimized = useCallback(() => {
+    // Next value is computed from the current state (not inside the updater) so the
+    // storage write is not a side effect of a state updater function.
+    const next = !sidebarMinimized
+    setSidebarMinimized(next)
+    try {
+      localStorage.setItem(SIDEBAR_MINIMIZED_STORAGE_KEY, next ? '1' : '0')
+    } catch {
+      /* storage unavailable — state still applies for this session */
+    }
+  }, [sidebarMinimized])
+  // The terminal's cols/rows probe measures the detail pane, whose width depends on how
+  // much horizontal space the docked sidebar takes (the hover flyout overlays and does
+  // not count) — keep the probe in sync with the docked width.
+  useEffect(() => {
+    setSidebarDockedWidth(sidebarMinimized ? SIDEBAR_RAIL_WIDTH_PX : SIDEBAR_WIDTH_PX)
+  }, [sidebarMinimized])
+  // Cmd+B (mac) / Ctrl+B toggles the sidebar. Skipped while typing in a field; on
+  // non-mac, Ctrl+B is also skipped inside the Direct Input capture surface because
+  // it is a real terminal/tmux prefix keystroke there.
+  useEffect(() => {
+    const isMac = /mac/i.test(navigator.userAgent)
+    const handler = (e: KeyboardEvent) => {
+      const modifierPressed = isMac ? e.metaKey : e.ctrlKey
+      if (!modifierPressed || e.shiftKey || e.altKey || e.key.toLowerCase() !== 'b') return
+      const target = e.target as HTMLElement
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return
+      if (!isMac && target.closest('[data-terminal-capture]')) return
+      e.preventDefault()
+      toggleSidebarMinimized()
+    }
+    document.addEventListener('keydown', handler)
+    return () => { document.removeEventListener('keydown', handler) }
+  }, [toggleSidebarMinimized])
+  // Hover-open delay is longer while focus is inside the detail pane (the user is likely
+  // typing/interacting there), so a stray mouse pass over the rail doesn't pop the flyout.
+  const detailPaneRef = useRef<HTMLDivElement>(null)
+  const getOpenDelayMs = useCallback(
+    () => (detailPaneRef.current?.contains(document.activeElement) ? HOVER_OPEN_DELAY_TYPING_MS : HOVER_OPEN_DELAY_MS),
+    [],
+  )
 
   useEffect(() => {
     fetch(`${apiUrl}/status`)
@@ -2144,6 +2360,9 @@ export default function AgentList() {
           onExpand={(id, armInteract) => { setExpandedAgent({ id, armInteract }) }}
           selectedAgentId={expandedAgent?.id ?? null}
           totalAgentCount={agents.length}
+          minimized={sidebarMinimized}
+          onToggleMinimized={toggleSidebarMinimized}
+          getOpenDelayMs={getOpenDelayMs}
         />
         {/* Rendered from live `agents` state so the badge/banner keep updating while the
             agent is selected; if it is removed, the lookup empties and the pane falls back
@@ -2151,6 +2370,7 @@ export default function AgentList() {
             (resets rename/role inputs, confirm dialogs, active tab, worktree override). */}
         {selectedAgent && expandedAgent ? (
           <div
+            ref={detailPaneRef}
             role="region"
             aria-label={`${selectedAgent.name} detail`}
             className="flex min-h-0 min-w-0 flex-1 flex-col"
