@@ -1,5 +1,6 @@
 import React from 'react';
 import { addTask, uploadImageForPath, type Task } from '../lib/api';
+import { saveLastPayload } from '../lib/lastPayload';
 
 export interface AddTaskFormProps {
   agentId: number;
@@ -127,10 +128,16 @@ export default function AddTaskForm({ agentId, onAdded, projectId, projectName }
     setError(null);
 
     try {
-      const opts = (scope === 'project' && projectId != null)
-        ? { projectId }
-        : { agentId };
+      const projectScoped = scope === 'project' && projectId != null;
+      const opts = projectScoped ? { projectId } : { agentId };
       const result = await addTask(trimmed, opts);
+      // Agent-scoped submits only. A project-scoped task is run by whichever project
+      // agent pops it first, so it is not this agent's payload; the form cannot create
+      // global tasks. The hook later re-delivers the same text with a newer ts, and the
+      // store's newest-ts-wins rule reconciles the two.
+      if (!projectScoped) {
+        saveLastPayload(agentId, { text: trimmed, ts: new Date().toISOString(), source: 'add-task' });
+      }
       setValue('');
       try { localStorage.removeItem(`conductor:taskDraft:${agentId.toString()}`) } catch { /**/ }
 

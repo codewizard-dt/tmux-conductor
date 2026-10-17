@@ -1,23 +1,25 @@
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { syncTerminalSize } from './api'
-import { SIDEBAR_WIDTH_PX } from './layoutConstants'
+import { getSidebarWidthPx } from './sidebarState'
 import { fitWithRightEdgeMargin, TERMINAL_FONT_OPTIONS } from './terminalTheme'
 
 // Hidden DOM node reproducing the Agents page detail pane's geometry (see
-// frontend/src/components/AgentList.tsx — the pane to the right of the fixed-width
+// frontend/src/components/AgentList.tsx — the pane to the right of the collapsible
 // AgentSidebar, and AgentDetailView's `p-5` body wrapper), so a throwaway xterm Terminal
 // mounted inside it measures the width the steady-state terminal surface actually has.
+// The sidebar is expanded or collapsed, so the node's left edge is re-synced to the live
+// sidebar width on every probe (the node itself is only created once).
 // `visibility: hidden` (not `display: none`) keeps layout/geometry intact while remaining
 // invisible and inert.
 let probeMountEl: HTMLDivElement | null = null
+let probeOuterEl: HTMLDivElement | null = null
 
 function getProbeMount(): HTMLDivElement {
   if (probeMountEl) return probeMountEl
 
   const outer = document.createElement('div')
   outer.className = 'fixed inset-y-0 right-0'
-  outer.style.left = `${SIDEBAR_WIDTH_PX.toString()}px`
   outer.style.visibility = 'hidden'
   outer.style.pointerEvents = 'none'
   outer.style.zIndex = '-1'
@@ -43,6 +45,7 @@ function getProbeMount(): HTMLDivElement {
   outer.appendChild(inner)
   document.body.appendChild(outer)
 
+  probeOuterEl = outer
   probeMountEl = mount
   return mount
 }
@@ -54,6 +57,7 @@ function getProbeMount(): HTMLDivElement {
  */
 export function probeAndSyncTerminalSize(): void {
   const mount = getProbeMount()
+  if (probeOuterEl) probeOuterEl.style.left = `${getSidebarWidthPx().toString()}px`
 
   const term = new Terminal({
     fontFamily: TERMINAL_FONT_OPTIONS.fontFamily,
@@ -82,6 +86,22 @@ export function maybeProbeOnFirstRender(): void {
   probeAndSyncTerminalSize()
 }
 
+// Shared trailing debounce (400ms, single timer) for every re-probe trigger — window resizes and
+// sidebar collapse/expand toggles — so rapid bursts of either coalesce into one sync.
+let reprobeTimer: ReturnType<typeof setTimeout> | undefined
+
+function scheduleReprobe(): void {
+  if (reprobeTimer !== undefined) clearTimeout(reprobeTimer)
+  reprobeTimer = setTimeout(() => {
+    probeAndSyncTerminalSize()
+  }, 400)
+}
+
+/** Debounced re-probe for callers whose layout change (e.g. the sidebar toggling) resizes the terminal pane. */
+export function reprobeTerminalSize(): void {
+  scheduleReprobe()
+}
+
 // Single debounced window-resize listener: a genuine viewport resize always re-probes,
 // regardless of how many times this is called (guarded against double-registration).
 let registered = false
@@ -90,11 +110,5 @@ export function registerResizeListener(): void {
   if (registered) return
   registered = true
 
-  let debounceTimer: ReturnType<typeof setTimeout> | undefined
-  window.addEventListener('resize', () => {
-    if (debounceTimer !== undefined) clearTimeout(debounceTimer)
-    debounceTimer = setTimeout(() => {
-      probeAndSyncTerminalSize()
-    }, 400)
-  })
+  window.addEventListener('resize', scheduleReprobe)
 }

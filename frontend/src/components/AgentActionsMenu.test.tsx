@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import AgentActionsMenu, { type AgentActionsMenuItem } from './AgentActionsMenu'
 
 // vitest.setup.ts doesn't register RTL's auto-cleanup (see ConfirmDialog.test.tsx's
@@ -140,5 +140,38 @@ describe('AgentActionsMenu', () => {
     const disabledItem = screen.getByRole('menuitem', { name: 'Item B' })
     expect(disabledItem).toBeDisabled()
     expect(disabledItem).toHaveAttribute('tabIndex', '-1')
+  })
+
+  it('a disabled item with a description renders the reason text, stays disabled, is skipped by roving focus, and exposes the text via aria-describedby', () => {
+    const reason = 'Needs a clean git repo'
+    const { items } = makeItems({ b: { disabled: true, description: reason } })
+    render(<AgentActionsMenu items={items} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Agent actions' }))
+
+    expect(screen.getByText(reason)).toBeInTheDocument()
+    const disabledItem = screen.getByRole('menuitem', { name: 'Item B' })
+    expect(disabledItem).toBeDisabled()
+    expect(disabledItem).toContainElement(screen.getByText(reason))
+
+    // Legibility: the reason line is not dimmed with the disabled item and uses the 4.5:1-safe muted token
+    // (text-muted-2 is ~2.7:1 on bg-card in light theme). Only the label carries the dimming.
+    const reasonEl = screen.getByText(reason)
+    expect(disabledItem.className).not.toMatch(/opacity/)
+    expect(reasonEl.className).not.toMatch(/opacity/)
+    expect(reasonEl).toHaveClass('text-muted')
+    expect(reasonEl).not.toHaveClass('text-muted-2')
+    expect(within(disabledItem).getByTestId('menu-item-label')).toHaveClass('group-disabled:opacity-40')
+
+    const describedBy = disabledItem.getAttribute('aria-describedby')
+    expect(describedBy).toBeTruthy()
+    expect(document.getElementById(describedBy as string)).toHaveTextContent(reason)
+    // Items without a description carry no aria-describedby.
+    expect(screen.getByRole('menuitem', { name: 'Item A' })).not.toHaveAttribute('aria-describedby')
+
+    // Roving focus still skips the disabled item: A -> C.
+    expect(document.activeElement).toHaveTextContent('Item A')
+    fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'ArrowDown' })
+    expect(document.activeElement).toHaveTextContent('Item C')
   })
 })

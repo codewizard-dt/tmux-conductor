@@ -1,18 +1,29 @@
+import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
+import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 import { ChevronLeft, ChevronRight, Square, Trash2 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { API_BASE, addTask, cloneAgent, createWorktreeForAgent, listProjects, renameAgent, updateAgentRole, updateBgProcess, type AgentDisplayStatus, type AgentRunState, type AgentStatusContract, type Project, type Task } from '../lib/api'
-import { SIDEBAR_WIDTH_PX } from '../lib/layoutConstants'
+import { API_BASE, addTask, cloneAgent, createWorktreeForAgent, listProjects, renameAgent, restartAgentWindow, updateAgentRole, updateBgProcess, type AgentDisplayStatus, type AgentRunState, type AgentStatusContract, type BgLastRestart as BgLastRestartValue, type BgRestartResult, type Project, type Task } from '../lib/api'
+import { clearOrder, loadOrder, orderAgents, reorderGroup, saveOrder } from '../lib/agentOrder'
+import { SIDEBAR_COLLAPSED_WIDTH_PX, SIDEBAR_WIDTH_PX } from '../lib/layoutConstants'
+import { loadSidebarCollapsed, setSidebarCollapsed } from '../lib/sidebarState'
+import { reprobeTerminalSize } from '../lib/terminalSizeProbe'
+import { clearLastPayload, firstLinePreview, saveLastPayload, sweepOrphanedLastPayloads, useLastPayload } from '../lib/lastPayload'
 import AddTaskForm from './AddTaskForm'
-import InactiveAgentsPanel from './InactiveAgentsPanel'
+import AddBgProcessForm from './AddBgProcessForm'
 import AgentActionsMenu from './AgentActionsMenu'
 import AgentInfoTabs, { type AgentInfoTabDef } from './AgentInfoTabs'
+import { BackgroundProcessesTab } from './BackgroundProcessesTab'
+import { BgLastRestart } from './BgLastRestart'
+import { BgLivenessBadge } from './BgLivenessBadge'
+import { BgRestartButton } from './BgRestartButton'
+import { bgQualifiedLabel } from '../lib/bgLabel'
 import CheckpointList from './CheckpointList'
 import ConfirmDialog from './ConfirmDialog'
 import DiffPanel from './DiffPanel'
 import ErrorBoundary from './ErrorBoundary'
 import LogTail from './LogTail'
 import ModeSwitcher from './ModeSwitcher'
-import NotificationStack from './NotificationStack'
 import TaskList from './TaskList'
 import { useSSEEvent } from '../hooks/useSSE'
 
@@ -38,9 +49,10 @@ export interface Agent {
   workdir: string
   branch?: string | null
   worktreePath?: string | null
+  inGitRepo?: boolean
   role?: string | null
-  linkedBg: string | null
   activeTask: string | null
+  lastPrompt?: { text: string; ts: string } | null
   label?: string | null
   model?: string | null
   modelId?: string | null
@@ -59,16 +71,25 @@ export interface Agent {
 }
 
 export interface BgProcess {
+  /**
+   * Derived identity `<projectName>-<name>` (TASK-0196). `name` is only unique
+   * within a project, so every route, React key and SSE match uses the slug.
+   */
+  slug: string
+  /** Display label; unique per project, not globally. */
   name: string
   workdir: string
   launchCmd: string
   windowPresent: boolean
+  liveness?: 'running' | 'exited' | 'stopped'
   state: string | null
   logPath: string
   statePath: string
-  linkedAgent: string | null
-  projectId: number | null
-  projectName: string | null
+  /** Every bg process belongs to a project (TASK-0195) — never null. */
+  projectId: number
+  projectName: string
+  /** TASK-0193: last successful restart (who/when); null/absent = never restarted. */
+  lastRestart?: BgLastRestartValue | null
 }
 
 interface SessionState {
@@ -82,24 +103,23 @@ interface SessionState {
 
 // ── Status ────────────────────────────────────────────────────────────────
 
-// Grace period before a toast-like notification for an `awaiting`/`empty`
-// transition actually appears — lets a blip (e.g. instantly-resolved dialog)
-// resolve itself without ever surfacing.
-const NOTIFICATION_GRACE_MS = 3000
-
 export const STATUS_CONFIG: Record<AgentStatus, { bg: string; color: string; dot: string; label: string }> = {
   busy: { bg: 'var(--color-status-busy-bg)', color: 'var(--color-status-busy-text)', dot: '#3b6ef6', label: 'busy' },
   idle: { bg: 'var(--color-status-idle-bg)', color: 'var(--color-status-idle-text)', dot: '#30a46c', label: 'idle' },
   'idle-waiting': { bg: 'var(--color-status-success-bg)', color: 'var(--color-status-success-text)', dot: '#30a46c', label: 'idle/waiting' },
-  empty: { bg: 'var(--color-status-warn-bg)', color: 'var(--color-status-warn-text)', dot: '#e0901a', label: 'no tasks' },
+  empty: { bg: 'var(--color-status-idle-bg)', color: 'var(--color-status-idle-text)', dot: '#30a46c', label: 'ready' },
   error: { bg: 'var(--color-status-error-bg)', color: 'var(--color-status-error-text)', dot: '#e5484d', label: 'error' },
-  awaiting: { bg: 'var(--color-status-warn-bg)', color: 'var(--color-status-warn-text)', dot: '#e0901a', label: 'waiting' },
+  awaiting: { bg: 'var(--color-status-warn-bg)', color: 'var(--color-status-warn-text)', dot: '#eab308', label: 'waiting' },
   stalled: { bg: 'var(--color-status-error-bg)', color: 'var(--color-status-error-text)', dot: '#e5484d', label: 'stalled' },
   starting: { bg: 'var(--color-status-neutral-bg)', color: 'var(--color-status-neutral-text)', dot: '#4f5a78', label: 'starting' },
   'no-window': { bg: 'var(--color-badge-neutral-bg)', color: 'var(--color-badge-neutral-text)', dot: '#9a9da5', label: 'no window' },
   exited: { bg: 'var(--color-status-error-bg)', color: '#e5484d', dot: '#e5484d', label: 'exited' },
   unknown: { bg: 'var(--color-badge-neutral-bg)', color: 'var(--color-badge-neutral-text)', dot: '#9a9da5', label: 'unknown' },
 }
+
+// Presentation override: inactive sidebar rows all share the red border, regardless of
+// the per-status dot color in STATUS_CONFIG (no-window/unknown are grey there).
+const INACTIVE_BORDER_COLOR = '#e5484d'
 
 export function getStatusColor(status: AgentStatus): string {
   return STATUS_CONFIG[status].dot
@@ -108,6 +128,19 @@ export function getStatusColor(status: AgentStatus): string {
 /** Statuses where the agent is blocked on a human — the interact CTA gets prominent. */
 export function needsAttention(status: AgentStatus): boolean {
   return status === 'awaiting' || status === 'stalled'
+}
+
+/**
+ * Mirror the host-server's authoritative `lastPrompt` into the per-agent localStorage
+ * store (side effect only — nothing renders from here). `undefined` (one-shot partial
+ * `agent-update` payloads omit the field, meaning "unchanged") and `null` (no prompt
+ * captured yet) both write nothing. Newest-timestamp-wins lives in `saveLastPayload`.
+ */
+function mirrorLastPrompt(agent: Pick<Agent, 'id' | 'lastPrompt'>): void {
+  const lp = agent.lastPrompt
+  if (typeof lp !== 'object' || lp === null) return
+  if (typeof lp.text !== 'string' || lp.text === '' || typeof lp.ts !== 'string') return
+  saveLastPayload(agent.id, { text: lp.text, ts: lp.ts, source: 'hook' })
 }
 
 export function deriveStatus(agent: Agent): AgentStatus {
@@ -129,7 +162,7 @@ export function deriveStatus(agent: Agent): AgentStatus {
 
 function StatusBadge({ status }: { status: AgentStatus }) {
   const cfg = STATUS_CONFIG[status]
-  const title = status === 'empty' ? 'No queued tasks' : undefined
+  const title = status === 'empty' ? 'Ready — no queued tasks' : undefined
   return (
     <span
       className="inline-flex items-center gap-1 rounded-pill px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.06em]"
@@ -591,6 +624,10 @@ interface AgentDetailViewProps {
   agent: Agent
   project: string | null
   projectId: number | null
+  /** Bg processes owned by the agent's project (empty when the agent has no project). */
+  projectBgs: BgProcess[]
+  /** Called with the slug and server result after a successful Restart/Start from the Background tab. */
+  onBgRestarted?: (slug: string, result: BgRestartResult) => void
   status: AgentStatus
   onClose: () => void
   armInteract?: boolean
@@ -599,18 +636,29 @@ interface AgentDetailViewProps {
   onRenamed?: (id: number, newName: string) => void
   onCloned?: (id: number) => void
   onRoleChanged?: (agentId: number, role: string) => void
+  onWorktreeCreated?: (id: number, worktreePath: string, branch: string) => void
 }
 
 // The agent detail content, mounted directly in the Agents page's main pane. `onClose` means
 // "deselect" (return the pane to its empty state).
-export function AgentDetailView({ agent, project, projectId, status, onClose, armInteract, agentCount, onNavigate, onRenamed, onCloned, onRoleChanged }: AgentDetailViewProps) {
+export function AgentDetailView({ agent, project, projectId, projectBgs, onBgRestarted, status, onClose, armInteract, agentCount, onNavigate, onRenamed, onCloned, onRoleChanged, onWorktreeCreated }: AgentDetailViewProps) {
   const isMac = /mac/i.test(navigator.userAgent)
+  // TASK-0226: last user payload for the strip under the header (retained until replaced).
+  const lastPayload = useLastPayload(agent.id)
   const [tasks, setTasks] = useState<Task[]>([])
   const [windowError, setWindowError] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
   const [worktreeOverride, setWorktreeOverride] = useState<{ worktreePath: string; branch: string } | null>(null)
   const [creatingWorktree, setCreatingWorktree] = useState(false)
   const [worktreeError, setWorktreeError] = useState<string | null>(null)
+  // TASK-0216: a worktree added to an agent whose window is live only updates the DB row — the
+  // pane keeps its cwd. These drive the warn-first dialog, the persistent notice, and the
+  // confirmed "Restart in worktree" (stop + relaunch the window).
+  const [confirmingWorktree, setConfirmingWorktree] = useState(false)
+  const [worktreeNeedsRestart, setWorktreeNeedsRestart] = useState(false)
+  const [confirmingRestart, setConfirmingRestart] = useState(false)
+  const [restarting, setRestarting] = useState(false)
+  const [restartError, setRestartError] = useState<string | null>(null)
   const [removing, setRemoving] = useState(false)
   const [removeError, setRemoveError] = useState<string | null>(null)
   const [closing, setClosing] = useState(false)
@@ -627,6 +675,7 @@ export function AgentDetailView({ agent, project, projectId, status, onClose, ar
   const [roleError, setRoleError] = useState<string | null>(null)
   const [cloning, setCloning] = useState(false)
   const [cloneError, setCloneError] = useState<string | null>(null)
+  const [showAddBg, setShowAddBg] = useState(false)
   // Incrementing signal (re)enables Direct Input in LogTail; seeded by the card CTA.
   const interactSignal = armInteract ? 1 : 0
   const [skills, setSkills] = useState<SkillsResponse | null>(null)
@@ -702,9 +751,10 @@ export function AgentDetailView({ agent, project, projectId, status, onClose, ar
   }
 
   // ROADMAP-007: worktrees are opt-in — this lets an agent that was created
-  // without one get one retroactively. No SSE broadcast backs this (see the
-  // route comment in host-server/index.ts), so the result is held in local
-  // override state until the next full status poll folds it into `agent`.
+  // without one get one retroactively. The route itself does not broadcast (see
+  // its comment in host-server/index.ts); the periodic diff emits a full
+  // `agent-update` within one status tick. Until then the result is held in
+  // local override state and patched into the sidebar via onWorktreeCreated.
   async function handleCreateWorktree() {
     setCreatingWorktree(true)
     setWorktreeError(null)
@@ -712,11 +762,37 @@ export function AgentDetailView({ agent, project, projectId, status, onClose, ar
       const updated = await createWorktreeForAgent(agent.id)
       if (updated.worktreePath && updated.branch) {
         setWorktreeOverride({ worktreePath: updated.worktreePath, branch: updated.branch })
+        setWorktreeNeedsRestart(agent.windowPresent)
+        onWorktreeCreated?.(agent.id, updated.worktreePath, updated.branch)
       }
     } catch (err: unknown) {
       setWorktreeError(err instanceof Error ? err.message : 'Failed to create worktree')
     } finally {
       setCreatingWorktree(false)
+    }
+  }
+
+  // TASK-0216: single entry point for both "Create worktree" triggers (menu item + Details tab).
+  // A live window keeps its cwd, so warn first; a windowless agent lands in the worktree on its
+  // next start (agentPaneCwd) and needs no warning.
+  function requestCreateWorktree() {
+    if (agent.windowPresent) setConfirmingWorktree(true)
+    else void handleCreateWorktree()
+  }
+
+  // Stop + relaunch the window so it starts inside the worktree. Deliberately not doCloseWindow():
+  // that deselects the agent, and here the view must stay put.
+  async function doRestartInWorktree() {
+    setConfirmingRestart(false)
+    setRestarting(true)
+    setRestartError(null)
+    try {
+      await restartAgentWindow(agent.id)
+      setWorktreeNeedsRestart(false)
+    } catch (err: unknown) {
+      setRestartError(err instanceof Error ? err.message : 'Failed to restart window')
+    } finally {
+      setRestarting(false)
     }
   }
 
@@ -730,6 +806,8 @@ export function AgentDetailView({ agent, project, projectId, status, onClose, ar
         const body = await res.json().catch(() => ({})) as { error?: string }
         throw new Error(body.error ?? `HTTP ${res.status.toString()}`)
       }
+      // True deletion only (not window close): drop the stored payload so a reused id starts empty.
+      clearLastPayload(agent.id)
       onClose()
     } catch (err: unknown) {
       setRemoveError(err instanceof Error ? err.message : 'Failed to remove agent')
@@ -789,12 +867,13 @@ export function AgentDetailView({ agent, project, projectId, status, onClose, ar
     }
   }
 
-  async function handleClone() {
+  async function handleClone(opts?: { forceWorktree?: boolean }) {
     if (cloning) return
     setCloning(true)
     setCloneError(null)
     try {
-      const cloned = await cloneAgent(agent.id)
+      // A plain Clone keeps its original one-argument call so its request shape is unchanged.
+      const cloned = await (opts ? cloneAgent(agent.id, opts) : cloneAgent(agent.id))
       onCloned?.(cloned.id)
     } catch (err: unknown) {
       setCloneError(err instanceof Error ? err.message : 'Clone failed')
@@ -811,10 +890,24 @@ export function AgentDetailView({ agent, project, projectId, status, onClose, ar
   // so omitting it would silently disable Direct Input. The pane has no interact-state consumer.
   const handleInteractChange = useCallback(() => { /* intentionally empty */ }, [])
 
+  // TASK-0216: the "still running in <workdir>" notice is moot once the window is gone — a later
+  // "Create window" spawns straight into the worktree. Adjusting state during render (rather than
+  // in an effect) is React's documented pattern for deriving state from a prop change.
+  if (worktreeNeedsRestart && !agent.windowPresent) setWorktreeNeedsRestart(false)
+
   const effectiveWorktreePath = agent.worktreePath ?? worktreeOverride?.worktreePath ?? null
   const effectiveBranch = agent.branch ?? worktreeOverride?.branch ?? null
 
-  const agentActionItems: { key: string; label: string; onSelect: () => void; disabled?: boolean; title?: string; tone?: 'default' | 'danger' | 'warning' }[] = [
+  // TASK-0209: the "Create worktree" menu item mirrors the Details tab's inline button; it is
+  // disabled (with a reason) when a worktree already exists or the workdir isn't a git repo.
+  const hasWorktree = Boolean(effectiveWorktreePath ?? effectiveBranch)
+  const worktreeMenuDescription = hasWorktree
+    ? `Already has a worktree (${effectiveBranch ?? effectiveWorktreePath ?? ''})`
+    : agent.inGitRepo === false
+      ? 'Workdir is not inside a git repository'
+      : undefined
+
+  const agentActionItems: { key: string; label: string; onSelect: () => void; disabled?: boolean; title?: string; description?: string; tone?: 'default' | 'danger' | 'warning' }[] = [
     {
       key: 'rename',
       label: 'Rename',
@@ -831,6 +924,30 @@ export function AgentDetailView({ agent, project, projectId, status, onClose, ar
       onSelect: () => { void handleClone() },
       disabled: cloning,
     },
+    {
+      // TASK-0214: available on every agent (with or without a worktree) — the clone, not the
+      // source, gets the fresh worktree. `undefined` inGitRepo is unknown → enabled; the backend
+      // answers with its real reason.
+      key: 'clone-into-worktree',
+      label: cloning ? 'Cloning…' : 'Clone into new worktree',
+      onSelect: () => { void handleClone({ forceWorktree: true }) },
+      disabled: cloning || agent.inGitRepo === false,
+      title: 'Spawn a copy of this agent in its own new git worktree and branch (off the base branch — uncommitted work is not copied)',
+      ...(agent.inGitRepo === false ? { description: 'Workdir is not inside a git repository' } : {}),
+    },
+    {
+      key: 'create-worktree',
+      label: creatingWorktree ? 'Creating worktree…' : 'Create worktree',
+      onSelect: requestCreateWorktree,
+      disabled: worktreeMenuDescription !== undefined || creatingWorktree,
+      title: (hasWorktree ? worktreeMenuDescription : undefined) ?? 'Opt in to an isolated git worktree + branch for this agent',
+      ...(worktreeMenuDescription !== undefined ? { description: worktreeMenuDescription } : {}),
+    },
+    {
+      key: 'add-bg-process',
+      label: 'Add background process',
+      onSelect: () => { setShowAddBg(true) },
+    },
   ]
 
   // TASK-157: Terminal/Skills/Diff/Usage/Checkpoints, consolidated into one tabbed panel
@@ -839,11 +956,14 @@ export function AgentDetailView({ agent, project, projectId, status, onClose, ar
   // zero skills, matching pre-existing behavior); Diff/Usage/Checkpoints are present only per
   // their own existing mount conditions (see the state comments above and each component's own
   // onPresenceChange wiring for Diff/Usage, and effectiveWorktreePath directly for Checkpoints).
+  // TASK-0205: Background (the agent's project's bg processes) sits after Queued tasks and is
+  // present only when the agent has a project.
   const tabs: AgentInfoTabDef[] = [
     {
       id: 'terminal',
       label: 'Terminal',
-      content: (
+      // No window means no terminal to show: offer to create one right here, in place of LogTail.
+      content: agent.windowPresent ? (
         <ErrorBoundary>
           <LogTail
             key={agent.id}
@@ -856,6 +976,19 @@ export function AgentDetailView({ agent, project, projectId, status, onClose, ar
             onCloseModal={onClose}
           />
         </ErrorBoundary>
+      ) : (
+        <div className="flex flex-1 flex-col items-center justify-center gap-3 py-10 text-center">
+          <p className="m-0 text-[12px] text-muted">This agent has no tmux window.</p>
+          <button
+            type="button"
+            onClick={() => { void handleCreateWindow() }}
+            disabled={creating}
+            className="inline-flex h-8 cursor-pointer items-center rounded-[7px] bg-accent-blue-solid px-4 text-[12px] font-medium text-white transition hover:opacity-85 active:scale-[0.985] disabled:pointer-events-none disabled:opacity-40"
+          >
+            {creating ? 'Creating…' : 'Create window'}
+          </button>
+          {windowError && <span className="text-[11px] text-accent-red">{windowError}</span>}
+        </div>
       ),
     },
     {
@@ -902,7 +1035,7 @@ export function AgentDetailView({ agent, project, projectId, status, onClose, ar
     },
     {
       id: 'details',
-      label: agent.windowPresent ? 'Details' : 'Details •',
+      label: 'Details',
       content: (
         <div className="flex-shrink-0">
           <dl className="mb-4 grid grid-cols-[max-content_1fr] gap-x-3 gap-y-1 text-[11px]">
@@ -920,14 +1053,13 @@ export function AgentDetailView({ agent, project, projectId, status, onClose, ar
                 <>
                   <button
                     type="button"
-                    onClick={() => { void handleCreateWorktree() }}
+                    onClick={requestCreateWorktree}
                     disabled={creatingWorktree}
                     className="inline-flex h-6 cursor-pointer items-center rounded-[6px] border border-line bg-canvas px-2 text-[11px] font-medium text-muted transition hover:text-ink hover:border-ink/30 disabled:pointer-events-none disabled:opacity-40"
                     title="Opt in to an isolated git worktree + branch for this agent"
                   >
                     {creatingWorktree ? 'Creating…' : 'Create worktree'}
                   </button>
-                  {worktreeError && <span className="text-[11px] text-accent-red">{worktreeError}</span>}
                 </>
               )}
             </dd>
@@ -935,19 +1067,6 @@ export function AgentDetailView({ agent, project, projectId, status, onClose, ar
 
           <ModeSwitcher agentId={agent.id} mode={agent.mode} windowPresent={agent.windowPresent} />
 
-          {!agent.windowPresent && (
-            <div className="mb-3 flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => { void handleCreateWindow() }}
-                disabled={creating}
-                className="inline-flex h-7 cursor-pointer items-center rounded-[7px] bg-accent-blue-solid px-3 text-[12px] font-medium text-white transition hover:opacity-85 active:scale-[0.985] disabled:pointer-events-none disabled:opacity-40"
-              >
-                {creating ? 'Creating…' : 'Create window'}
-              </button>
-              {windowError && <span className="text-[11px] text-accent-red">{windowError}</span>}
-            </div>
-          )}
         </div>
       ),
     },
@@ -956,10 +1075,16 @@ export function AgentDetailView({ agent, project, projectId, status, onClose, ar
       label: `Queued tasks (${String(agent.queuedTasks)})`,
       content: (
         <div className="flex-shrink-0">
-          <TaskList agentName={agent.name} tasks={tasks} onReorder={setTasks} />
+          <TaskList agentName={agent.name} tasks={tasks} onReorder={setTasks} projectId={projectId} />
           <AddTaskForm agentId={agent.id} onAdded={(task) => { setTasks((prev) => [...prev, task]) }} projectId={projectId} projectName={project} />
         </div>
       ),
+    },
+    {
+      id: 'background',
+      label: `Background (${String(projectBgs.length)})`,
+      present: projectId !== null,
+      content: <BackgroundProcessesTab bgs={projectBgs} projectName={project ?? ''} active={activeTabId === 'background'} onBgRestarted={onBgRestarted} />,
     },
     {
       id: 'diff',
@@ -985,19 +1110,22 @@ export function AgentDetailView({ agent, project, projectId, status, onClose, ar
     <ErrorBoundary>
       <div className="flex h-full min-h-0 flex-col overflow-hidden bg-card">
         <div className="flex flex-shrink-0 items-center gap-3 border-b border-line px-5 py-3.5">
-          <span className="flex min-w-0 flex-col">
-            <span className="text-[17px] font-semibold tracking-tight text-accent-blue leading-tight">{agent.name}</span>
-            {agent.label && (
-              <span className="text-[11px] font-semibold tracking-tight text-[#5b21b6] leading-tight">{agent.label}</span>
+          <div className='flex flex-wrap gap-x-2 gap-y-1'>
+            <span className="flex min-w-0 flex-col">
+              <span className="text-[17px] font-semibold tracking-tight text-accent-blue leading-tight flex-1">{agent.name}</span>
+              {agent.label && (
+                <span className="text-[11px] font-semibold tracking-tight text-[#5b21b6] leading-tight">{agent.label}</span>
+              )}
+            </span>
+            <ProjectBadge name={project} size="md" />
+            <StatusBadge status={status} />
+            <AgentIdentityBadge agent={agent} />
+            <ContextMeter agent={agent} detailed />
+            {needsAttention(status) && (
+              <span className="animate-flash text-[14px] font-bold leading-none" style={{ color: status === 'stalled' ? '#e5484d' : '#e0901a' }} aria-label="Needs attention">!</span>
             )}
-          </span>
-          <ProjectBadge name={project} size="md" />
-          <StatusBadge status={status} />
-          <AgentIdentityBadge agent={agent} />
-          <ContextMeter agent={agent} detailed />
-          {needsAttention(status) && (
-            <span className="animate-flash text-[14px] font-bold leading-none" style={{ color: status === 'stalled' ? '#e5484d' : '#e0901a' }} aria-label="Needs attention">!</span>
-          )}
+
+          </div>
           {queuedSkill && (
             <span className="text-[11px] text-accent-green">/{queuedSkill} queued ✓</span>
           )}
@@ -1123,18 +1251,37 @@ export function AgentDetailView({ agent, project, projectId, status, onClose, ar
           </div>
         </div>
 
-        {agent.activeTask && (
+        {lastPayload && (
           <div
             className="flex-shrink-0 border-b border-line bg-canvas/50 px-5 py-1.5 font-mono text-[11px] text-muted-2 truncate"
-            title={agent.activeTask}
+            title={lastPayload.text}
           >
-            {agent.activeTask}
+            {firstLinePreview(lastPayload.text)}
           </div>
         )}
 
-        {(renameError ?? roleError ?? closeError ?? removeError ?? cloneError) && (
-          <div className="flex-shrink-0 border-b border-line bg-accent-red/5 px-5 py-1.5 text-[11px] text-accent-red">
-            {renameError ?? roleError ?? closeError ?? removeError ?? cloneError}
+        {(renameError ?? roleError ?? closeError ?? removeError ?? cloneError ?? worktreeError ?? restartError) && (
+          <div className="flex-shrink-0 border-b border-line bg-accent-red/5 px-5 py-1.5 text-[11px] text-accent-red break-words">
+            {renameError ?? roleError ?? closeError ?? removeError ?? cloneError ?? worktreeError ?? restartError}
+          </div>
+        )}
+
+        {worktreeNeedsRestart && (
+          <div
+            role="status"
+            className="flex flex-shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b border-line bg-accent-amber/5 px-5 py-1.5 text-[11px] text-accent-amber break-words"
+          >
+            <span className="min-w-0 flex-1">
+              Worktree created, but {agent.name} is still running in {agent.workdir}. Restart its window to work inside {effectiveWorktreePath ?? 'the worktree'}.
+            </span>
+            <button
+              type="button"
+              onClick={() => { setConfirmingRestart(true) }}
+              disabled={restarting}
+              className="inline-flex h-6 cursor-pointer items-center rounded-[6px] border border-accent-amber/40 bg-canvas px-2 text-[11px] font-medium text-accent-amber transition hover:border-accent-amber disabled:pointer-events-none disabled:opacity-40"
+            >
+              {restarting ? 'Restarting…' : 'Restart in worktree'}
+            </button>
           </div>
         )}
 
@@ -1162,6 +1309,27 @@ export function AgentDetailView({ agent, project, projectId, status, onClose, ar
           onConfirm={() => { void doCloseWindow() }}
           onCancel={() => { setConfirmingClose(false) }}
         />
+        <ConfirmDialog
+          open={confirmingWorktree}
+          message={`${agent.name} is running in ${agent.workdir}. A new worktree will not move the running agent; it keeps editing that directory until its window is restarted. Create the worktree anyway?`}
+          confirmLabel="Create worktree"
+          onConfirm={() => { setConfirmingWorktree(false); void handleCreateWorktree() }}
+          onCancel={() => { setConfirmingWorktree(false) }}
+        />
+        <ConfirmDialog
+          open={confirmingRestart}
+          message={`Restart "${agent.name}" in its worktree? This stops the running agent process and relaunches it; in-flight work and conversation context are lost.${status === 'busy' || status === 'awaiting' || status === 'stalled' ? ` ${agent.name} is currently ${status === 'awaiting' ? 'waiting for input' : status}: restarting now will interrupt what it is doing.` : ''}`}
+          confirmLabel="Restart"
+          onConfirm={() => { void doRestartInWorktree() }}
+          onCancel={() => { setConfirmingRestart(false) }}
+        />
+        {showAddBg && (
+          <AddBgProcessForm
+            open
+            defaultProjectId={projectId}
+            onClose={() => { setShowAddBg(false) }}
+          />
+        )}
       </div>
     </ErrorBoundary>
   )
@@ -1177,6 +1345,8 @@ function AgentItem({ agent, project, selected = false, onExpand }: {
   onExpand: (armInteract: boolean) => void
 }) {
   const status = deriveStatus(agent)
+  const lastPayload = useLastPayload(agent.id)
+  const lastPayloadPreview = lastPayload ? firstLinePreview(lastPayload.text) : ''
 
   return (
     <div
@@ -1184,8 +1354,8 @@ function AgentItem({ agent, project, selected = false, onExpand }: {
       tabIndex={0}
       onClick={() => { onExpand(false) }}
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onExpand(false) } }}
-      className={`mb-2 flex flex-col gap-1.5 animate-popIn cursor-pointer select-none rounded-[10px] border border-r-[4px] border-line px-3.5 py-2.5 shadow-card transition-shadow last:mb-0 hover:shadow-card-hover ${selected ? 'bg-canvas ring-2 ring-accent-blue/50' : 'bg-card'}`}
-      style={{ borderRightColor: getStatusColor(status) }}
+      className={`flex flex-col gap-1.5 animate-popIn cursor-pointer select-none rounded-[10px] border border-r-[4px] border-line px-3.5 py-2.5 shadow-card transition-shadow hover:shadow-card-hover ${selected ? 'bg-canvas ring-2 ring-accent-blue/50' : 'bg-card'}`}
+      style={{ borderRightColor: isInactiveStatus(status) ? INACTIVE_BORDER_COLOR : status === 'empty' ? 'transparent' : getStatusColor(status) }}
       aria-current={selected ? 'true' : undefined}
       aria-label={`${agent.name} detail`}
     >
@@ -1223,10 +1393,10 @@ function AgentItem({ agent, project, selected = false, onExpand }: {
         </span>
       )}
 
-      {/* Active task — own slot when present */}
-      {agent.activeTask && (
-        <span className="block truncate font-mono text-[10px] text-muted-2" title={agent.activeTask}>
-          {agent.activeTask}
+      {/* Last payload — own slot when present (TASK-0227; replaces the transient activeTask) */}
+      {lastPayload && lastPayloadPreview !== '' && (
+        <span className="block truncate font-mono text-[10px] text-muted-2" title={lastPayload.text}>
+          {lastPayloadPreview}
         </span>
       )}
 
@@ -1248,27 +1418,13 @@ function AgentItem({ agent, project, selected = false, onExpand }: {
 
 // ── Board ─────────────────────────────────────────────────────────────────
 
-// Agents live in a single flat list sorted by project. Within a project they
-// order by urgency via this priority map (lower sorts first) so attention-needing
-// agents float to the top of their project's run.
-const STATUS_SORT: Record<AgentStatus, number> = {
-  awaiting: 0,
-  stalled: 0,
-  busy: 1,
-  starting: 1,
-  idle: 2,
-  'idle-waiting': 2,
-  empty: 3,
-  error: 4,
-  exited: 4,
-  'no-window': 4,
-  unknown: 4,
-}
+// Agents live in a single flat list sorted by project; within a project they follow the
+// user's saved drag order, else alphabetical (see sortAgentsForSidebar).
 
-// Statuses that render as active sidebar rows and take part in Cmd+Shift+Arrow cycling.
-// The rest (no-window, exited, unknown) are "not running" and render in
-// InactiveAgentsPanel. `error` is intentionally in both sets — an errored agent
-// shows in both places.
+// Statuses that always render as sidebar rows and take part in Cmd+Shift+Arrow cycling.
+// The rest (no-window, exited, unknown) are "not running" and only appear while the
+// "Show inactive" checkbox is on. `error` is intentionally in both sets — an errored
+// agent is always shown.
 const ACTIVE_STATUSES: readonly AgentStatus[] = [
   'awaiting',
   'stalled',
@@ -1284,8 +1440,8 @@ function isActiveStatus(status: AgentStatus): boolean {
   return ACTIVE_STATUSES.includes(status)
 }
 
-// Statuses InactiveAgentsPanel lists. Shortcut cycling stays inside whichever of the
-// two sets (active / inactive) holds the selected agent.
+// Statuses treated as "not running" — hidden from the sidebar (and shortcut cycling)
+// unless "Show inactive" is checked.
 const INACTIVE_STATUSES: readonly AgentStatus[] = ['no-window', 'exited', 'error', 'unknown']
 
 export function isInactiveStatus(status: AgentStatus): boolean {
@@ -1342,7 +1498,7 @@ function SessionBanner({ sessionExists }: { sessionExists: boolean }) {
 // One row per BG_PROCESSES entry. When the window has died, the row turns
 // amber and offers the choice: respawn the window or remove the definition
 // from conductor.conf entirely.
-function BgProcessRow({ bg, projects, onUpdated }: { bg: BgProcess; projects: Project[]; onUpdated: (updated: BgProcess) => void }) {
+function BgProcessRow({ bg, projects, onUpdated, onRestarted }: { bg: BgProcess; projects: Project[]; onUpdated: (updated: BgProcess, previousSlug: string) => void; onRestarted: (slug: string, result: BgRestartResult) => void }) {
   const [acting, setActing] = useState<'open' | 'close' | 'remove' | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
   const [confirmingRemove, setConfirmingRemove] = useState(false)
@@ -1351,7 +1507,7 @@ function BgProcessRow({ bg, projects, onUpdated }: { bg: BgProcess; projects: Pr
   const [editing, setEditing] = useState(false)
   const [editWorkdir, setEditWorkdir] = useState(bg.workdir)
   const [editLaunchCmd, setEditLaunchCmd] = useState(bg.launchCmd)
-  const [editProjectId, setEditProjectId] = useState<number | null>(bg.projectId)
+  const [editProjectId, setEditProjectId] = useState<number>(bg.projectId)
   const [editError, setEditError] = useState<string | null>(null)
   const [editSaving, setEditSaving] = useState(false)
 
@@ -1373,12 +1529,12 @@ function BgProcessRow({ bg, projects, onUpdated }: { bg: BgProcess; projects: Pr
 
   function doRemove() {
     setConfirmingRemove(false)
-    void callApi(`/bg-processes/${encodeURIComponent(bg.name)}`, 'DELETE', 'remove')
+    void callApi(`/bg-processes/${encodeURIComponent(bg.slug)}`, 'DELETE', 'remove')
   }
 
   function doCloseWindow() {
     setConfirmingClose(false)
-    void callApi(`/bg-processes/${encodeURIComponent(bg.name)}/window`, 'DELETE', 'close')
+    void callApi(`/bg-processes/${encodeURIComponent(bg.slug)}/window`, 'DELETE', 'close')
   }
 
   function startEdit() {
@@ -1406,18 +1562,21 @@ function BgProcessRow({ bg, projects, onUpdated }: { bg: BgProcess; projects: Pr
     setEditSaving(true)
     setEditError(null)
     try {
-      const saved = await updateBgProcess(bg.name, {
+      const saved = await updateBgProcess(bg.slug, {
         workdir: editWorkdir,
         launchCmd: editLaunchCmd,
         projectId: editProjectId,
       })
+      const projectName = projects.find((p) => p.id === saved.projectId)?.name ?? bg.projectName
       onUpdated({
         ...bg,
+        // A project change re-derives the slug (`<projectName>-<name>`).
+        slug: `${projectName}-${bg.name}`,
         workdir: saved.workdir,
         launchCmd: saved.launchCmd,
         projectId: saved.projectId,
-        projectName: projects.find((p) => p.id === saved.projectId)?.name ?? null,
-      })
+        projectName,
+      }, bg.slug)
       setEditing(false)
     } catch (err: unknown) {
       setEditError(err instanceof Error ? err.message : 'Failed to save changes')
@@ -1428,17 +1587,13 @@ function BgProcessRow({ bg, projects, onUpdated }: { bg: BgProcess; projects: Pr
 
   return (
     <div className={`flex flex-wrap items-center gap-x-3 gap-y-2 rounded-card border px-4 py-3 ${bg.windowPresent ? 'border-line bg-canvas' : 'border-accent-amber/30 bg-accent-amber/5'}`}>
-      <span className="font-mono text-[13px] font-medium text-ink">{bg.name}</span>
-      <span
-        className="inline-flex items-center rounded-pill px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.06em]"
-        style={bg.windowPresent
-          ? { background: 'rgba(48,164,108,0.10)', color: '#30a46c' }
-          : { background: 'rgba(224,144,26,0.10)', color: '#c07a10' }}
-      >
-        {bg.windowPresent ? 'running' : 'window missing'}
-      </span>
+      <span className="font-mono text-[13px] font-medium text-ink" title={bg.slug !== bg.name ? bg.slug : undefined}>{bg.name}</span>
+      {bg.slug !== bg.name && (
+        <span className="font-mono text-[11px] text-muted-2" data-testid="bg-slug">{bg.slug}</span>
+      )}
+      <BgLivenessBadge liveness={bg.liveness} windowPresent={bg.windowPresent} />
       <span className="truncate font-mono text-[11px] text-muted-2" title={`${bg.launchCmd} (in ${bg.workdir})`}>{bg.launchCmd}</span>
-      {bg.linkedAgent && <span className="text-[11px] text-muted">linked to {bg.linkedAgent}</span>}
+      <BgLastRestart lastRestart={bg.lastRestart} className="min-w-0 max-w-full truncate" />
       <div className="ml-auto flex flex-shrink-0 items-center gap-2">
         {!editing && (
           <button
@@ -1449,6 +1604,16 @@ function BgProcessRow({ bg, projects, onUpdated }: { bg: BgProcess; projects: Pr
           >
             Edit
           </button>
+        )}
+        {/* Only with a live window: when it is missing, "Open window" below already covers starting it. */}
+        {bg.windowPresent && (
+          <BgRestartButton
+            slug={bg.slug}
+            label={bg.name}
+            windowPresent={bg.windowPresent}
+            projectName={bg.projectName}
+            onRestarted={(result) => { onRestarted(bg.slug, result) }}
+          />
         )}
         {bg.windowPresent ? (
           <button
@@ -1462,7 +1627,7 @@ function BgProcessRow({ bg, projects, onUpdated }: { bg: BgProcess; projects: Pr
         ) : (
           <button
             type="button"
-            onClick={() => { void callApi(`/bg-processes/${encodeURIComponent(bg.name)}/window`, 'POST', 'open') }}
+            onClick={() => { void callApi(`/bg-processes/${encodeURIComponent(bg.slug)}/window`, 'POST', 'open') }}
             disabled={acting !== null}
             className="inline-flex h-7 cursor-pointer items-center rounded-[7px] bg-accent-blue-solid px-3 text-[12px] font-medium text-white transition hover:opacity-85 active:scale-[0.985] disabled:pointer-events-none disabled:opacity-40"
           >
@@ -1506,11 +1671,10 @@ function BgProcessRow({ bg, projects, onUpdated }: { bg: BgProcess; projects: Pr
           <div className="flex flex-col gap-1">
             <label className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted">Project</label>
             <select
-              value={editProjectId === null ? '' : editProjectId.toString()}
-              onChange={(e) => { const v = e.target.value; setEditProjectId(v === '' ? null : Number(v)) }}
+              value={editProjectId.toString()}
+              onChange={(e) => { setEditProjectId(Number(e.target.value)) }}
               className="w-full rounded-[8px] border border-line-input bg-canvas px-3 py-1.5 font-mono text-[12px] text-ink outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/10"
             >
-              <option value="">— Unassigned —</option>
               {projects.map((p) => (
                 <option key={p.id} value={p.id}>{p.name}</option>
               ))}
@@ -1542,14 +1706,14 @@ function BgProcessRow({ bg, projects, onUpdated }: { bg: BgProcess; projects: Pr
       )}
       <ConfirmDialog
         open={confirmingRemove}
-        message={`Remove background process "${bg.name}"? This kills its tmux window (if any) and removes it from the conductor registry.`}
+        message={`Remove background process ${bgQualifiedLabel(bg)}? This kills its tmux window (if any) and removes it from the conductor registry.`}
         confirmLabel="Remove"
         onConfirm={doRemove}
         onCancel={() => { setConfirmingRemove(false) }}
       />
       <ConfirmDialog
         open={confirmingClose}
-        message={`Close "${bg.name}"'s window? The process stays registered and can be relaunched with "Open window".`}
+        message={`Close the window of ${bgQualifiedLabel(bg)}? The process stays registered and can be relaunched with "Open window".`}
         confirmLabel="Close"
         onConfirm={doCloseWindow}
         onCancel={() => { setConfirmingClose(false) }}
@@ -1560,24 +1724,25 @@ function BgProcessRow({ bg, projects, onUpdated }: { bg: BgProcess; projects: Pr
 
 // Bg-process equivalent of AgentList's projectLabelFor/projectIdFor below —
 // direct field reads off the bg-process payload itself, no name-keyed map.
-const bgProjectLabelFor = (bg: BgProcess): string | null => bg.projectName
-const bgProjectIdFor = (bg: BgProcess): number | null => bg.projectId
+const bgProjectLabelFor = (bg: BgProcess): string => bg.projectName
+const bgProjectIdFor = (bg: BgProcess): number => bg.projectId
 
 // Cluster a pre-sorted list into consecutive same-project groups, mirroring
 // groupByProject below but scoped to BgProcess[]. Bg processes have no
-// status-derived kanban columns, so there's just one clustered list.
-const groupBgsByProject = (list: BgProcess[]): { project: string | null; projectId: number | null; bgs: BgProcess[] }[] => {
-  const groups: { project: string | null; projectId: number | null; bgs: BgProcess[] }[] = []
+// status-derived kanban columns, so there's just one clustered list. Every bg
+// process belongs to a project (TASK-0195), so there is no "Unassigned" group.
+const groupBgsByProject = (list: BgProcess[]): { project: string; projectId: number; bgs: BgProcess[] }[] => {
+  const groups: { project: string; projectId: number; bgs: BgProcess[] }[] = []
   for (const bg of list) {
     const project = bgProjectLabelFor(bg)
     const last = groups[groups.length - 1]
-    if (last && last.project === project) last.bgs.push(bg)
+    if (last && last.projectId === bgProjectIdFor(bg)) last.bgs.push(bg)
     else groups.push({ project, projectId: bgProjectIdFor(bg), bgs: [bg] })
   }
   return groups
 }
 
-function BgProcessSection({ bgs, onUpdated }: { bgs: BgProcess[]; onUpdated: (updated: BgProcess) => void }) {
+function BgProcessSection({ bgs, onUpdated, onRestarted }: { bgs: BgProcess[]; onUpdated: (updated: BgProcess, previousSlug: string) => void; onRestarted: (slug: string, result: BgRestartResult) => void }) {
   // Fetched once here (not per-row) so every BgProcessRow's edit form shares
   // the same project options — mirrors AddBgProcessForm's own local fetch.
   const [projects, setProjects] = useState<Project[]>([])
@@ -1594,18 +1759,14 @@ function BgProcessSection({ bgs, onUpdated }: { bgs: BgProcess[]; onUpdated: (up
     )
   }
 
-  // Project name (unassigned last), then name — matches the project-ordering
-  // half of AgentList's byProjectThenStatus below. groupBgsByProject only
-  // clusters consecutive runs, so the input must be pre-sorted.
+  // Project name, then name — matches the project-ordering half of
+  // AgentList's byProject below. groupBgsByProject only clusters consecutive
+  // runs, so the input must be pre-sorted (project id breaks name ties so two
+  // same-named projects never interleave).
   const sorted = [...bgs].sort((a, b) => {
-    const pa = bgProjectLabelFor(a)
-    const pb = bgProjectLabelFor(b)
-    if (pa !== pb) {
-      if (pa === null) return 1
-      if (pb === null) return -1
-      const cmp = pa.toLowerCase().localeCompare(pb.toLowerCase())
-      if (cmp !== 0) return cmp
-    }
+    const cmp = bgProjectLabelFor(a).toLowerCase().localeCompare(bgProjectLabelFor(b).toLowerCase())
+    if (cmp !== 0) return cmp
+    if (a.projectId !== b.projectId) return a.projectId - b.projectId
     return a.name.toLowerCase().localeCompare(b.name.toLowerCase())
   })
   const groups = groupBgsByProject(sorted)
@@ -1615,12 +1776,12 @@ function BgProcessSection({ bgs, onUpdated }: { bgs: BgProcess[]; onUpdated: (up
       <h2 className="mb-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted">Background processes</h2>
       <div className="flex flex-col gap-3">
         {groups.map((group) => (
-          <div key={group.projectId ?? group.project ?? '__unassigned__'}>
+          <div key={group.projectId}>
             <p className="mb-1.5 px-1 text-[12px] font-semibold uppercase tracking-[0.06em] text-muted-2">
-              {group.project ?? 'Unassigned'}
+              {group.project}
             </p>
             <div className="flex flex-col gap-2">
-              {group.bgs.map((bg) => <BgProcessRow key={bg.name} bg={bg} projects={projects} onUpdated={onUpdated} />)}
+              {group.bgs.map((bg) => <BgProcessRow key={bg.slug} bg={bg} projects={projects} onUpdated={onUpdated} onRestarted={onRestarted} />)}
             </div>
           </div>
         ))}
@@ -1657,32 +1818,6 @@ function playDoorbell(ctx: AudioContext): void {
   }
 }
 
-/** Ascending C-major triad chime (~1.2 s) — played when a task completes. */
-function playChime(ctx: AudioContext): void {
-  const master = ctx.createGain()
-  master.gain.setValueAtTime(0.25, ctx.currentTime)
-  master.connect(ctx.destination)
-  const notes = [
-    { freq: 783.99,  start: 0,    dur: 0.75 },  // G5 — dominant, creates motion
-    { freq: 1046.5,  start: 0.14, dur: 0.75 },  // C6 — tonic, resolves
-    { freq: 1318.5,  start: 0.28, dur: 0.90 },  // E6 — third, brightens and lingers
-  ]
-  const now = ctx.currentTime
-  for (const { freq, start, dur } of notes) {
-    const osc = ctx.createOscillator()
-    const env = ctx.createGain()
-    osc.type = 'sine'
-    osc.frequency.setValueAtTime(freq, now + start)
-    env.gain.setValueAtTime(0, now + start)
-    env.gain.linearRampToValueAtTime(1, now + start + 0.01)
-    env.gain.exponentialRampToValueAtTime(0.0001, now + start + dur)
-    osc.connect(env)
-    env.connect(master)
-    osc.start(now + start)
-    osc.stop(now + start + dur)
-  }
-}
-
 // ── Main ──────────────────────────────────────────────────────────────────
 
 // Project membership rides on the agent payload itself, so resolution is a
@@ -1690,20 +1825,16 @@ function playChime(ctx: AudioContext): void {
 const projectLabelFor = (agent: Agent): string | null => agent.projectName
 const projectIdFor = (agent: Agent): number | null => agent.projectId
 
-// Shared comparator: project name (unassigned last) → status urgency → name.
-// Keeps same-project agents adjacent so the sidebar can sub-group by project.
-const byProjectThenStatus = (a: Agent, b: Agent): number => {
+// Shared comparator: project name only (case-insensitive, unassigned last). Keeps
+// same-project agents adjacent so the sidebar can sub-group by project; the order
+// *within* a project comes from orderAgents (saved drag order, else alphabetical).
+const byProject = (a: Agent, b: Agent): number => {
   const pa = projectLabelFor(a)
   const pb = projectLabelFor(b)
-  if (pa !== pb) {
-    if (pa === null) return 1
-    if (pb === null) return -1
-    const cmp = pa.toLowerCase().localeCompare(pb.toLowerCase())
-    if (cmp !== 0) return cmp
-  }
-  const sc = STATUS_SORT[deriveStatus(a)] - STATUS_SORT[deriveStatus(b)]
-  if (sc !== 0) return sc
-  return a.name.toLowerCase().localeCompare(b.name.toLowerCase())
+  if (pa === pb) return 0
+  if (pa === null) return 1
+  if (pb === null) return -1
+  return pa.toLowerCase().localeCompare(pb.toLowerCase())
 }
 
 // Cluster a sorted list into consecutive same-project groups so the sidebar
@@ -1719,72 +1850,188 @@ const groupByProject = (list: Agent[]): { project: string | null; agents: Agent[
   return groups
 }
 
-// Left-hand agent list: filter input on top, then the active agents grouped
-// under project headers (unassigned last). Rows are AgentItem so the badges,
+// Sidebar order: projects alphabetical (unassigned last), and within each project the saved
+// drag order first, then alphabetical by name. Shared by the sidebar render and the
+// next/prev cycle list so the keyboard shortcut walks exactly what the sidebar shows.
+const sortAgentsForSidebar = (agents: Agent[], saved: readonly number[]): Agent[] =>
+  groupByProject([...agents].sort(byProject)).flatMap((group) => orderAgents(group.agents, saved))
+
+// Left-hand agent list: filter input and "Show inactive" checkbox on top, then the
+// agents grouped under project headers (unassigned last). Rows are AgentItem so the badges,
 // context meter and "Direct Input" CTA stay defined in exactly one place.
-function AgentSidebar({ agents, filterText, onFilterChange, onExpand, selectedAgentId, totalAgentCount }: {
+function AgentSidebar({ agents, agentOrder, onReorder, onResetOrder, filterText, onFilterChange, showInactive, onShowInactiveChange, onExpand, selectedAgentId, totalAgentCount, collapsed, onToggleCollapsed }: {
   agents: Agent[]
+  agentOrder: number[]
+  onReorder: (project: string | null, activeId: number, overId: number) => void
+  onResetOrder: () => void
   filterText: string
   onFilterChange: (value: string) => void
+  showInactive: boolean
+  onShowInactiveChange: (value: boolean) => void
   onExpand: (agentId: number, armInteract: boolean) => void
   selectedAgentId: number | null
   totalAgentCount: number
+  collapsed: boolean
+  onToggleCollapsed: () => void
 }) {
-  const groups = groupByProject([...agents].sort(byProjectThenStatus))
+  const groups = groupByProject(sortAgentsForSidebar(agents, agentOrder))
+  // `distance` keeps a plain click selecting the agent; drag only starts after 6px of movement.
+  // No KeyboardSensor: rows are role="button" and Enter/Space already mean "select".
+  // Called unconditionally (Rules of Hooks) even though the collapsed rail never uses it.
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }))
+  const ToggleIcon = collapsed ? ChevronRight : ChevronLeft
+  const toggleLabel = collapsed ? 'Expand sidebar' : 'Collapse sidebar'
 
   return (
     <aside
+      id="agent-sidebar"
       aria-label="Agents"
-      style={{ width: SIDEBAR_WIDTH_PX }}
-      className="flex-shrink-0 overflow-y-auto border-r border-line bg-canvas/40 p-3"
+      style={{ width: collapsed ? SIDEBAR_COLLAPSED_WIDTH_PX : SIDEBAR_WIDTH_PX }}
+      className={`flex-shrink-0 overflow-y-auto border-r border-line bg-canvas/40 motion-safe:transition-[width] ${collapsed ? 'p-1.5' : 'p-3'}`}
     >
-      {totalAgentCount > 0 && (
-        <input
-          type="text"
-          value={filterText}
-          onChange={(e) => { onFilterChange(e.target.value) }}
-          placeholder="Filter agents by name, project, role, or branch…"
-          aria-label="Filter agents"
-          className="mb-4 w-full rounded-[8px] border border-line-input bg-card px-3 py-1.5 font-mono text-[12px] text-ink placeholder:text-muted-2 outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/10 disabled:opacity-40"
-        />
-      )}
-      {/* Collapsible inactive-agents section, docked between the filter and the project
-          groups. It reads its own agent list, so it is unaffected by the filter. */}
-      {totalAgentCount > 0 && (
-        <InactiveAgentsPanel
-          onOpenDetail={(id) => { onExpand(id, false) }}
-          selectedId={selectedAgentId}
-        />
-      )}
-      {totalAgentCount === 0 ? (
-        <p className="text-[13px] italic text-muted-2">No agents registered.</p>
-      ) : filterText.trim() !== '' && agents.length === 0 ? (
-        <p className="text-[13px] italic text-muted-2">No agents match your filter.</p>
-      ) : agents.length === 0 ? (
-        // Agents are registered but every one is inactive (no active rows to group).
-        <p className="text-[13px] italic text-muted-2">No active agents.</p>
-      ) : (
-        <div className="flex flex-col gap-4">
-          {groups.map((group) => (
-            <div key={group.project ?? '__unassigned__'}>
-              <p className="mb-1.5 flex items-baseline justify-between px-1 text-[12px] font-semibold uppercase tracking-[0.06em] text-muted-2">
-                <span className="truncate">{group.project ?? 'Unassigned'}</span>
-                <span className="ml-2 flex-shrink-0 font-mono text-[10px] font-medium normal-case tracking-normal">{group.agents.length}</span>
-              </p>
-              {group.agents.map((agent) => (
-                <AgentItem
-                  key={agent.id}
-                  agent={agent}
-                  project={projectLabelFor(agent)}
-                  selected={selectedAgentId === agent.id}
-                  onExpand={(armInteract) => { onExpand(agent.id, armInteract) }}
-                />
-              ))}
-            </div>
+      <div className={`mb-2 flex ${collapsed ? 'justify-center' : 'justify-end'}`}>
+        <button
+          type="button"
+          onClick={onToggleCollapsed}
+          aria-expanded={!collapsed}
+          aria-controls="agent-sidebar"
+          aria-label={toggleLabel}
+          title={toggleLabel}
+          className="rounded-[6px] p-1 text-muted hover:text-ink"
+        >
+          <ToggleIcon size={16} aria-hidden="true" />
+        </button>
+      </div>
+      {collapsed ? (
+        <div className="flex flex-col items-center gap-1.5">
+          {sortAgentsForSidebar(agents, agentOrder).map((agent) => (
+            <SidebarRailDot
+              key={agent.id}
+              agent={agent}
+              selected={selectedAgentId === agent.id}
+              onSelect={() => { onExpand(agent.id, false) }}
+            />
           ))}
         </div>
+      ) : (
+        <>
+          {totalAgentCount > 0 && (
+            <input
+              type="text"
+              value={filterText}
+              onChange={(e) => { onFilterChange(e.target.value) }}
+              placeholder="Filter agents by name, project, role, or branch…"
+              aria-label="Filter agents"
+              className="mb-4 w-full rounded-[8px] border border-line-input bg-card px-3 py-1.5 font-mono text-[12px] text-ink placeholder:text-muted-2 outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/10 disabled:opacity-40"
+            />
+          )}
+          {totalAgentCount > 0 && (
+            <label className="mb-4 flex items-center gap-1.5 text-[12px] text-muted">
+              <input
+                type="checkbox"
+                checked={showInactive}
+                onChange={(e) => { onShowInactiveChange(e.target.checked) }}
+              />
+              Show inactive
+            </label>
+          )}
+          {totalAgentCount > 0 && agentOrder.length > 0 && (
+            <button type="button" onClick={onResetOrder} className="mb-4 text-[12px] text-muted underline hover:text-ink">
+              Reset to A–Z
+            </button>
+          )}
+          {totalAgentCount === 0 ? (
+            <p className="text-[13px] italic text-muted-2">No agents registered.</p>
+          ) : filterText.trim() !== '' && agents.length === 0 ? (
+            <p className="text-[13px] italic text-muted-2">No agents match your filter.</p>
+          ) : agents.length === 0 ? (
+            // Only reachable with "Show inactive" off: with it on, `agents` is every registered
+            // agent, so an empty list under a blank filter implies totalAgentCount === 0 above.
+            <p className="text-[13px] italic text-muted-2">No active agents.</p>
+          ) : (
+            <div className="flex flex-col gap-4">
+              {groups.map((group) => (
+                <div key={group.project ?? '__unassigned__'}>
+                  <p className="mb-1.5 flex items-baseline justify-between px-1 text-[12px] font-semibold uppercase tracking-[0.06em] text-muted-2">
+                    <span className="truncate">{group.project ?? 'Unassigned'}</span>
+                    <span className="ml-2 flex-shrink-0 font-mono text-[10px] font-medium normal-case tracking-normal">{group.agents.length}</span>
+                  </p>
+                  <DndContext
+                    sensors={sensors}
+                    collisionDetection={closestCenter}
+                    onDragEnd={({ active, over }: DragEndEvent) => {
+                      if (!over || active.id === over.id) return
+                      onReorder(group.project, Number(active.id), Number(over.id))
+                    }}
+                  >
+                    <SortableContext items={group.agents.map((a) => a.id)} strategy={verticalListSortingStrategy}>
+                      {group.agents.map((agent) => (
+                        <SortableAgentRow
+                          key={agent.id}
+                          agent={agent}
+                          project={projectLabelFor(agent)}
+                          selected={selectedAgentId === agent.id}
+                          onExpand={(armInteract) => { onExpand(agent.id, armInteract) }}
+                        />
+                      ))}
+                    </SortableContext>
+                  </DndContext>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
       )}
     </aside>
+  )
+}
+
+// One status-colored dot per agent in the collapsed sidebar rail. Selection calls the same
+// callback the expanded rows use; the name lives only in aria-label/title (no room for text).
+// The hover title is `<project> <agent>` (agent names are only unique per project); the
+// aria-label stays the bare agent name.
+function SidebarRailDot({ agent, selected, onSelect }: {
+  agent: Agent
+  selected: boolean
+  onSelect: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      aria-label={agent.name}
+      title={agent.projectName ? `${agent.projectName} ${agent.name}` : agent.name}
+      aria-current={selected ? 'true' : undefined}
+      className={`flex h-6 w-6 items-center justify-center rounded-full transition ${selected ? 'bg-line ring-2 ring-accent' : 'hover:bg-line'}`}
+    >
+      <span
+        aria-hidden="true"
+        className="block h-2.5 w-2.5 rounded-full"
+        style={{ backgroundColor: getStatusColor(deriveStatus(agent)) }}
+      />
+    </button>
+  )
+}
+
+// One draggable sidebar row. Only `listeners` are spread (not dnd-kit's `attributes`, whose
+// role="button" would nest inside AgentItem's own role="button"). The transform lives on this
+// wrapper rather than the row because the row's animate-popIn already animates transform.
+function SortableAgentRow({ agent, project, selected, onExpand }: {
+  agent: Agent
+  project: string | null
+  selected: boolean
+  onExpand: (armInteract: boolean) => void
+}) {
+  const { listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: agent.id })
+  return (
+    <div
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+      {...listeners}
+      className={`mb-2 last:mb-0 ${isDragging ? 'relative z-10 opacity-60' : ''}`}
+    >
+      <AgentItem agent={agent} project={project} selected={selected} onExpand={onExpand} />
+    </div>
   )
 }
 
@@ -1797,6 +2044,7 @@ export default function AgentList() {
   const [sessionExists, setSessionExists] = useState<boolean>(true)
   const [loading, setLoading] = useState<boolean>(true)
   const [filterText, setFilterText] = useState('')
+  const [showInactive, setShowInactive] = useState(false)
   const [error, setError] = useState<string | null>(null)
   // Lives with the other top-level hooks (not after the loading/error/session-dead
   // early returns below) so this component never calls a different number of hooks
@@ -1814,75 +2062,77 @@ export default function AgentList() {
   // lives here (not in AgentItem) so it survives a status change remounting AgentItem.
   // Keyed by the globally-unique agent id, not name.
   const [expandedAgent, setExpandedAgent] = useState<{ id: number; armInteract: boolean } | null>(null)
-  // Cycle navigation (Cmd+Shift+Arrow) keeps active and inactive agents apart — an
-  // exited/gone agent is never a prev/next target from an active one, and an inactive
-  // selection cycles only among the inactive agents. This
-  // stays on the unfiltered `agents` list (not filteredAgents) deliberately: if
-  // a user has an agent's detail pane open and then types a filter that would
-  // exclude that agent from the sidebar, prev/next navigation should not
-  // suddenly change behavior or strand — keeping full-list navigation
-  // independent of the sidebar filter is the least surprising choice.
-  const activeAgents = useMemo(
-    () => agents.filter((a) => isActiveStatus(deriveStatus(a))),
-    [agents],
+  // Cycle navigation (Cmd+Shift+Arrow) walks one list: the active agents, plus the
+  // inactive ones (no-window, exited, unknown) when the "Show inactive" checkbox is on.
+  // Built from the unfiltered `agents` (not filteredAgents) deliberately: if a user has
+  // an agent's detail pane open and then types a filter that would exclude that agent
+  // from the sidebar, prev/next navigation should not suddenly change behavior or
+  // strand — keeping full-list navigation independent of the sidebar filter is the
+  // least surprising choice.
+  const cycleAgents = useMemo(
+    () => agents.filter((a) => showInactive || isActiveStatus(deriveStatus(a))),
+    [agents, showInactive],
   )
-  // Cycling follows what the user sees: the sidebar's flat order (project, then
-  // status urgency, then name — the same comparator AgentSidebar sorts with).
-  // Recomputed on every agents change rather than cached, so the order shifts as
-  // statuses change exactly like the sidebar reshuffles.
+  // User-defined within-project order (flat list of agent ids, persisted in localStorage).
+  // Empty means "alphabetical everywhere". Declared above the early returns (Rules of Hooks).
+  const [agentOrder, setAgentOrder] = useState<number[]>(() => loadOrder())
+  // Sidebar rail mode (persisted). The setter updates module state first so the terminal size
+  // probe reads the new width, then re-syncs the terminals to the reflowed pane.
+  const [sidebarCollapsed, setSidebarCollapsedState] = useState<boolean>(() => loadSidebarCollapsed())
+  const handleToggleSidebarCollapsed = useCallback(() => {
+    const next = !sidebarCollapsed
+    setSidebarCollapsed(next)
+    setSidebarCollapsedState(next)
+    reprobeTerminalSize()
+  }, [sidebarCollapsed])
+  // Computed from the unfiltered `agents` so members hidden by the filter or the inactive
+  // toggle keep their relative positions when a visible row is dragged.
+  const handleReorder = useCallback(
+    (groupProject: string | null, activeId: number, overId: number) => {
+      const group = groupByProject(sortAgentsForSidebar(agents, agentOrder)).find(
+        (g) => g.project === groupProject,
+      )
+      if (!group) return
+      const next = reorderGroup(
+        group.agents.map((a) => a.id),
+        activeId,
+        overId,
+        agentOrder,
+      )
+      setAgentOrder(next)
+      saveOrder(next)
+    },
+    [agents, agentOrder],
+  )
+  const handleResetOrder = useCallback(() => {
+    clearOrder()
+    setAgentOrder([])
+  }, [])
+  // Cycling follows what the user sees: the sidebar's flat order (project alphabetical,
+  // then the saved drag order within a project, else name — the same sortAgentsForSidebar
+  // rule AgentSidebar renders with). Recomputed whenever the cycle set or the saved order
+  // changes.
   const orderedAgentIds = useMemo(
-    () => [...activeAgents].sort(byProjectThenStatus).map((a) => a.id),
-    [activeAgents],
-  )
-  // Inactive agents cycle among themselves, in the order InactiveAgentsPanel lists them
-  // (the panel reads the same /status ordering), non-wrapping.
-  const orderedInactiveIds = useMemo(
-    () => agents.filter((a) => isInactiveStatus(deriveStatus(a))).map((a) => a.id),
-    [agents],
+    () => sortAgentsForSidebar(cycleAgents, agentOrder).map((a) => a.id),
+    [cycleAgents, agentOrder],
   )
   const handleNavigate = useCallback((dir: 'prev' | 'next') => {
     setExpandedAgent((prev) => {
       if (!prev) return prev
-      // The selected agent cycles within its own set: the active list is authoritative
-      // (an `error` agent is in both sets), otherwise the inactive list.
-      const inActive = orderedAgentIds.includes(prev.id)
-      const ids = inActive ? orderedAgentIds : orderedInactiveIds
-      const wrap = inActive
-      const idx = ids.indexOf(prev.id)
-      // A selection outside every cycle (e.g. an agent removed mid-selection) makes
-      // the shortcut a no-op rather than jumping somewhere unrelated.
+      const idx = orderedAgentIds.indexOf(prev.id)
+      // A selection outside the cycle set (e.g. an agent removed mid-selection, or an
+      // inactive agent selected while "Show inactive" is off) makes the shortcut a
+      // no-op rather than jumping somewhere unrelated.
       if (idx === -1) return prev
-      let next = dir === 'next' ? idx + 1 : idx - 1
-      if (wrap) next = (next + ids.length) % ids.length
-      const nextAgentId = ids[next]
+      const next = ((dir === 'next' ? idx + 1 : idx - 1) + orderedAgentIds.length) % orderedAgentIds.length
+      const nextAgentId = orderedAgentIds[next]
       if (nextAgentId === undefined) return prev
       return { id: nextAgentId, armInteract: false }
     })
-  }, [orderedAgentIds, orderedInactiveIds])
+  }, [orderedAgentIds])
   const prevStatusRef = useRef<Map<number, AgentStatus>>(new Map())
   const hasReceivedSSEStateRef = useRef(false)
   const audioCtxRef = useRef<AudioContext | null>(null)
-  // { agentId -> { agentName, status } } for agents currently showing a
-  // toast-like notification (status entered `awaiting`/`empty` and stayed
-  // there past NOTIFICATION_GRACE_MS). Map (not array) for O(1) add/remove
-  // by id, matching prevStatusRef's own keying.
-  const [notifications, setNotifications] = useState<Map<number, { agentName: string; status: 'awaiting' | 'empty' }>>(new Map())
-  // Pending grace-period timers keyed by agent id, so a status change (or
-  // agent removal) before the timer fires can cancel it before any toast
-  // is ever added.
-  const pendingNotifyTimersRef = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map())
-  // Mirrors of the selected agent (`expandedAgent`) and `agents` for the SSE handlers
-  // below: those callbacks are registered once and close over whatever values they
-  // held at registration time, so the grace-period timeout (which fires well after
-  // that closure was created) needs a live read instead.
-  const expandedAgentRef = useRef(expandedAgent)
-  const agentsRef = useRef(agents)
-  useEffect(() => {
-    expandedAgentRef.current = expandedAgent
-  }, [expandedAgent])
-  useEffect(() => {
-    agentsRef.current = agents
-  }, [agents])
 
   useEffect(() => {
     fetch(`${apiUrl}/status`)
@@ -1891,12 +2141,17 @@ export default function AgentList() {
         return r.json() as Promise<SessionState>
       })
       .then((data) => {
+        // A stale/older host-server may omit array fields in /status.
+        // Coerce to arrays so a missing agents/bgProcesses can't crash the render
+        // (e.g. BgProcessSection's `bgs.length` on an undefined value).
+        const agentList = Array.isArray(data.agents) ? data.agents : []
+        // Mirror before the SSE guard: newest-wins makes a redundant write harmless.
+        for (const agent of agentList) mirrorLastPrompt(agent)
         if (!hasReceivedSSEStateRef.current) {
-          // A stale/older host-server may omit array fields in /status.
-          // Coerce to arrays so a missing agents/bgProcesses can't crash the render
-          // (e.g. BgProcessSection's `bgs.length` on an undefined value).
-          const agentList = Array.isArray(data.agents) ? data.agents : []
           setAgents(agentList)
+          // Only sweep against a real list: a stale server omitting `agents` coerces to [] above,
+          // and sweeping against that would wipe every stored payload.
+          if (Array.isArray(data.agents)) sweepOrphanedLastPayloads(agentList.map((a) => a.id))
           for (const agent of agentList) {
             prevStatusRef.current.set(agent.id, deriveStatus(agent))
           }
@@ -1914,19 +2169,15 @@ export default function AgentList() {
 
     return () => {
       audioCtxRef.current?.close().catch(() => { /* ignore */ })
-      for (const timer of pendingNotifyTimersRef.current.values()) {
-        clearTimeout(timer)
-      }
-      pendingNotifyTimersRef.current.clear()
     }
   }, [apiUrl])
 
   useSSEEvent<Agent>('agent-update', (updated) => {
     hasReceivedSSEStateRef.current = true
+    mirrorLastPrompt(updated)
     const newStatus = deriveStatus(updated)
     const prevStatus = prevStatusRef.current.get(updated.id)
-    const wasWorking = prevStatus === 'busy' || prevStatus === 'starting'
-    const isDone = newStatus === 'idle' || newStatus === 'empty'
+    // Sound only when an agent switches into a needs-input state (waiting/stalled); every other transition is silent.
     if (needsAttention(newStatus) && prevStatus !== undefined && !needsAttention(prevStatus)) {
       if (!audioCtxRef.current) audioCtxRef.current = new AudioContext()
       const ctx = audioCtxRef.current
@@ -1935,58 +2186,6 @@ export default function AgentList() {
       } else {
         playDoorbell(ctx)
       }
-    } else if (wasWorking && isDone) {
-      if (!audioCtxRef.current) audioCtxRef.current = new AudioContext()
-      const ctx = audioCtxRef.current
-      if (ctx.state === 'suspended') {
-        ctx.resume().then(() => { playChime(ctx) }).catch(() => { /* autoplay blocked */ })
-      } else {
-        playChime(ctx)
-      }
-    }
-    // Toast-like notification bookkeeping — a DIFFERENT status set than
-    // needsAttention() above ({awaiting, empty}, not {awaiting, stalled}).
-    const wasNotifiable = prevStatus === 'awaiting' || prevStatus === 'empty'
-    const isNotifiable = newStatus === 'awaiting' || newStatus === 'empty'
-    if (isNotifiable && !wasNotifiable) {
-      const agentId = updated.id
-      const existingTimer = pendingNotifyTimersRef.current.get(agentId)
-      if (existingTimer !== undefined) clearTimeout(existingTimer)
-      const timer = setTimeout(() => {
-        pendingNotifyTimersRef.current.delete(agentId)
-        // Re-derive from the latest `agents` state (not the SSE payload this
-        // timer was scheduled from) — the status may have changed again, or
-        // reverted, during the grace period.
-        const currentAgent = agentsRef.current.find((a) => a.id === agentId)
-        if (!currentAgent) return
-        const currentStatus = deriveStatus(currentAgent)
-        if (currentStatus !== 'awaiting' && currentStatus !== 'empty') return
-        // Suppress if the user is already looking at this agent's detail pane —
-        // re-checked here (fire time), not at schedule time, since the selection
-        // could change during the grace period.
-        if (expandedAgentRef.current?.id === agentId) return
-        setNotifications((prev) => {
-          const next = new Map(prev)
-          next.set(agentId, { agentName: currentAgent.name, status: currentStatus })
-          return next
-        })
-      }, NOTIFICATION_GRACE_MS)
-      pendingNotifyTimersRef.current.set(agentId, timer)
-    } else if (!isNotifiable && wasNotifiable) {
-      // Leaving {awaiting, empty}: no grace period on the way out — clear
-      // any pending timer and drop any already-shown toast immediately.
-      const agentId = updated.id
-      const existingTimer = pendingNotifyTimersRef.current.get(agentId)
-      if (existingTimer !== undefined) {
-        clearTimeout(existingTimer)
-        pendingNotifyTimersRef.current.delete(agentId)
-      }
-      setNotifications((prev) => {
-        if (!prev.has(agentId)) return prev
-        const next = new Map(prev)
-        next.delete(agentId)
-        return next
-      })
     }
     prevStatusRef.current.set(updated.id, newStatus)
     setAgents((prev) => {
@@ -2004,17 +2203,7 @@ export default function AgentList() {
     if (typeof data.id === 'number') {
       const id = data.id
       prevStatusRef.current.delete(id)
-      const existingTimer = pendingNotifyTimersRef.current.get(id)
-      if (existingTimer !== undefined) {
-        clearTimeout(existingTimer)
-        pendingNotifyTimersRef.current.delete(id)
-      }
-      setNotifications((prev) => {
-        if (!prev.has(id)) return prev
-        const next = new Map(prev)
-        next.delete(id)
-        return next
-      })
+      clearLastPayload(id)
       setAgents((prev) => prev.filter((a) => a.id !== id))
       // Deselect a removed agent so the pane returns to the empty state and does not
       // resurrect the selection if an agent with this id ever reappears. Done here rather
@@ -2033,7 +2222,7 @@ export default function AgentList() {
 
   useSSEEvent<BgProcess>('bg-update', (updated) => {
     setBgs((prev) => {
-      const idx = prev.findIndex((b) => b.name === updated.name)
+      const idx = prev.findIndex((b) => b.slug === updated.slug)
       if (idx === -1) return [...prev, updated]
       const next = [...prev]
       next[idx] = { ...next[idx], ...updated }
@@ -2043,12 +2232,12 @@ export default function AgentList() {
 
   // Local counterpart to the bg-update SSE handler above: the PATCH route
   // only writes SQLite (workdir/launchCmd/projectId) and doesn't touch the
-  // live tmux window, so the poll loop's windowPresent/state/linkedAgent
+  // live tmux window, so the poll loop's windowPresent/state/liveness
   // diff never fires an SSE broadcast for it — the edit form applies the
   // saved fields to local state directly instead of waiting on the server.
-  const handleBgUpdated = useCallback((updated: BgProcess) => {
+  const handleBgUpdated = useCallback((updated: BgProcess, previousSlug: string) => {
     setBgs((prev) => {
-      const idx = prev.findIndex((b) => b.name === updated.name)
+      const idx = prev.findIndex((b) => b.slug === previousSlug)
       if (idx === -1) return prev
       const next = [...prev]
       next[idx] = { ...next[idx], ...updated }
@@ -2056,9 +2245,22 @@ export default function AgentList() {
     })
   }, [])
 
-  useSSEEvent<{ name?: string }>('bg-removed', (data) => {
-    if (typeof data.name === 'string') {
-      setBgs((prev) => prev.filter((b) => b.name !== data.name))
+  // Optimistic patch after a successful Restart/Start (TASK-0206): the server
+  // has just (re)created the window, so flip liveness/windowPresent now; the
+  // bg-update SSE from pollAndDiff then reconciles it. lastRestart is patched
+  // too (TASK-0207): the dashboard is always a null-caller (human) restart.
+  const handleBgRestarted = useCallback((slug: string, result: BgRestartResult) => {
+    setBgs((prev) => prev.map((b): BgProcess => (
+      b.slug === slug
+        ? { ...b, liveness: 'running', windowPresent: true, lastRestart: { at: result.restartedAt, caller: null } }
+        : b
+    )))
+  }, [])
+
+  useSSEEvent<{ slug?: string; name?: string }>('bg-removed', (data) => {
+    if (typeof data.slug === 'string') {
+      const { slug } = data
+      setBgs((prev) => prev.filter((b) => b.slug !== slug))
     }
   })
 
@@ -2076,13 +2278,11 @@ export default function AgentList() {
   useSSEEvent('queue-reordered', () => {})
   useSSEEvent('task-moved', () => {})
 
-  // Resolved against the full `agents` state (not only active agents) so an inactive
-  // agent selected from InactiveAgentsPanel renders in the pane too.
+  // Resolved against the full `agents` state (not only the cycle set) so a selected
+  // inactive agent still renders in the pane when "Show inactive" is unchecked.
   const selectedAgent = expandedAgent ? agents.find((a) => a.id === expandedAgent.id) : undefined
-  // The view's prev/next counter reflects the set the selection cycles within.
-  const selectedCycleCount = expandedAgent && !orderedAgentIds.includes(expandedAgent.id)
-    ? orderedInactiveIds.length
-    : activeAgents.length
+  // The view's prev/next counter reflects the list the shortcut cycles through.
+  const selectedCycleCount = orderedAgentIds.length
 
   const sectionLabelCls = 'mb-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted'
 
@@ -2125,25 +2325,32 @@ export default function AgentList() {
     )
   }
 
-  // Active (running) agents that match the filter; the sidebar sorts and groups
-  // them by project → status. Inactive agents render in InactiveAgentsPanel, docked
-  // at the top of the sidebar.
-  const visibleAgents = filteredAgents.filter((a) => isActiveStatus(deriveStatus(a)))
+  // Agents that match the filter; the sidebar sorts and groups them by project →
+  // status. Inactive agents are included only when "Show inactive" is checked.
+  const visibleAgents = showInactive
+    ? filteredAgents
+    : filteredAgents.filter((a) => isActiveStatus(deriveStatus(a)))
 
   return (
     <div className="flex min-h-0 flex-1 animate-riseIn flex-col">
       <div className="px-6 pt-6">
-        <h1 className={sectionLabelCls}>tmux Conductor — Agents</h1>
         {!sessionAlive && <SessionBanner sessionExists={sessionExists} />}
       </div>
       <div className="flex min-h-0 flex-1 border-t border-line">
         <AgentSidebar
           agents={visibleAgents}
+          agentOrder={agentOrder}
+          onReorder={handleReorder}
+          onResetOrder={handleResetOrder}
           filterText={filterText}
           onFilterChange={setFilterText}
+          showInactive={showInactive}
+          onShowInactiveChange={setShowInactive}
           onExpand={(id, armInteract) => { setExpandedAgent({ id, armInteract }) }}
           selectedAgentId={expandedAgent?.id ?? null}
           totalAgentCount={agents.length}
+          collapsed={sidebarCollapsed}
+          onToggleCollapsed={handleToggleSidebarCollapsed}
         />
         {/* Rendered from live `agents` state so the badge/banner keep updating while the
             agent is selected; if it is removed, the lookup empties and the pane falls back
@@ -2160,6 +2367,8 @@ export default function AgentList() {
               agent={selectedAgent}
               project={projectLabelFor(selectedAgent)}
               projectId={projectIdFor(selectedAgent)}
+              projectBgs={bgs.filter((b) => projectIdFor(selectedAgent) !== null && b.projectId === projectIdFor(selectedAgent))}
+              onBgRestarted={handleBgRestarted}
               status={deriveStatus(selectedAgent)}
               armInteract={expandedAgent.armInteract}
               onClose={() => { setExpandedAgent(null) }}
@@ -2172,6 +2381,10 @@ export default function AgentList() {
               onRoleChanged={(id, role) => {
                 // Optimistic role change by stable id; the next status poll/SSE reconciles too.
                 setAgents((prev) => prev.map((a) => a.id === id ? { ...a, role } : a))
+              }}
+              onWorktreeCreated={(id, worktreePath, branch) => {
+                // Optimistic local patch; the SSE agent-update from the host-server reconciles every other client.
+                setAgents((prev) => prev.map((a) => a.id === id ? { ...a, worktreePath, branch } : a))
               }}
               onCloned={(id) => {
                 // cloneAgent() only returns the thin ApiAgent shape (no status/mode/etc.), so we
@@ -2187,18 +2400,10 @@ export default function AgentList() {
             <div className="mb-6 rounded-[10px] border border-line bg-card px-5 py-8 text-center shadow-card">
               <p className="text-[13px] italic text-muted-2">Select an agent from the sidebar</p>
             </div>
-            <BgProcessSection bgs={bgs} onUpdated={handleBgUpdated} />
+            <BgProcessSection bgs={bgs} onUpdated={handleBgUpdated} onRestarted={handleBgRestarted} />
           </div>
         )}
       </div>
-      <NotificationStack
-        notifications={[...notifications].map(([agentId, n]) => ({ agentId, ...n }))}
-        onDismiss={(id) => { setNotifications((prev) => { const next = new Map(prev); next.delete(id); return next }) }}
-        onOpen={(id) => {
-          setExpandedAgent({ id, armInteract: true })
-          setNotifications((prev) => { const next = new Map(prev); next.delete(id); return next })
-        }}
-      />
     </div>
   )
 }

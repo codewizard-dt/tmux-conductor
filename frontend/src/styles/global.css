@@ -143,6 +143,12 @@
   ::selection {
     background: rgba(79, 90, 120, 0.18);
   }
+  /* The light-mode tint above is nearly invisible on dark surfaces — use a lighter
+     periwinkle highlight with bright text so selections stay legible. */
+  .dark ::selection {
+    background: rgba(160, 175, 255, 0.4);
+    color: #ffffff;
+  }
 }
 
 @layer utilities {

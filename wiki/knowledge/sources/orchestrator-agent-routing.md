@@ -2,10 +2,11 @@
 id: orchestrator-agent-routing
 title: An Orchestrator Agent That Routes Commands/Tasks to Other Agents
 aliases: [Task Routing Orchestrator Research, Orchestrator Agent Research]
-updated: 2026-09-13
+updated: 2026-09-19
 sources:
   - ../../../raw/research/orchestrator-agent-routing/index.md
   - ../../../raw/research/orchestrator-agent-routing/index-2.md
+  - ../../../raw/research/orchestrator-agent-routing/index-3.md
 confidence: ambiguous
 tags: [orchestration, multi-agent, routing, task-queue, host-server, prior-art]
 ---
@@ -22,9 +23,20 @@ External research converges on the **orchestrator-worker / supervisor pattern** 
 
 > **Contradiction (round 2, 2026-09-13):** round 1's fleet-size and "extend the existing router" framing were both re-examined and partially overturned. (1) Live `dispatch.jsonl` shows the fleet already cycling through a double-digit number of distinct agent names in a single day — well past the ~5-8-agent threshold round 1 used to defer a dedicated orchestration mechanism. (2) A populated, mature ecosystem of tools purpose-built for orchestrating fleets of *coding* CLI agents (Claude Squad, Conductor, Crystal, Vibe Kanban, dmux, `claude-vibe-squad`, `corellis`, `herdr`) was found on a second pass and was missing from round 1 entirely — its dominant shape is **ephemeral worker-per-task** (a fresh git worktree + tmux pane provisioned per task, then merged and torn down), not "route into a persistent pool," and at least one project (`corellis`) is explicitly built for 20+ agent fleets, well past round 1's cited threshold. Round 1's tag-precedence recommendation still stands as correct for tasks scoped to an existing named agent, but is no longer presented as the whole answer — see `derived_from::[[Ephemeral Worker-Per-Task Coding Agent Orchestration]]` for the revised, broader recommendation.
 
+> **Round 3 update (2026-09-19):** an assumption audit of rounds 1-2 found that "orchestrator agent" and "a curated list of tools for specialized sub-agents" are **two independent axes**, not alternatives — you can have a catalog with no orchestrator (a human or fixed rule picks from it), an orchestrator with no catalog, or both together (the production-grade default per current sources). The concrete, zero-new-infrastructure reference shape for the catalog axis was sitting in this user's own environment the whole time and unexamined by rounds 1-2: Claude Code's own `.claude/agents/*.md` subagent format populates exactly the "Agent Registry" pattern the user asked about — and **tmux-conductor has zero files under `.claude/agents/`**. Separately, a fresh `dispatch.jsonl` check found live agents already carry an *informal* specialization signal via a `<project>-<role>-<n>` naming convention, undercutting round 2's implicit assumption that no specialization signal exists at all. Round 3 also surfaces a specific, named orchestration-failure axis — "Agent as Tool" vs. "Subagent" (conversational authority) — that sharpens round 1's existing blast-radius constraint (`POST /queue/:agent` only, never direct pane control) with concrete evidence for *why* it matters. Revised recommendation: build the specialized-agent catalog (registry metadata on the `agents` table) before or alongside round 1's tag-match router; treat a true LLM "Orchestrator Agent" as viable later only if it calls agents strictly as tools via the existing queue API. See `derived_from::[[Specialized-Agent Registry / Catalog Pattern]]` and `derived_from::[[Agent as Tool vs. Subagent (Conversational Authority)]]`.
+
+> **Infrastructure follow-up (2026-09-19):** [[Infrastructure Requirements for a Multi-Agent Architecture (the Orchestrator Agent)]] asks what must exist *beneath* any of the shapes above and corrects two statements here. (1) Round 3's step "add `role` and `description` columns to `agents`" is partly stale: `agents.role` already exists (schema v7, 7-value CHECK enum) and `DEC-0006#D1` (accepted 2026-09-18) already chose "role-match tier + ephemeral worktree fallback"; only `description` remained, filed as `TASK-0199`. (2) Round 1's table listing an LLM router's dependency as "existing Claude API/Agent SDK access from host-server" is false — `host-server/package.json` has no Anthropic dependency. The follow-up also finds that the queue has no completion semantics (`popTask` marks `done` at dispatch) and two dispatch paths with unequal gates — prerequisites for every shape here. Of the gaps round 3 left open, inspecting the sibling repos is now done (nothing relevant found), and the missing coding-specific cost figure is only partly filled (one second-hand ≈7x figure).
+
+> **Scope follow-up (2026-09-20):** [[An `orchestrator` Agent Role That Manages tmux-Window Agents and Background Processes]] reframes "orchestrator" from *task router* to *fleet-lifecycle manager* — an agent with a new `orchestrator` role that opens/closes/reopens agent windows, creates agents, and restarts bg processes through the existing routes. It finds those verbs already exist, that `role` only affects worktree agents, and that under the no-auth model the role is a grant plus guardrails plus audit rather than a permission wall (see [[Agent Role as Capability Grant, Not Permission Wall (No-Auth Trust Model)]]). Routing (this page's subject) and lifecycle management are independent axes and can ship separately.
+
 derived_from::[[Multi-Agent Orchestration Patterns (Orchestrator-Worker, Supervisor, Handoff)]]
+relates_to::[[An `orchestrator` Agent Role That Manages tmux-Window Agents and Background Processes]]
+relates_to::[[Infrastructure Requirements for a Multi-Agent Architecture (the Orchestrator Agent)]]
 derived_from::[[Ephemeral Worker-Per-Task Coding Agent Orchestration]]
+derived_from::[[Specialized-Agent Registry / Catalog Pattern]]
+derived_from::[[Agent as Tool vs. Subagent (Conversational Authority)]]
 relates_to::[[power-mode-skill]]
 relates_to::[[claude-code-agent-teams]]
 relates_to::[[Host Server]]
 relates_to::[[A2A Protocol]]
+relates_to::[[Claude Code CLI]]

@@ -1,0 +1,5 @@
+● Bash(./scripts/prompt-sample.sh)
+  ⎿  Sample tool output
+     Provide a value below
+
+>

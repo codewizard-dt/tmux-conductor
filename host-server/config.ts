@@ -34,9 +34,12 @@ export interface ConductorConf {
   // pending-agents sentinel — see pendingAgents.ts and conductor.conf's
   // PENDING_AGENT_STALE_S comment.
   pendingAgentStaleMs: number;
+  // TASK-0193: per-bg-process restart cooldown (ms) for identified agent
+  // callers — see bgRestartPolicy.ts and conductor.conf's BG_RESTART_COOLDOWN_S
+  // comment.
+  bgRestartCooldownMs: number;
   agents: AgentEntry[];
   bgProcesses: BgProcessEntry[];
-  agentBgLinks: Record<string, string>;
 }
 
 // Single source of truth: the repo-root conductor.conf that monitor.sh and
@@ -155,7 +158,7 @@ export function readConductorConf(confPath: string = DEFAULT_CONF_PATH): Conduct
   // IDLE_PATTERN/AWAITING_PATTERN/POLL_INTERVAL settings: declare -p still
   // prints the variables that exist, and missing ones simply parse as empty
   // (pollInterval then falls back to 15, idlePattern to '' → regex skipped).
-  const cmd = `bash -c "source ${confPath} && declare -p BG_PROCESSES AGENT_BG_LINKS SESSION_NAME STATE_DIR LOG_DIR DB_PATH IDLE_PATTERN BUSY_PATTERN AWAITING_PATTERN POLL_INTERVAL CONTEXT_WINDOW STATUS_POLL_MS TERMINAL_POLL_MS FOCUSED_TERMINAL_POLL_MS FOCUSED_TERMINAL_WS_POLL_MS TERMINAL_TAIL_LINES FOCUSED_TERMINAL_TAIL_LINES TERMINAL_LOG_MAX_ROWS_PER_AGENT METRICS_SNAPSHOT_INTERVAL_MS PENDING_AGENT_STALE_S 2>/dev/null || true"`;
+  const cmd = `bash -c "source ${confPath} && declare -p BG_PROCESSES SESSION_NAME STATE_DIR LOG_DIR DB_PATH IDLE_PATTERN BUSY_PATTERN AWAITING_PATTERN POLL_INTERVAL CONTEXT_WINDOW STATUS_POLL_MS TERMINAL_POLL_MS FOCUSED_TERMINAL_POLL_MS FOCUSED_TERMINAL_WS_POLL_MS TERMINAL_TAIL_LINES FOCUSED_TERMINAL_TAIL_LINES TERMINAL_LOG_MAX_ROWS_PER_AGENT METRICS_SNAPSHOT_INTERVAL_MS PENDING_AGENT_STALE_S BG_RESTART_COOLDOWN_S 2>/dev/null || true"`;
   const output = execSync(cmd, { encoding: 'utf8', timeout: CONFIG_SYNC_TIMEOUT_MS });
 
   // Relative paths in the conf (./logs/state, ./data/conductor.db) are relative to the
@@ -188,18 +191,12 @@ export function readConductorConf(confPath: string = DEFAULT_CONF_PATH): Conduct
   // BUG-0001: PENDING_AGENT_STALE_S is in seconds in the conf (human-facing);
   // convert to ms here for direct comparison against Date.now()/mtimeMs.
   const pendingAgentStaleMs = parsePositiveIntSetting(output, 'PENDING_AGENT_STALE_S', 3600) * 1000;
+  // TASK-0193: BG_RESTART_COOLDOWN_S is seconds in the conf, ms here.
+  const bgRestartCooldownMs = parsePositiveIntSetting(output, 'BG_RESTART_COOLDOWN_S', 30) * 1000;
   const agentsRaw = parseArray(parseDeclare(output, 'AGENTS'));
   const agents = agentsRaw.map(parseAgentEntry);
   const bgProcessesRaw = parseArray(parseDeclare(output, 'BG_PROCESSES'));
   const bgProcesses = bgProcessesRaw.map(parseAgentEntry);
-  const bgLinksRaw = parseArray(parseDeclare(output, 'AGENT_BG_LINKS'));
-  const agentBgLinks: Record<string, string> = {};
-  for (const link of bgLinksRaw) {
-    const colon = link.indexOf(':');
-    if (colon > 0) {
-      agentBgLinks[link.slice(0, colon).trim()] = link.slice(colon + 1).trim();
-    }
-  }
 
   cache = {
     sessionName,
@@ -223,9 +220,9 @@ export function readConductorConf(confPath: string = DEFAULT_CONF_PATH): Conduct
     terminalLogMaxRowsPerAgent,
     metricsSnapshotIntervalMs,
     pendingAgentStaleMs,
+    bgRestartCooldownMs,
     agents,
     bgProcesses,
-    agentBgLinks,
   };
   cacheTime = now;
   return cache;

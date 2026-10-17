@@ -47,11 +47,13 @@ CREATE TABLE agents (
 );
 CREATE TABLE bg_processes (
   id INTEGER PRIMARY KEY,
-  name TEXT NOT NULL UNIQUE,
+  name TEXT NOT NULL,
   workdir TEXT NOT NULL,
   launch_cmd TEXT NOT NULL,
-  linked_agent_id INTEGER REFERENCES agents(id) ON DELETE SET NULL
+  linked_agent_id INTEGER REFERENCES agents(id) ON DELETE SET NULL,
+  project_id INTEGER REFERENCES projects(id) ON DELETE CASCADE
 );
+CREATE UNIQUE INDEX idx_bg_processes_project_name ON bg_processes(project_id, name);
 "
 
 echo "[verify-teardown] Seeding a project-scoped agent (window name != bare agent name)..."

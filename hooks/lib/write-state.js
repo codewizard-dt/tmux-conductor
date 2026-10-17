@@ -16,6 +16,38 @@ const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
 
+// Max length (UTF-16 code units) of the persisted last_prompt text, marker
+// included (TASK-0220 rule b): longer prompts keep the first cap-1 characters
+// plus one '…'.
+const LAST_PROMPT_MAX_CHARS = 2000;
+
+const PASTE_OPEN_TAG = /<pasted_content(?: id="[^"]*")?>\r?\n?/g;
+const PASTE_CLOSE_TAG = /\r?\n?<\/pasted_content(?: id="[^"]*")?>/g;
+
+// A bracketed paste reaches UserPromptSubmit wrapped as
+// "\n\n<pasted_content id=\"N\">\n…\n</pasted_content id=\"N\">\n" (TASK-0219).
+// Unwrap it: drop both tags (keeping the inner text verbatim and any typed text
+// around the wrapper), then trim the leading/trailing blank lines the wrapper
+// leaves behind. Prompts without a wrapper are returned untouched.
+function normalizePrompt(prompt) {
+  if (!prompt.includes('<pasted_content')) return prompt;
+  return prompt
+    .replace(PASTE_OPEN_TAG, '')
+    .replace(PASTE_CLOSE_TAG, '')
+    .replace(/^(?:[ \t]*\r?\n)+/, '')
+    .replace(/(?:\r?\n[ \t]*)+$/, '');
+}
+
+// Cap text to LAST_PROMPT_MAX_CHARS including a single '…' marker; never leaves
+// a dangling high surrogate at the cut.
+function capPrompt(text) {
+  if (text.length <= LAST_PROMPT_MAX_CHARS) return text;
+  let cut = LAST_PROMPT_MAX_CHARS - 1;
+  const last = text.charCodeAt(cut - 1);
+  if (last >= 0xd800 && last <= 0xdbff) cut -= 1;
+  return text.slice(0, cut) + '…';
+}
+
 function writeState(value, event) {
   const STATE_DIR = process.env.CONDUCTOR_STATE_DIR || '/conductor-state';
   const LOG_DIR = process.env.CONDUCTOR_LOG_DIR || '/conductor-logs';
@@ -101,7 +133,20 @@ function writeState(value, event) {
       if (payload.transcript_path) meta.transcript_path = payload.transcript_path;
       if (payload.session_id) meta.session_id = payload.session_id;
       if (payload.model) meta.model = payload.model;
-      meta.ts = new Date().toISOString();
+      const now = new Date().toISOString();
+      // Only UserPromptSubmit carries `prompt`; every other event keeps the
+      // previous last_prompt (meta starts from the prior sidecar). Empty,
+      // whitespace-only, missing or non-string prompts never overwrite.
+      if (typeof payload.prompt === 'string') {
+        const text = normalizePrompt(payload.prompt);
+        if (text.trim() !== '') {
+          meta.last_prompt = { text: capPrompt(text), ts: now };
+          if (typeof payload.prompt_id === 'string' && payload.prompt_id) {
+            meta.last_prompt.prompt_id = payload.prompt_id;
+          }
+        }
+      }
+      meta.ts = now;
       fs.writeFileSync(metaFile, JSON.stringify(meta) + '\n');
     } catch (_err) {
       // best-effort — never break the agent

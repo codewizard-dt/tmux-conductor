@@ -2,8 +2,9 @@
 id: log-tail
 title: LogTail
 aliases: [LogTail.tsx]
-updated: 2026-09-13
+updated: 2026-09-19
 sources:
+  - ../../../raw/research/terminal-typed-command-persistence/index.md
   - ../../../raw/research/web-terminal-emulators/index.md
   - ../../../raw/research/application-latency-structure/index.md
   - ../../../raw/research/application-latency-structure/index-2.md
@@ -82,3 +83,9 @@ Fix directions and a full Phase-0 audit checklist (other untested focus-transiti
 The `\x1bc`+write full-reset pattern in `applySnapshot` (see above) also causes `.xterm-viewport`'s scrollbar thumb to visibly flash/flicker on every live update while in follow-mode — a known xterm.js issue class (`derived_from::[[xterm-scrollbar-flicker]]`), not a bug specific to this component. The existing `writingRef`-gated scroll-ignore guard (protects *logical* follow-state) does not address this, since the *visual* flash is driven by the raw DOM `scrollTop` churn itself, not by how this component's own `'scroll'` handler reacts to it. Recommended fix: debounce/coalesce `applySnapshot` calls on the two **live**-update paths (WebSocket ~L408, SSE ~L446) to a bounded rate (~150-250ms trailing-edge) while `followRef.current` is true, leaving the "catch up on return to bottom" path (~L325-327) undebounced. No `@xterm/xterm` version change needed or recommended — the complete upstream fix ships only in the unreleased 7.0 line. See `raw/research/xterm-scrollbar-flicker/index.md` for the full comparison and implementation outline.
 
 **Fix shipped (2026-09-13)**: refined by a user live-diagnosis that the flicker only happens when the viewport rests at the literal bottom (`viewportY === baseY`), not merely "on frequent repaints." `LogTail.tsx` now keeps a permanent `BOTTOM_OFFSET_LINES = 2` offset short of the true bottom via a new `scrollNearBottom(term)` helper (`scrollToBottom()` + `scrollLines(-BOTTOM_OFFSET_LINES)`), replacing both prior `scrollToBottom()` call sites (post-repaint snap in `applySnapshot`, and the on-`focused` re-arm effect). The follow-mode `atBottom` check was correspondingly widened from exact equality to `baseY - viewportY <= BOTTOM_OFFSET_LINES`, or the intentional offset would break follow-mode on every repaint. The debounce approach `derived_from::[[xterm-scrollbar-flicker]]` originally recommended was not implemented — kept as a complementary fallback if any residual flicker surfaces under very high-frequency bursts.
+
+## Typed-command capture seam (researched 2026-09-19)
+
+`enqueue(payload)` is the **single choke point** for every byte of Direct Input — `handleKeyDown` (via `mapKey`), `handlePaste`, and the send box's `handleSendSubmit` all funnel through it, and it already picks the focused WebSocket (`terminalWsRef.current?.sendInput`) or falls back to the serialized `sendAgentKeys` POST. That makes it the one place a "last typed command" feature would hook, without instrumenting two transports. But it sees per-key deltas, not a command line, so recording a submitted command needs a mirror buffer with explicit uncertainty handling — see `derived_from::[[terminal-typed-command-persistence]]` and `relates_to::[[keystroke-stream-command-reconstruction]]`. The send box already persists an unsent *draft* in `localStorage` under `conductor:sendDraft:<agentId>` — the key convention a `conductor:lastCommand:<agentId>` value would follow.
+
+> **Superseded for hook-capable agents (2026-09-20):** an `onEnter`/keystroke hook in `enqueue()` cannot know whether Enter *submitted* anything (the TUI may be accepting an autocomplete, confirming a dialog, or inserting a newline). `derived_from::[[last-user-message-capture]]` recommends capturing the exact prompt from Claude Code's `UserPromptSubmit` hook payload into the agent sidecar instead, leaving `LogTail` untouched; the `enqueue()` mirror buffer is only the fallback for agents with no submit hook. See `relates_to::[[hook-authoritative-last-prompt]]`.

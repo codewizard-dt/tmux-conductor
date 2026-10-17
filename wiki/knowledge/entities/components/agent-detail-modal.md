@@ -2,8 +2,10 @@
 id: agent-detail-modal
 title: AgentDetailModal
 aliases: [AgentDetailModal.tsx]
-updated: 2026-08-15
+updated: 2026-09-20
 sources:
+  - ../../../raw/research/project-file-tree/index.md
+  - ../../../raw/research/worktree-on-any-agent/index.md
   - ../../../raw/research/agent-detail-modal-redesign/index.md
 confidence: extracted
 tags: [frontend, component, modal, ux]
@@ -42,6 +44,13 @@ tags: [frontend, component, modal, ux]
 
 **2026-09-18 sidebar-layout relocation research** (`derived_from::[[agents-page-sidebar-layout]]`): a roadmap is being scoped to remove the Agents page's Kanban board entirely, replacing it with a project-grouped sidebar (status shown via a colored right border) and relocating this modal's content out of its full-viewport overlay into the main content area — a routed (`/agents/:agentId`) or locally-stated "list + detail pane" layout, per `uses::[[react-router-outlet-sidebar-layout]]`. The modal's internal state/effects are assessed as reusable largely as-is; the `document.body.style.overflow` lock effect and the global-`Escape`-closes listener are flagged as needing reconsideration once this is no longer an overlay. Both current call sites (`AgentList`'s active-agent flow and `InactiveAgentsPanel`'s inactive-agent flow) will need to move to whatever new mechanism is adopted.
 
+**2026-09-20 worktree-action research** (`derived_from::[[worktree-on-any-agent]]`): the Details panel already carries a "Create worktree" button (`handleCreateWorktree` → `createWorktreeForAgent` → `POST /agents/:id/worktree`, result held in local `worktreeOverride` state because the route emits no SSE), but it renders only when the agent has no branch and is **not** an `AgentActionsMenu` item. Clone has since shipped as a menu item (`handleClone` → `cloneAgent`), superseding the 2026-09-13 "minus trashed Clone" recommendation above. Research recommends surfacing the worktree action from the actions menu and adding a "Clone into new worktree" item. See `relates_to::[[agent-worktree-lifecycle]]`.
+
+**2026-09-20 file-tree research** (`derived_from::[[project-file-tree]]`): the detail view's `tabs: AgentInfoTabDef[]` array in `AgentList.tsx` currently reads `terminal | skills | details | queued-tasks | diff | usage | checkpoints`; a **Files** tab would slot in beside `diff`, backed by a new `GET /agents/:id/files` route (git-index-sourced paths) and a `FilesPanel` component. Constraint from `AgentInfoTabs`: every present tab's content is mounted on every render with only `hidden` toggled, so a fetching panel must gate its request on the active tab id (see `[[accessible-tabs-pattern]]`). `ROADMAP-0024` also plans a Background tab in the same tablist, so sequence the two, and `TASK-0199`/`TASK-0200` already touch `AgentList.tsx`. Library and security details: `[[file-tree-ui-library-options]]`, `[[local-server-cors-wildcard-exposure]]`.
+
+relates_to::[[project-file-tree]]
+relates_to::[[worktree-on-any-agent]]
+relates_to::[[agent-worktree-lifecycle]]
 relates_to::[[log-tail]]
 relates_to::[[agent-detail-modal-redesign]]
 relates_to::[[agent-status-notifications]]

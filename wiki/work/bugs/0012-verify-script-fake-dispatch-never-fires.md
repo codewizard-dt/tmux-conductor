@@ -2,11 +2,11 @@
 id: BUG-0012
 aliases: [BUG-0012]
 title: "scripts/verify-sqlite-migration.sh's fake-dispatch check: enqueued task never reaches the spawned agent's pane within 55s"
-status: open
+status: triaged
 severity: low
 priority: P3
 created: 2026-09-17
-updated: 2026-09-17
+updated: 2026-09-20
 reporter: David Taylor
 assignee: "—"
 tags: scripts, verification, dispatch, host-server

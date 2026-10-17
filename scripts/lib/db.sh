@@ -55,34 +55,38 @@ sql_one() {
 }
 
 # ---------------------------------------------------------------------------
-# 3. load_agents — populate AGENT_NAMES + AGENT_DIRS/AGENT_CMDS/AGENT_BG
+# 3. load_agents — populate AGENT_NAMES + AGENT_DIRS/AGENT_CMDS/AGENT_WINDOW_NAMES/...
 # ---------------------------------------------------------------------------
 load_agents() {
   AGENT_NAMES=()
   declare -gA AGENT_DIRS
   declare -gA AGENT_CMDS
-  declare -gA AGENT_BG
   declare -gA AGENT_WINDOW_NAMES
   declare -gA AGENT_IDS
   declare -gA AGENT_PROJECT_IDS
-  local name workdir cmd bg_name window_name agent_id project_id
-  while IFS=$'\x1f' read -r name workdir cmd bg_name window_name agent_id project_id; do
+  local name workdir cmd window_name agent_id project_id
+  while IFS=$'\x1f' read -r name workdir cmd window_name agent_id project_id; do
     [[ -z "$name" ]] && continue
     AGENT_NAMES+=("$name")
     AGENT_DIRS["$name"]="$workdir"
     AGENT_CMDS["$name"]="$cmd"
-    AGENT_BG["$name"]="$bg_name"
     AGENT_WINDOW_NAMES["$name"]="$window_name"
     # Agent id + project id drive task dispatch directly. Names are only unique
     # per-project, so resolving tasks by name at dispatch time is ambiguous when
     # two projects share a short agent name — always match on these numeric ids.
     AGENT_IDS["$name"]="$agent_id"
     AGENT_PROJECT_IDS["$name"]="$project_id"
-  done < <(sql "SELECT a.name, a.workdir, a.launch_cmd, COALESCE(b.name,''), COALESCE(p.name || '-' || a.name, a.name), a.id, COALESCE(a.project_id,'') FROM agents a LEFT JOIN bg_processes b ON b.linked_agent_id=a.id LEFT JOIN projects p ON a.project_id=p.id ORDER BY a.name")
+  done < <(sql "SELECT a.name, a.workdir, a.launch_cmd, COALESCE(p.name || '-' || a.name, a.name), a.id, COALESCE(a.project_id,'') FROM agents a LEFT JOIN projects p ON a.project_id=p.id ORDER BY a.name")
 }
 
 # ---------------------------------------------------------------------------
 # 4. load_bg — populate BG_NAMES + BG_DIRS/BG_CMDS
+#
+# bg process names are only unique per project, so every value in BG_NAMES (and
+# every key of BG_DIRS/BG_CMDS) is the derived slug `<projectName>-<name>` (the
+# bare name when the row has no project) — identical to bgSlug() in
+# host-server/db.ts. The slug is the tmux window name and the bg-<slug>.log|state
+# file stem.
 # ---------------------------------------------------------------------------
 load_bg() {
   BG_NAMES=()
@@ -94,7 +98,7 @@ load_bg() {
     BG_NAMES+=("$name")
     BG_DIRS["$name"]="$workdir"
     BG_CMDS["$name"]="$cmd"
-  done < <(sql "SELECT name, workdir, launch_cmd FROM bg_processes ORDER BY name")
+  done < <(sql "SELECT COALESCE(p.name || '-' || b.name, b.name), b.workdir, b.launch_cmd FROM bg_processes b LEFT JOIN projects p ON p.id=b.project_id ORDER BY 1")
 }
 
 # ---------------------------------------------------------------------------

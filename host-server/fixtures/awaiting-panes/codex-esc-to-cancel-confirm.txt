@@ -1,0 +1,13 @@
+• Running npm test in the sample project
+  └ 12 passed, 0 failed
+
+• Running the formatter next
+
+  Would you like to run the following command?
+
+  $ npm run format
+
+  › 1. Yes, proceed (y)
+    2. No, and tell Codex what to do differently (esc)
+
+  Press Enter to confirm or Esc to cancel

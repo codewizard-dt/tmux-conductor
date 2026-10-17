@@ -23,7 +23,7 @@ sent=0
 skipped=0
 
 for name in "${AGENT_NAMES[@]}"; do
-  target="$SESSION_NAME:$name"
+  target="$SESSION_NAME:=$name"
 
   if tmux has-session -t "$target" 2>/dev/null; then
     "$SCRIPT_DIR/dispatch.sh" "$target" "$CMD"

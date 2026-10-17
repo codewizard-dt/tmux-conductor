@@ -1,9 +1,10 @@
 ---
 id: claude-subscription-usage-signal-gap
 title: Claude Subscription Usage-Signal Gap
-updated: 2026-08-15
+updated: 2026-09-19
 sources:
   - ../../raw/research/claude-usage-quota-signal/index.md
+  - ../../../raw/research/multi-agent-infrastructure-requirements/index.md
 confidence: extracted
 tags: [claude-code, usage-monitoring, api]
 ---
@@ -23,3 +24,7 @@ Only (1) has a documented, header-based programmatic signal, and it doesn't appl
 **Revisit condition**: if `anthropics/claude-code#33820` (or an equivalent feature) ships, it becomes the first authoritative, scriptable signal for this and should replace any heuristic.
 
 See `decided_by::[[DEC-0001-usage-check-hardening|DEC-0001#D1]]` for the formal decision record built on this gap.
+
+> **Orchestration update (2026-09-19):** [[Infrastructure Requirements for a Multi-Agent Architecture (the Orchestrator Agent)]] finds that DEC-0001's "no automated checking" default was chosen at low concurrency and stops being safe as automated load rises: the 5-hour and weekly windows are one shared pool across Claude Code, chat and Cowork, so parallel agents (or an orchestrator's own LLM calls) can exhaust it invisibly, and practitioner reports of parallel headless fleets describe rate limits burning in minutes and retry loops spending heavily without per-invocation caps. Because no server-side signal exists, the only honest controls are **local and static** — a max-concurrent-agents cap and a per-window token budget computed from the local usage data `usage.ts` already records — never a fake quota check. One second-hand coding-specific figure (Agent Teams ≈7x tokens in plan mode) exists; how programmatic (`claude -p`/SDK) usage is billed relative to the subscription is reportedly unsettled. See [[LLM Orchestrator Runtime Options (tmux Agent vs. claude -p vs. Agent SDK)]].
+
+relates_to::[[Infrastructure Requirements for a Multi-Agent Architecture (the Orchestrator Agent)]]

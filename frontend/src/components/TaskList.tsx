@@ -14,7 +14,7 @@ import {
   arrayMove,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { deleteTask, reorderTasks, jumpTaskToHead, type Task } from '../lib/api';
+import { deleteTask, reorderTasks, jumpTaskToHead, scopeTaskToProject, type Task } from '../lib/api';
 
 interface SortableItemProps {
   id: string;
@@ -22,16 +22,17 @@ interface SortableItemProps {
   isProject: boolean;
   onDelete: () => void;
   onJumpHead: () => void;
+  onScopeProject?: (() => void) | undefined;
 }
 
-function SortableItem({ id, text, isProject, onDelete, onJumpHead }: SortableItemProps) {
+function SortableItem({ id, text, isProject, onDelete, onJumpHead, onScopeProject }: SortableItemProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id });
 
   return (
     <li
       ref={setNodeRef}
-      className={`mb-1 flex items-center gap-2 rounded-[6px] border px-2 py-1.5 select-none transition-opacity ${isDragging ? 'border-accent/20 bg-surface opacity-80' : 'border-line bg-card'}`}
+      className={`mb-1 flex items-center gap-2 rounded-[6px] border px-2 py-1.5 transition-opacity ${isDragging ? 'border-accent/20 bg-surface opacity-80' : 'border-line bg-card'}`}
       style={{ transform: CSS.Transform.toString(transform), transition }}
     >
       <span
@@ -40,11 +41,20 @@ function SortableItem({ id, text, isProject, onDelete, onJumpHead }: SortableIte
         {...attributes}
         {...listeners}
       >⠿</span>
-      <span className="flex-1 font-mono text-[11px] text-ink-2">{text}</span>
+      <span className="flex-1 select-text font-mono text-[11px] text-ink-2">{text}</span>
       {isProject && (
         <span className="flex-shrink-0 rounded px-1 py-0.5 text-[10px] font-medium bg-violet-100 text-violet-700">
           project
         </span>
+      )}
+      {!isProject && onScopeProject && (
+        <button
+          type="button"
+          onClick={onScopeProject}
+          title="Make this a project task so any agent in the project can pick it up"
+          aria-label={`Scope to project: ${text}`}
+          className="flex h-4 flex-shrink-0 cursor-pointer items-center justify-center rounded-[4px] px-1 text-[10px] leading-none text-muted-2 transition hover:bg-accent/10 hover:text-accent"
+        >→ project</button>
       )}
       <button
         type="button"
@@ -68,6 +78,7 @@ export interface TaskListProps {
   agentName: string;
   tasks: Task[];
   onReorder: (newTasks: Task[]) => void;
+  projectId?: number | null | undefined;
 }
 
 function ScopedTaskGroup({
@@ -76,12 +87,14 @@ function ScopedTaskGroup({
   sensors,
   onReorder,
   onError,
+  projectId,
 }: {
   tasks: Task[];
   allTasks: Task[];
   sensors: ReturnType<typeof useSensors>;
   onReorder: (newTasks: Task[]) => void;
   onError: (msg: string) => void;
+  projectId?: number | null | undefined;
 }) {
   const ids = tasks.map((t) => String(t.id));
   const isProject = tasks[0]?.projectId != null;
@@ -129,6 +142,18 @@ function ScopedTaskGroup({
     }
   }
 
+  async function handleScopeProject(task: Task) {
+    if (projectId == null) return;
+    onReorder(allTasks.map((t) => (t.id === task.id ? { ...t, agentId: null, projectId } : t)));
+    try {
+      await scopeTaskToProject(task.id);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Unknown error';
+      onReorder(allTasks);
+      onError(`Scope to project failed: ${msg}`);
+    }
+  }
+
   return (
     <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={(e) => { void handleDragEnd(e); }}>
       <SortableContext items={ids} strategy={verticalListSortingStrategy}>
@@ -141,6 +166,11 @@ function ScopedTaskGroup({
               isProject={task.projectId != null}
               onDelete={() => { void handleDelete(task); }}
               onJumpHead={() => { void handleJumpHead(task); }}
+              onScopeProject={
+                projectId != null && task.projectId == null
+                  ? () => { void handleScopeProject(task); }
+                  : undefined
+              }
             />
           ))}
         </ul>
@@ -149,7 +179,7 @@ function ScopedTaskGroup({
   );
 }
 
-export default function TaskList({ tasks, onReorder }: TaskListProps) {
+export default function TaskList({ tasks, onReorder, projectId }: TaskListProps) {
   const [error, setError] = React.useState<string | null>(null);
 
   const sensors = useSensors(
@@ -173,6 +203,7 @@ export default function TaskList({ tasks, onReorder }: TaskListProps) {
           sensors={sensors}
           onReorder={(next) => { setError(null); onReorder(next); }}
           onError={setError}
+          projectId={projectId}
         />
       )}
       {projectTasks.length > 0 && (
@@ -182,6 +213,7 @@ export default function TaskList({ tasks, onReorder }: TaskListProps) {
           sensors={sensors}
           onReorder={(next) => { setError(null); onReorder(next); }}
           onError={setError}
+          projectId={projectId}
         />
       )}
     </div>

@@ -192,6 +192,16 @@ export async function jumpTaskToHead(id: number): Promise<void> {
   }
 }
 
+export async function scopeTaskToProject(id: number): Promise<void> {
+  const res = await apiFetch(`${API_BASE}/tasks/${id.toString()}/scope-project`, {
+    method: 'POST',
+  })
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({})) as { error?: string }
+    throw new Error(body.error ?? `HTTP ${res.status.toString()}`)
+  }
+}
+
 export async function fetchProjectTasks(projectId: number): Promise<Task[]> {
   const res = await apiFetch(`${API_BASE}/tasks?projectId=${projectId.toString()}`)
   if (!res.ok) {
@@ -337,9 +347,14 @@ export async function updateAgentRole(agentId: number, role: string): Promise<Ap
 }
 
 
-export async function cloneAgent(agentId: number): Promise<ApiAgent> {
+export async function cloneAgent(agentId: number, opts?: { forceWorktree?: boolean }): Promise<ApiAgent> {
+  // `forceWorktree` asks the server to give the clone its own fresh worktree +
+  // branch even when the source has none; the plain clone sends no body at all.
   const res = await apiFetch(`${API_BASE}/agents/${agentId.toString()}/clone`, {
     method: 'POST',
+    ...(opts?.forceWorktree === true
+      ? { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ forceWorktree: true }) }
+      : {}),
   });
   if (!res.ok) {
     const body = (await res.json().catch(() => ({}))) as { error?: string };
@@ -379,9 +394,16 @@ export async function spawnAgentInProject(
  * the agent's workdir isn't inside a git repo, 409 when it already has one.
  */
 export async function createWorktreeForAgent(agentId: number): Promise<ApiAgent> {
-  const res = await apiFetch(`${API_BASE}/agents/${agentId.toString()}/worktree`, {
-    method: 'POST',
-  });
+  let res: Response;
+  try {
+    res = await apiFetch(`${API_BASE}/agents/${agentId.toString()}/worktree`, {
+      method: 'POST',
+    });
+  } catch (err) {
+    // fetch rejects with a TypeError when the host-server is unreachable.
+    if (err instanceof TypeError) throw new Error('Could not reach the host-server');
+    throw err;
+  }
   if (!res.ok) {
     const body = (await res.json().catch(() => ({}))) as { error?: string };
     throw new Error(body.error ?? `HTTP ${res.status.toString()}`);
@@ -389,8 +411,32 @@ export async function createWorktreeForAgent(agentId: number): Promise<ApiAgent>
   return (res.json() as Promise<{ agent: ApiAgent }>).then((b) => b.agent);
 }
 
-/** DELETE /api/projects/:id */
-export async function deleteProject(projectId: number): Promise<void> {
+/**
+ * TASK-0216: stop and relaunch an agent's tmux window so it starts in its
+ * (possibly newly created) worktree. DELETE /api/agents/:id/window then POST
+ * the same URL — the POST respawns via `agentPaneCwd`. A failed DELETE
+ * short-circuits; a failed POST is reported with its stage because the
+ * window is already gone by then.
+ */
+export async function restartAgentWindow(agentId: number): Promise<void> {
+  const url = `${API_BASE}/agents/${agentId.toString()}/window`;
+  const del = await apiFetch(url, { method: 'DELETE' });
+  if (!del.ok) {
+    const body = (await del.json().catch(() => ({}))) as { error?: string };
+    throw new Error(body.error ?? `HTTP ${del.status.toString()}`);
+  }
+  const post = await apiFetch(url, { method: 'POST' });
+  if (!post.ok) {
+    const body = (await post.json().catch(() => ({}))) as { error?: string };
+    throw new Error(`Window stopped but relaunch failed: ${body.error ?? `HTTP ${post.status.toString()}`}`);
+  }
+}
+
+/**
+ * DELETE /api/projects/:id — cascades to the project's bg processes (TASK-0195):
+ * their tmux windows are closed and their rows removed. Returns the removed names.
+ */
+export async function deleteProject(projectId: number): Promise<{ removedBgProcesses: string[] }> {
   const res = await apiFetch(`${API_BASE}/projects/${projectId.toString()}`, {
     method: 'DELETE',
   });
@@ -398,24 +444,50 @@ export async function deleteProject(projectId: number): Promise<void> {
     const body = (await res.json().catch(() => ({}))) as { error?: string };
     throw new Error(body.error ?? `HTTP ${res.status.toString()}`);
   }
+  const body = (await res.json().catch(() => ({}))) as { removedBgProcesses?: string[] };
+  return { removedBgProcesses: body.removedBgProcesses ?? [] };
+}
+
+/**
+ * Names of the bg processes belonging to a project, read from GET /api/status
+ * (the same payload the dashboard already loads). Used by the project-delete
+ * confirmation to list what will be stopped and deleted.
+ */
+export async function listProjectBgProcessNames(projectId: number): Promise<string[]> {
+  const res = await apiFetch(`${API_BASE}/status`);
+  if (!res.ok) throw new Error(`HTTP ${res.status.toString()}`);
+  const data = (await res.json()) as { bgProcesses?: { name: string; projectId: number | null }[] };
+  return (Array.isArray(data.bgProcesses) ? data.bgProcesses : [])
+    .filter((bg) => bg.projectId === projectId)
+    .map((bg) => bg.name);
 }
 
 // Updates a bg process's stored definition (workdir/launchCmd/projectId only —
-// name is immutable). Writes SQLite only; does not touch a live tmux window.
+// name is immutable). Addressed by slug (`<projectName>-<name>`). Writes SQLite
+// only; does not touch a live tmux window.
+/**
+ * TASK-0193: last successful restart of a bg process. `at` is an ISO timestamp;
+ * `caller` is the self-declared `X-Conductor-Agent` name, or null for a
+ * dashboard/human restart.
+ */
+export interface BgLastRestart {
+  at: string;
+  caller: string | null;
+}
+
 export interface BgProcessDefinition {
   id: number;
   name: string;
   workdir: string;
   launchCmd: string;
-  linkedAgentId: number | null;
-  projectId: number | null;
+  projectId: number;
 }
 
 export async function updateBgProcess(
-  name: string,
-  data: Partial<{ workdir: string; launchCmd: string; projectId: number | null }>,
+  slug: string,
+  data: Partial<{ workdir: string; launchCmd: string; projectId: number }>,
 ): Promise<BgProcessDefinition> {
-  const res = await apiFetch(`${API_BASE}/bg-processes/${encodeURIComponent(name)}`, {
+  const res = await apiFetch(`${API_BASE}/bg-processes/${encodeURIComponent(slug)}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
@@ -425,6 +497,68 @@ export async function updateBgProcess(
     throw new Error(body.error ?? `HTTP ${res.status.toString()}`);
   }
   return res.json() as Promise<BgProcessDefinition>;
+}
+
+/** Response of GET /bg-processes/:slug/tail — ANSI-stripped, bounded tail of bg-<slug>.log. */
+export interface BgTail {
+  slug: string
+  name: string;
+  lines: string[];
+  truncated: boolean;
+  sizeBytes: number;
+  logPath: string;
+  updatedAt: string | null;
+}
+
+export async function bgTail(slug: string, lines?: number): Promise<BgTail> {
+  const qs = lines !== undefined ? `?lines=${encodeURIComponent(String(lines))}` : '';
+  const res = await apiFetch(`${API_BASE}/bg-processes/${encodeURIComponent(slug)}/tail${qs}`);
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(body.error ?? `HTTP ${res.status.toString()}`);
+  }
+  return res.json() as Promise<BgTail>;
+}
+
+/** Response of POST /bg-processes/:slug/restart (TASK-0190). */
+export interface BgRestartResult {
+  ok: true;
+  name: string;
+  restartedAt: string;
+  mechanism: string;
+}
+
+/**
+ * TASK-0206: atomic restart of a bg process via the same server route agents
+ * use. Sends no `X-Conductor-Agent` header, so the server treats this as a
+ * human/dashboard caller (allowed by the same-project guard, exempt from the
+ * agent cooldown, still audit-logged). Known statuses map to readable messages.
+ */
+export async function restartBgProcess(slug: string): Promise<BgRestartResult> {
+  let res: Response;
+  try {
+    res = await apiFetch(`${API_BASE}/bg-processes/${encodeURIComponent(slug)}/restart`, { method: 'POST' });
+  } catch (err: unknown) {
+    if (err instanceof TypeError) throw new Error('Could not reach the host-server');
+    throw err;
+  }
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as { error?: string; step?: string; retryAfterS?: number };
+    if (res.status === 409) throw new Error('The conductor tmux session is not running');
+    if (res.status === 404) throw new Error('Process no longer exists (it may have been removed)');
+    if (res.status === 500) {
+      throw new Error(body.step ? `Restart failed at step ${body.step}` : 'Restart failed');
+    }
+    if (res.status === 429) {
+      throw new Error(
+        body.retryAfterS !== undefined
+          ? `Restarted too recently, try again in ${String(body.retryAfterS)}s`
+          : 'Restarted too recently, try again shortly',
+      );
+    }
+    throw new Error(body.error ?? `HTTP ${res.status.toString()}`);
+  }
+  return res.json() as Promise<BgRestartResult>;
 }
 
 // ── Schedules ──────────────────────────────────────────────────────────────

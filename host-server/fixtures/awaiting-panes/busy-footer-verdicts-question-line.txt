@@ -1,0 +1,10 @@
+● The review found three open items.
+  Which of these should be resolved first, and how many
+  Verdicts (2–4)?
+
+✻ Pondering… (14s · ↓ 1.1k tokens)
+
+────────────────────────────────────────
+❯
+────────────────────────────────────────
+  ⏵⏵ accept edits on (shift+tab to cycle) · esc to interrupt

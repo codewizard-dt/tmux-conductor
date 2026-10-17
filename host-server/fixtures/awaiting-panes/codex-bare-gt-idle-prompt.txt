@@ -1,0 +1,8 @@
+╭──────────────────────────────────────────╮
+│ >_ OpenAI Codex (v0.0.0)                 │
+│ model: gpt-5   /model to change          │
+╰──────────────────────────────────────────╯
+
+• Done. I updated the sample file.
+
+>

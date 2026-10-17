@@ -4,7 +4,16 @@ Terminal task files (`done` or `trashed`) moved here by `/wiki-archive` to reduc
 
 | ID | Title | Final Status | Archived |
 |----|-------|--------------|----------|
+| [[TASK-0194]] | Resolve the calling agent's project on the server and restrict bg restart to same-project callers | done | 2026-09-20 |
+| [[TASK-0198]] | Drop bg_processes.linked_agent_id via a table-rebuild migration | done | 2026-09-20 |
+| [[TASK-0217]] | Cover delete-after-clone worktree and branch teardown with a test | done | 2026-09-20 |
+| [[TASK-0190]] | Add one atomic restart operation for a bg process that reattaches log capture and writes a restart marker | done | 2026-09-20 |
+| [[TASK-0212]] | Guard and test that new worktrees land in a newly created sibling directory of the repo root | done | 2026-09-20 |
+| [[TASK-0184]] | Detect outstanding background jobs in agent status detection via ~/.claude/jobs/*/state.json | done | 2026-09-19 |
+| [[TASK-0183]] | Sort the agent sidebar alphabetically by default with drag-to-reorder persisted in localStorage | done | 2026-09-19 |
+| [[TASK-0182]] | Address tmux windows with exact-match `=` targets (inactive agent shows/acts on its `-copy` sibling's pane) | done | 2026-09-19 |
 | [[TASK-0168]] | Update stale agent-status-observability wiki pages, then run a full audit of the shipped transitions.jsonl feature | done | 2026-09-18 |
+| [[TASK-0201]] | Make the agent sidebar collapsible into a status-dot rail | done | 2026-09-20 |
 | [[TASK-050]] | App Platform live deploy runbook for app/ (api + frontend), invite-gated signups from day one | trashed | 2026-09-17 |
 | [[TASK-129]] | Port isolation for scripts/verify-sqlite-migration.sh | done | 2026-09-17 |
 | [[TASK-155]] | Add a Bash >=4 self-check guard to scripts/lib/db.sh | done | 2026-09-17 |
@@ -160,3 +169,15 @@ Terminal task files (`done` or `trashed`) moved here by `/wiki-archive` to reduc
 | [[TASK-149]] | Fix Cmd/Ctrl/Option+Arrow cursor navigation in the Direct Input terminal | done | 2026-09-18 |
 | [[TASK-0163]] | Fix copy/paste reliability in the Direct Input terminal | done | 2026-09-18 |
 | [[TASK-0165]] | Handle Cmd+Backspace and Option+Backspace in the Direct Input terminal | done | 2026-09-18 |
+| [[TASK-132]] | Fix context-window limit lookup in host-server/context.ts | done | 2026-09-19 |
+| [[TASK-135]] | Dark-mode sweep — replace remaining hardcoded bg-white/surface literals across every page and component | done | 2026-09-19 |
+| [[TASK-146]] | Toast-like notifications on agent status change (waiting / no tasks), click switches to that agent | done | 2026-09-19 |
+| [[TASK-0172]] | Extract AgentDetailModal's content into a non-overlay AgentDetailView | done | 2026-09-19 |
+| [[TASK-0181]] | Remove the Inactive Agents accordion — show all agents in the sidebar with a red border + Show inactive checkbox | done | 2026-09-19 |
+| [[TASK-0179]] | Remove the toast notification feature (TASK-146) | done | 2026-09-19 |
+| [[TASK-0186]] | Decide how bg processes with no project are treated (visible to all, hidden, or must be assigned) | done | 2026-09-20 |
+| [[TASK-0186]] (duplicate file `TASK-0186-bg-no-project-access-policy`) | Record the policy for bg processes with no project: shared, visible and restartable by every agent | trashed | 2026-09-20 |
+| [[TASK-0187]] (duplicate file `TASK-0187-retire-bg-linked-agent-id`) | Retire linked_agent_id: stop writing the link, drop its UI and CONDUCTOR_BG_* env injection | trashed | 2026-09-20 |
+| [[TASK-0188]] (duplicate file `TASK-0188-bg-name-global-uniqueness-collision-guard`) | Keep bg process names globally unique and reject bg/agent window-name collisions in both directions | trashed | 2026-09-20 |
+| [[TASK-0189]] (duplicate file `TASK-0189-spike-pipe-pane-respawn-window`) | Spike: does pipe-pane log capture survive respawn-window -k, and can a crash be detected? | trashed | 2026-09-20 |
+| [[TASK-0196]] | Implement per-project bg process name uniqueness with a derived project-name slug identity | done | 2026-09-20 |

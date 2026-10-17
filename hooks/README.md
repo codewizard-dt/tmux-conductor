@@ -51,8 +51,48 @@ Shared helper used by all four hook scripts. Responsibilities:
 2. Drains stdin (required — Claude Code hooks must consume the JSON payload)
 3. Writes the state value (`idle` or `busy`) to `$STATE_DIR/<agent>.state`
 4. Appends a JSONL record to `$CONDUCTOR_LOG_DIR/hooks.jsonl` for audit tracing
+5. Persists `transcript_path` / `session_id` / `model` and, for `UserPromptSubmit`, `last_prompt: { text, ts }` (plus `prompt_id` when the payload carries one) into `$STATE_DIR/<agent>.meta.json`
 
-Fields in each hooks.jsonl record: `ts`, `agent`, `event`, `prev_state`, `new_state`.
+Fields in each hooks.jsonl record: `ts`, `agent`, `event`, `prev_state`, `new_state`. The prompt text is never written to `hooks.jsonl`.
+
+**`last_prompt`** is the exact text the user submitted (the payload's `prompt` field), read by the host-server to show what each agent was last sent. Rules (TASK-0220):
+
+- Only a non-empty, non-whitespace string `prompt` overwrites it. Only `UserPromptSubmit` carries `prompt`, so SessionStart / Stop / StopFailure / Notification leave the stored value untouched; empty, whitespace-only, missing or non-string prompts never overwrite.
+- Capped at `LAST_PROMPT_MAX_CHARS` (2000 UTF-16 code units): longer text keeps the first 1999 characters plus one `…`; a surrogate pair is never split at the cut.
+- A bracketed paste arrives wrapped as `<pasted_content id="N">…</pasted_content id="N">`; `normalizePrompt` unwraps it (inner text verbatim, typed text around it kept, leading/trailing blank lines dropped) before the empty-check and the cap. Other text is stored verbatim.
+- Custom slash commands fire `UserPromptSubmit` with the raw `/name args`, so no `UserPromptExpansion` registration is needed. Built-ins such as `/clear` and `/context` fire no prompt hook and therefore never update `last_prompt`.
+- No redaction: a secret in a submitted prompt is stored verbatim in the (gitignored, local) sidecar.
+
+The installed copy under `~/.claude/hooks/tmux-conductor/` only picks this up after a human re-runs `install-hooks.sh` and restarts the agents; editing `hooks/lib/write-state.js` in the repo changes nothing for running agents. Covered by `host-server/hookLastPrompt.test.ts`, which spawns the real scripts against a `./tmp/` state dir.
+
+### Verifying `last_prompt`
+
+**Automated, hermetic** (safe while agents are live; touches only `./tmp/verify-last-payload/`, never `~/.claude` or the real `logs/state/`):
+
+```bash
+bash scripts/verify-last-payload.sh [--skip-suites]
+```
+
+It pipes sample payloads into the real `on-prompt-submit.js` / `on-stop.js` / `on-session-start.js` / `on-stop-failure.js` with a temp state dir, asserts the `<agent>.meta.json` `last_prompt` behavior above (normal, multi-line, paste-wrapped, replaced by a later prompt, retained across non-prompt events, never overwritten by an empty prompt, capped, absent from `hooks.jsonl`, hooks always exit 0), then runs the related host-server and frontend suites (`--skip-suites` runs only the hook checks).
+
+**Live round trip** (human only: it writes the real `~/.claude` and restarts running agents, so an autonomous agent must not run it). The installed hook copy only gains `last_prompt` after step 1 and 2:
+
+1. From the repo root run `./install-hooks.sh`; confirm `grep -rl last_prompt ~/.claude/hooks/tmux-conductor/` lists `write-state.js`.
+2. Restart each Claude Code agent under test (hooks are read at session start) and confirm it shows `idle`.
+3. In the dashboard Interact / Direct Input for that agent, type a distinctive message and press Enter. Within a couple of seconds `logs/state/<agent>.meta.json` contains `"last_prompt":{"text":"…","ts":"…"}`.
+4. Reload the dashboard.
+
+Tick-list:
+
+- [ ] `write-state.js` under `~/.claude/hooks/tmux-conductor/` contains `last_prompt` after the installer run
+- [ ] `logs/state/<agent>.meta.json` carries the typed message as `last_prompt`
+- [ ] the detail-pane strip shows it (truncated, full text in the `title` tooltip)
+- [ ] the sidebar agent card shows it
+- [ ] both still show it after a hard reload
+- [ ] deleting the `conductor:lastPayload:<id>` localStorage key and reloading brings it back (SSE replay of `lastPrompt`)
+- [ ] a never-prompted or hook-less agent shows the empty state, not a stale value
+
+The full checklist (Add Task box, queue dispatch, multi-line/recall, clone/delete isolation) lives in `wiki/work/tasks/TASK-0229-verify-last-payload-round-trip.md`.
 
 ### `on-notification.js` — background-agent sentinel (BUG-0001)
 

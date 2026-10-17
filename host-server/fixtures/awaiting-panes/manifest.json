@@ -1,0 +1,114 @@
+[
+  {
+    "name": "ask-user-question-dialog",
+    "launch": "claude",
+    "stateFile": "busy",
+    "ageS": 5,
+    "pane": "ask-user-question-dialog.txt",
+    "expected": { "state": "awaiting", "reason": "awaiting-pattern" }
+  },
+  {
+    "name": "yn-confirm-prompt",
+    "launch": "claude",
+    "stateFile": "busy",
+    "ageS": 3,
+    "pane": "yn-confirm-prompt.txt",
+    "expected": { "state": "awaiting", "reason": "awaiting-pattern" }
+  },
+  {
+    "name": "plan-approval-dialog",
+    "launch": "claude",
+    "stateFile": "busy",
+    "ageS": 4,
+    "pane": "plan-approval-dialog.txt",
+    "expected": { "state": "awaiting", "reason": "awaiting-pattern" }
+  },
+  {
+    "name": "uat-verdict-idle-file",
+    "launch": "claude",
+    "stateFile": "idle",
+    "ageS": 20,
+    "pane": "uat-verdict-idle-file.txt",
+    "expected": { "state": "awaiting", "reason": "awaiting-pattern" }
+  },
+  {
+    "name": "uat-pass-fail-multiline-idle-file",
+    "launch": "claude",
+    "stateFile": "idle",
+    "ageS": 25,
+    "pane": "uat-pass-fail-multiline-idle-file.txt",
+    "expected": { "state": "awaiting", "reason": "awaiting-pattern" }
+  },
+  {
+    "name": "bare-gt-prompt",
+    "launch": "claude",
+    "stateFile": null,
+    "ageS": 0,
+    "pane": "bare-gt-prompt.txt",
+    "expected": { "state": "awaiting", "reason": "regex-fallback" }
+  },
+  {
+    "name": "busy-footer-verdicts-question-line",
+    "launch": "claude",
+    "stateFile": "busy",
+    "ageS": 5,
+    "pane": "busy-footer-verdicts-question-line.txt",
+    "expected": { "state": "busy", "reason": "state-file" }
+  },
+  {
+    "name": "busy-footer-agent-comment-heading",
+    "launch": "claude",
+    "stateFile": "busy",
+    "ageS": 5,
+    "pane": "busy-footer-agent-comment-heading.txt",
+    "expected": { "state": "busy", "reason": "state-file" }
+  },
+  {
+    "name": "awaiting-file-busy-footer-question-line",
+    "launch": "claude",
+    "stateFile": "awaiting",
+    "ageS": 8,
+    "pane": "awaiting-file-busy-footer-question-line.txt",
+    "expected": { "state": "busy", "reason": "state-file" }
+  },
+  {
+    "name": "idle-typed-question-input",
+    "launch": "claude",
+    "stateFile": "idle",
+    "ageS": 40,
+    "pane": "idle-typed-question-input.txt",
+    "expected": { "state": "idle", "reason": "state-file" }
+  },
+  {
+    "name": "idle-slash-command-template",
+    "launch": "claude",
+    "stateFile": "idle",
+    "ageS": 40,
+    "pane": "idle-slash-command-template.txt",
+    "expected": { "state": "idle", "reason": "state-file" }
+  },
+  {
+    "name": "busy-fresh-wiki-query-typed",
+    "launch": "claude",
+    "stateFile": "busy",
+    "ageS": 4,
+    "pane": "busy-fresh-wiki-query-typed.txt",
+    "expected": { "state": "busy", "reason": "state-file" }
+  },
+  {
+    "name": "codex-esc-to-cancel-confirm",
+    "launch": "codex",
+    "stateFile": "awaiting",
+    "ageS": 6,
+    "pane": "codex-esc-to-cancel-confirm.txt",
+    "expected": { "state": "awaiting", "reason": "state-file" }
+  },
+  {
+    "name": "codex-bare-gt-idle-prompt",
+    "launch": "codex",
+    "stateFile": null,
+    "ageS": 0,
+    "pane": "codex-bare-gt-idle-prompt.txt",
+    "expected": { "state": "idle", "reason": "regex-fallback" }
+  }
+]

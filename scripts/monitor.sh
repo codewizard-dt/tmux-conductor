@@ -174,9 +174,55 @@ pane_dead() {
   is_shell_cmd "$cur"
 }
 
+# Bg-process analogue of pane_dead(): true when the bg window's pane has fallen
+# back to a plain shell while its launch command (BG_CMDS) is not itself a
+# shell — i.e. the dev server / watcher exited and only the shell remains.
+# Mirrors host-server/state.ts bgLiveness (minus its startup grace: monitor
+# polls every POLL_INTERVAL and this is warn/state-only, never a dispatch gate).
+# An empty pane_current_command fails toward "running" (not exited).
+bg_pane_exited() {
+  local target="$1"
+  local name="$2"
+  local launch="${BG_CMDS[$name]:-}"
+  local cmd_name
+  cmd_name="$(launch_cmd_name "$launch")"
+  cmd_name="$(basename "$cmd_name" 2>/dev/null | tr '[:upper:]' '[:lower:]')"
+  is_shell_cmd "$cmd_name" && return 1   # shell-launched bg is always "running"
+  local cur
+  cur=$(tmux display-message -p -t "$target" '#{pane_current_command}' 2>/dev/null || echo "")
+  cur="$(basename "$cur" 2>/dev/null | tr '[:upper:]' '[:lower:]')"
+  [ -z "$cur" ] && return 1
+  is_shell_cmd "$cur"
+}
+
 # Last 5 non-blank lines of a pane (regex matching input)
 pane_tail5() {
   tmux capture-pane -t "$1" -p 2>/dev/null | grep -v '^[[:space:]]*$' | tail -5 || true
+}
+
+# BUG-0013: last 8 non-blank lines of a pane, excluding "❯ <text>" prompt-box
+# lines (typed input / placeholder hints) so they cannot trip the awaiting
+# pattern; a bare "❯" line is kept.
+awaiting_window() {
+  tmux capture-pane -t "$1" -p 2>/dev/null | grep -v '^[[:space:]]*$' | grep -Ev '^[[:space:]]*❯[[:space:]]+[^[:space:]]' | tail -8 || true
+}
+
+# BUG-0013: true (0) only when the busy footer is visible in the last 15
+# non-blank lines. Claude's "esc to interrupt" footer never appears while a
+# real dialog is open, so it vetoes an awaiting match. Codex is exempt (its
+# busy pattern is broad and its chrome can linger); empty pattern => false.
+busy_visible() {
+  local target="$1" busy_pattern="${2:-}" launch="${3:-}"
+  if [ "$(agent_type "$launch")" = "codex" ]; then
+    return 1
+  fi
+  if [ -z "$busy_pattern" ]; then
+    return 1
+  fi
+  if tmux capture-pane -t "$target" -p 2>/dev/null | grep -v '^[[:space:]]*$' | tail -15 | grep -qE "$busy_pattern"; then
+    return 0
+  fi
+  return 1
 }
 
 is_idle() {
@@ -224,9 +270,13 @@ is_idle() {
         # Interactive prompts beat idle recovery. Codex panes often keep idle
         # chrome in scrollback/header areas, so check awaiting before treating
         # a stale busy file as an idle Stop-hook miss.
-        if [ -n "$awaiting_pattern" ]; then
+        # BUG-0013: skip the awaiting check entirely while the busy footer is
+        # visible (it never appears with a real dialog; codex is exempt).
+        # Flow then continues into the stale-busy recovery below, which
+        # returns 1 while BUSY_PATTERN matches the pane tail.
+        if [ -n "$awaiting_pattern" ] && ! busy_visible "$target" "$busy_pattern" "$launch"; then
           local last_lines_aw
-          last_lines_aw=$(tmux capture-pane -t "$target" -p 2>/dev/null | grep -v '^[[:space:]]*$' | tail -8 || true)
+          last_lines_aw=$(awaiting_window "$target")
           if printf '%s\n' "$last_lines_aw" | grep -qE "$awaiting_pattern"; then
             debug "is_idle: target=$target awaiting-input pattern matched — writing 'awaiting'"
             printf 'awaiting\n' > "$state_file" 2>/dev/null || true
@@ -272,9 +322,17 @@ is_idle() {
         LAST_DETECTION="state-file"
         LAST_STATE_VALUE="idle"
         LAST_STATE_AGE="$age"
+        # BUG-0013: the busy footer never appears alongside a real dialog, so if
+        # it is visible the agent is working — return busy without writing
+        # 'awaiting' (LAST_STATE_VALUE stays "idle", mirroring the BUSY_PATTERN
+        # override below). Codex is exempt (busy_visible returns 1 for codex).
+        if busy_visible "$target" "$busy_pattern" "$launch"; then
+          debug "is_idle: target=$target state-file idle but busy footer visible — treating as busy"
+          return 1
+        fi
         if [ -n "$awaiting_pattern" ]; then
           local last_lines_idle_aw
-          last_lines_idle_aw=$(tmux capture-pane -t "$target" -p 2>/dev/null | grep -v '^[[:space:]]*$' | tail -8 || true)
+          last_lines_idle_aw=$(awaiting_window "$target")
           if printf '%s\n' "$last_lines_idle_aw" | grep -qE "$awaiting_pattern"; then
             debug "is_idle: target=$target idle state but awaiting-input pattern matched — writing 'awaiting'"
             printf 'awaiting\n' > "$state_file" 2>/dev/null || true
@@ -298,9 +356,16 @@ is_idle() {
         LAST_DETECTION="state-file"
         LAST_STATE_VALUE="awaiting"
         LAST_STATE_AGE="$age"
-        if [ -n "$awaiting_pattern" ]; then
+        # BUG-0013: a visible busy footer ("esc to interrupt") never coexists
+        # with a real dialog (it only shows while the agent is working), so
+        # revert to busy when it is visible even if the pattern still matches
+        # stale scrollback. Codex is exempt (busy_visible returns 1 for codex).
+        if busy_visible "$target" "$busy_pattern" "$launch"; then
+          debug "is_idle: target=$target awaiting state but busy footer visible — reverting to 'busy'"
+          printf 'busy\n' > "$state_file" 2>/dev/null || true
+        elif [ -n "$awaiting_pattern" ]; then
           local last_lines_aw2
-          last_lines_aw2=$(tmux capture-pane -t "$target" -p 2>/dev/null | grep -v '^[[:space:]]*$' | tail -8 || true)
+          last_lines_aw2=$(awaiting_window "$target")
           if ! printf '%s\n' "$last_lines_aw2" | grep -qE "$awaiting_pattern"; then
             debug "is_idle: target=$target awaiting state but prompt gone — reverting to 'busy'"
             printf 'busy\n' > "$state_file" 2>/dev/null || true
@@ -324,11 +389,18 @@ is_idle() {
     debug "is_idle: target=$target BUSY_PATTERN matched — busy"
     return 1
   fi
-  if [ -n "$awaiting_pattern" ] && printf '%s\n' "$last_lines" | grep -qE "$awaiting_pattern"; then
-    debug "is_idle: target=$target AWAITING_PATTERN matched — writing 'awaiting'"
-    printf 'awaiting\n' > "$state_file" 2>/dev/null || true
-    LAST_STATE_VALUE="awaiting"
-    return 1
+  # BUG-0013: match awaiting against awaiting_window (8 non-blank lines with the
+  # empty-prompt-box chrome filtered), not the 5-line idle tail. The busy check
+  # above already ran first, so a visible busy footer never reaches this point.
+  if [ -n "$awaiting_pattern" ]; then
+    local last_lines_fb_aw
+    last_lines_fb_aw=$(awaiting_window "$target")
+    if printf '%s\n' "$last_lines_fb_aw" | grep -qE "$awaiting_pattern"; then
+      debug "is_idle: target=$target AWAITING_PATTERN matched — writing 'awaiting'"
+      printf 'awaiting\n' > "$state_file" 2>/dev/null || true
+      LAST_STATE_VALUE="awaiting"
+      return 1
+    fi
   fi
   if [ -n "$idle_pattern" ] && printf '%s\n' "$last_lines" | grep -qE "$idle_pattern"; then
     debug "is_idle: target=$target regex MATCHED"
@@ -503,7 +575,7 @@ while true; do
 
   for name in "${AGENT_NAMES[@]}"; do
     window_name="${AGENT_WINDOW_NAMES[$name]:-$name}"
-    target="$SESSION_NAME:$window_name"
+    target="$SESSION_NAME:=$window_name"
     debug "loop: checking agent '$name' (window=$window_name target=$target)"
 
     # Skip if pane doesn't exist (agent crashed or was closed)
@@ -568,15 +640,21 @@ while true; do
     rm -f "${STATE_DIR}/usage-limited"
   fi
 
-  # Liveness check for bg processes — warn only, do not affect shutdown decision
+  # Liveness check for bg processes — warn only, do not affect shutdown decision.
+  # BG_NAMES holds slugs (<projectName>-<name>, see load_bg in lib/db.sh): the
+  # tmux window name and the bg-<slug>.state stem, matching host-server bgSlug().
   for bg_name in "${BG_NAMES[@]}"; do
-    bg_target="$SESSION_NAME:$bg_name"
+    bg_target="$SESSION_NAME:=$bg_name"
     if ! tmux has-session -t "$bg_target" 2>/dev/null; then
       log "WARN: bg '$bg_name' — window not found"
       echo "dead" > "$STATE_DIR/bg-$bg_name.state"
-      move_to_backlog "$bg_name"
+      # No move_to_backlog here: bg processes are keyed by slug, not agents.id,
+      # and never receive queue dispatches, so there is nothing to backlog.
+    elif bg_pane_exited "$bg_target" "$bg_name"; then
+      # Window exists but the pane is back at a plain shell: process exited.
+      echo "exited" > "$STATE_DIR/bg-$bg_name.state"
     else
-      echo "alive" > "$STATE_DIR/bg-$bg_name.state"
+      echo "running" > "$STATE_DIR/bg-$bg_name.state"
     fi
   done
 

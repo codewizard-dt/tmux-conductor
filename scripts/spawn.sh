@@ -13,7 +13,7 @@ source "$SCRIPT_DIR/../conductor.conf"
 
 # Agent and background-process lists are loaded from SQLite via load_agents /
 # load_bg (see lib/db.sh). load_agents populates AGENT_NAMES + AGENT_DIRS/
-# AGENT_CMDS/AGENT_BG; load_bg populates BG_NAMES + BG_DIRS/BG_CMDS.
+# AGENT_CMDS; load_bg populates BG_NAMES + BG_DIRS/BG_CMDS.
 load_agents
 load_bg
 
@@ -49,12 +49,7 @@ workdir="${AGENT_DIRS[$name]}"
 launch_cmd="${AGENT_CMDS[$name]}"
 tmux new-session -d -s "$SESSION_NAME" -c "$workdir"
 
-_linked_bg="${AGENT_BG[$name]}"
-_bg_env=""
-if [ -n "$_linked_bg" ]; then
-  _bg_env=" CONDUCTOR_BG_NAME='$_linked_bg' CONDUCTOR_BG_LOG='$LOG_DIR/bg-$_linked_bg.log' CONDUCTOR_BG_STATE='$STATE_DIR/bg-$_linked_bg.state'"
-fi
-env_prefix="CONDUCTOR_AGENT_NAME='$name' CONDUCTOR_STATE_DIR='$STATE_DIR' CONDUCTOR_LOG_DIR='$LOG_DIR'$_bg_env"
+env_prefix="CONDUCTOR_AGENT_NAME='$name' CONDUCTOR_STATE_DIR='$STATE_DIR' CONDUCTOR_LOG_DIR='$LOG_DIR'"
 tmux send-keys -t "$SESSION_NAME" "$env_prefix $launch_cmd" Enter
 
 echo "Spawned: $name ($launch_cmd) in $workdir"
@@ -66,12 +61,7 @@ for (( i=1; i<${#AGENT_NAMES[@]}; i++ )); do
   launch_cmd="${AGENT_CMDS[$name]}"
   tmux split-window -t "$SESSION_NAME" -c "$workdir"
 
-  _linked_bg="${AGENT_BG[$name]}"
-  _bg_env=""
-  if [ -n "$_linked_bg" ]; then
-    _bg_env=" CONDUCTOR_BG_NAME='$_linked_bg' CONDUCTOR_BG_LOG='$LOG_DIR/bg-$_linked_bg.log' CONDUCTOR_BG_STATE='$STATE_DIR/bg-$_linked_bg.state'"
-  fi
-  env_prefix="CONDUCTOR_AGENT_NAME='$name' CONDUCTOR_STATE_DIR='$STATE_DIR' CONDUCTOR_LOG_DIR='$LOG_DIR'$_bg_env"
+  env_prefix="CONDUCTOR_AGENT_NAME='$name' CONDUCTOR_STATE_DIR='$STATE_DIR' CONDUCTOR_LOG_DIR='$LOG_DIR'"
   tmux send-keys -t "$SESSION_NAME" "$env_prefix $launch_cmd" Enter
   tmux select-layout -t "$SESSION_NAME" tiled  # rebalance after each split
 

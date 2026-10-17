@@ -1,0 +1,13 @@
+● Asking a clarifying question before I continue.
+
+ ☐ Storage
+
+Which storage backend should the sample service use?
+
+❯ 1. SQLite
+     Embedded, no setup required
+  2. Postgres
+     Networked, needs a running server
+  3. Chat about this
+
+Enter to select · Tab/Arrow keys to navigate · Esc to cancel

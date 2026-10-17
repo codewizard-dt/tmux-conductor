@@ -1,0 +1,6 @@
+● Done. The sample helper is in place and tests pass.
+
+────────────────────────────────────────
+❯ still running?
+────────────────────────────────────────
+  ? for shortcuts

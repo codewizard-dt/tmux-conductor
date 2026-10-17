@@ -1,10 +1,12 @@
 ---
 id: multi-agent-orchestration-patterns
 title: Multi-Agent Orchestration Patterns (Orchestrator-Worker, Supervisor, Handoff)
-updated: 2026-09-13
+updated: 2026-09-19
 sources:
   - ../../../raw/research/orchestrator-agent-routing/index.md
   - ../../../raw/research/orchestrator-agent-routing/index-2.md
+  - ../../../raw/research/orchestrator-agent-routing/index-3.md
+  - ../../../raw/research/multi-agent-infrastructure-requirements/index.md
 confidence: ambiguous
 tags: [orchestration, multi-agent, routing, architecture]
 ---
@@ -25,8 +27,15 @@ The industry-converged pattern for "an agent that routes tasks to other agents" 
 
 This orchestrator-worker/supervisor framing also assumes a **persistent pool of workers a router assigns work into**. A structurally different, equally well-established shape for coding-agent fleets specifically — provisioning a disposable worker (fresh git worktree + terminal session) per task rather than routing into an existing pool — is covered separately in `relates_to::[[Ephemeral Worker-Per-Task Coding Agent Orchestration]]`, alongside a third, decentralized shape where agents request handoffs from each other directly rather than through any central router.
 
+> **Round 3 assumption audit (2026-09-19):** most of the ephemeral-worker-per-task tools cited above (dmux, Vibe Kanban, Claude Squad) are deterministic CLI/UI tooling — a human remains the router — not LLM-driven orchestrator agents; only `claude-vibe-squad`'s Chrono coordinator and `corellis` are actually LLM decision-makers among that survey. Treat that ecosystem as strong evidence for the ephemeral-*provisioning* pattern, not as evidence for how an LLM orchestrator agent should make routing decisions. Separately, "orchestrator agent" (who decides) and "specialized agent catalog" (what exists to decide among) are independent axes that this page's earlier rounds did not separate — see `relates_to::[[Specialized-Agent Registry / Catalog Pattern]]`, which is the missing prerequisite layer beneath any of the shapes described here, and `relates_to::[[Agent as Tool vs. Subagent (Conversational Authority)]]`, which names the specific failure mode that makes tmux-conductor's `POST /queue/:agent`-only constraint load-bearing rather than a nicety.
+
+> **Infrastructure layer (2026-09-19):** every shape on this page sits on a substrate the wiki had not described: task lifecycle/completion semantics, dispatcher parity, isolation-plus-merge for parallel coding agents, cost/concurrency control, and blast-radius limits. [[Infrastructure Requirements for a Multi-Agent Architecture (the Orchestrator Agent)]] finds tmux-conductor lacks the first two even for a purely deterministic router, and recommends building that Tier 0 before any LLM step. It also partly fills the "no coding-specific cost figure" gap noted above with one second-hand figure — Agent Teams ≈7x tokens in plan mode — versus the 15x chat/research multiplier this page cites; neither is first-party for a coding fleet. See [[Task Lifecycle and Completion Semantics for an Agent Queue]], [[Dispatch-Path Parity (Two Dispatchers, One Gate)]] and [[LLM Orchestrator Runtime Options (tmux Agent vs. claude -p vs. Agent SDK)]].
+
 derived_from::[[An Orchestrator Agent That Routes Commands/Tasks to Other Agents]]
+relates_to::[[Infrastructure Requirements for a Multi-Agent Architecture (the Orchestrator Agent)]]
 relates_to::[[Host Server]]
 relates_to::[[power-mode-skill]]
 relates_to::[[Observability for Agent Status Transitions]]
 relates_to::[[Ephemeral Worker-Per-Task Coding Agent Orchestration]]
+relates_to::[[Specialized-Agent Registry / Catalog Pattern]]
+relates_to::[[Agent as Tool vs. Subagent (Conversational Authority)]]

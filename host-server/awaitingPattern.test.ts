@@ -33,6 +33,20 @@ void test('AWAITING_PATTERN still matches its pre-existing documented cases', ()
   assert.equal(matches(pattern, 'ctrl+g to edit · shift+tab to approve'), true, 'plan-approval footer');
 });
 
+// BUG-0013: the ">" alternative is fully anchored (^\s*>\s*$) so it only matches
+// a line that is nothing but ">", not any line that merely ends in ">".
+void test('AWAITING_PATTERN ">" alternative matches only a line that is just ">" (BUG-0013)', () => {
+  const pattern = awaitingPattern();
+  assert.equal(matches(pattern, '>'), true, 'bare ">"');
+  assert.equal(matches(pattern, '  >  '), true, 'padded bare ">"');
+  assert.equal(matches(pattern, '### 1. Implement the fix <!-- agent: general-purpose -->'), false, 'HTML comment ending in ">"');
+  assert.equal(matches(pattern, 'aider>'), false, 'aider prompt ending in ">"');
+  assert.equal(matches(pattern, '❯ /research <topic or question to research>'), false, 'draft input ending in ">"');
+  // Anchors must apply per line, not per multi-line block.
+  assert.equal(matches(pattern, 'some output\n>\nmore output'), true, 'bare ">" on its own line inside a block');
+  assert.equal(matches(pattern, 'some output\nfoo <bar>\nmore output'), false, 'no line is only ">"');
+});
+
 void test('AWAITING_PATTERN does not regress the git-prompt false positive it was previously fixed for', () => {
   const pattern = awaitingPattern();
   assert.equal(matches(pattern, 'myproject ?2 ~'), false, 'powerlevel10k/starship untracked-file indicator');

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
+import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react'
 import { EllipsisVertical } from 'lucide-react'
 
 export interface AgentActionsMenuItem {
@@ -7,6 +7,8 @@ export interface AgentActionsMenuItem {
   onSelect: () => void
   disabled?: boolean
   title?: string
+  /** Visible secondary line under the label (e.g. why the item is disabled); also exposed via aria-describedby. */
+  description?: string
   tone?: 'default' | 'danger' | 'warning'
 }
 
@@ -28,6 +30,7 @@ const TONE_CLASSES: Record<NonNullable<AgentActionsMenuItem['tone']>, string> = 
 export default function AgentActionsMenu({ items }: AgentActionsMenuProps) {
   const [open, setOpen] = useState(false)
   const [focusedIndex, setFocusedIndex] = useState(0)
+  const menuId = useId()
   const wrapperRef = useRef<HTMLDivElement>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
   const itemRefs = useRef<(HTMLButtonElement | null)[]>([])
@@ -165,7 +168,9 @@ export default function AgentActionsMenu({ items }: AgentActionsMenuProps) {
           aria-label="Agent actions"
           className="absolute right-0 top-full z-20 mt-1 min-w-[184px] rounded-[8px] border border-line bg-card py-1 shadow-pop"
         >
-          {items.map((item, index) => (
+          {items.map((item, index) => {
+            const descriptionId = item.description ? `${menuId}-${item.key}-description` : undefined
+            return (
             <button
               key={item.key}
               ref={(el) => { itemRefs.current[index] = el }}
@@ -174,14 +179,27 @@ export default function AgentActionsMenu({ items }: AgentActionsMenuProps) {
               tabIndex={index === focusedIndex ? 0 : -1}
               disabled={item.disabled}
               title={item.title}
+              aria-describedby={descriptionId}
               onClick={() => { selectItem(index) }}
               onKeyDown={(e) => { handleItemKeyDown(e, index) }}
               onMouseEnter={() => { if (!item.disabled) setFocusedIndex(index) }}
-              className={`block w-full cursor-pointer whitespace-nowrap px-3 py-2 text-left text-[13px] font-medium transition disabled:cursor-not-allowed disabled:opacity-40 ${TONE_CLASSES[item.tone ?? 'default']}`}
+              className={`group block w-full cursor-pointer whitespace-nowrap px-3 py-2 text-left text-[13px] font-medium transition disabled:cursor-not-allowed ${TONE_CLASSES[item.tone ?? 'default']}`}
             >
-              {item.label}
+              {/* Only the label dims when disabled: the description carries the reason and must stay legible (text-muted >= 4.5:1 on bg-card in both themes). */}
+              <span data-testid="menu-item-label" className="block group-disabled:opacity-40">{item.label}</span>
+              {item.description && (
+                // aria-hidden keeps the accessible name to the label; aria-describedby still announces this text.
+                <span
+                  id={descriptionId}
+                  aria-hidden="true"
+                  className="mt-0.5 block whitespace-normal text-[11px] font-normal text-muted"
+                >
+                  {item.description}
+                </span>
+              )}
             </button>
-          ))}
+            )
+          })}
         </div>
       )}
     </div>

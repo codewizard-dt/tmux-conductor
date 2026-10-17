@@ -2,7 +2,8 @@ import Database from 'better-sqlite3';
 import * as fs from 'fs';
 import * as path from 'path';
 import { readConductorConf, DEFAULT_CONF_PATH, type ConductorConf } from './config.ts';
-import { getGitRoot, createWorktree, siblingWorktreePath } from './git.ts';
+import { getGitRoot, tryCreateWorktree, siblingWorktreePath, removeWorktree, branchExists, deleteBranch, pruneWorktrees } from './git.ts';
+import { WorktreeError } from './worktreeErrors.ts';
 import { applyRoleFragmentToWorktree } from './rolePresets.ts';
 
 // ─── Row interfaces ───────────────────────────────────────────────────────────
@@ -35,12 +36,55 @@ export function agentWindowName(agent: Pick<Agent, 'name' | 'projectName'>): str
   return agent.projectName ? `${agent.projectName}-${agent.name}` : agent.name;
 }
 
+/**
+ * Derived bg-process identity (TASK-0196): `<projectName>-<name>`, or the bare
+ * `name` for a legacy row that has no project. Mirrors `agentWindowName()`; drives the
+ * tmux window name, `$LOG_DIR/bg-<slug>.log`, `$STATE_DIR/bg-<slug>.state` and the
+ * `/bg-processes/:slug` routes. `-` is legal in both parts, so distinct
+ * (project, name) pairs can collide on one slug — creation must check `listBgSlugs`.
+ */
+export function bgSlug(bg: Pick<BgProcess, 'name'>, projectName: string | null | undefined): string {
+  return projectName ? `${projectName}-${bg.name}` : bg.name;
+}
+
+const BG_SLUG_SQL = `COALESCE(p.name || '-' || b.name, b.name)`;
+
+/** Resolve a bg process by its derived slug. On a (pre-existing) slug collision the lowest id wins. */
+export function getBgBySlug(db: Database.Database, slug: string): (BgProcess & { projectName: string | null }) | undefined {
+  const row = db
+    .prepare(
+      `SELECT b.*, p.name AS project_name FROM bg_processes b LEFT JOIN projects p ON p.id = b.project_id WHERE ${BG_SLUG_SQL} = ? ORDER BY b.id LIMIT 1`
+    )
+    .get(slug) as (BgProcessRow & { project_name: string | null }) | undefined;
+  if (!row) return undefined;
+  return { ...mapBgProcess(row), projectName: row.project_name };
+}
+
+/** Every bg process's slug, for slug-collision checks on create/update. */
+export function listBgSlugs(db: Database.Database): string[] {
+  const rows = db
+    .prepare(`SELECT ${BG_SLUG_SQL} AS slug FROM bg_processes b LEFT JOIN projects p ON p.id = b.project_id ORDER BY b.id`)
+    .all() as Array<{ slug: string }>;
+  return rows.map((r) => r.slug);
+}
+
+/**
+ * Pure slug-collision predicate (TASK-0196). A candidate bg slug is taken when it
+ * equals another bg slug, or an agent tmux window name (`agentWindowName()`) — agent
+ * and bg windows share one tmux session namespace. `-` is legal in project and process
+ * names, so different (project, name) pairs can produce the same slug.
+ */
+export function bgSlugCollides(slug: string, bgSlugs: Iterable<string>, agentWindowNames: Iterable<string>): boolean {
+  for (const s of bgSlugs) if (s === slug) return true;
+  for (const w of agentWindowNames) if (w === slug) return true;
+  return false;
+}
+
 export interface BgProcess {
   id: number;
   name: string;
   workdir: string;
   launchCmd: string;
-  linkedAgentId: number | null;
   projectId: number | null;
 }
 
@@ -143,7 +187,6 @@ interface BgProcessRow {
   name: string;
   workdir: string;
   launch_cmd: string;
-  linked_agent_id: number | null;
   project_id: number | null;
 }
 
@@ -214,7 +257,7 @@ function mapAgent(r: AgentRow | AgentWithProjectRow): Agent {
 }
 
 function mapBgProcess(r: BgProcessRow): BgProcess {
-  return { id: r.id, name: r.name, workdir: r.workdir, launchCmd: r.launch_cmd, linkedAgentId: r.linked_agent_id, projectId: r.project_id };
+  return { id: r.id, name: r.name, workdir: r.workdir, launchCmd: r.launch_cmd, projectId: r.project_id };
 }
 
 function mapTask(r: TaskRow): Task {
@@ -272,6 +315,8 @@ export function openDb(dbPath: string): Database.Database {
   db.pragma('busy_timeout = 5000');
   runMigrations(db);
   seedFromLegacy(db);
+  backfillBgProcessProjects(db);
+  enforceBgProjectRequired(db);
   return db;
 }
 
@@ -302,8 +347,7 @@ function runMigrations(db: Database.Database): void {
         id INTEGER PRIMARY KEY,
         name TEXT NOT NULL UNIQUE CHECK (name GLOB '[A-Za-z0-9_-]*'),
         workdir TEXT NOT NULL,
-        launch_cmd TEXT NOT NULL,
-        linked_agent_id INTEGER REFERENCES agents(id) ON DELETE SET NULL
+        launch_cmd TEXT NOT NULL
       );
       CREATE TABLE IF NOT EXISTS schedules (
         id INTEGER PRIMARY KEY,
@@ -449,6 +493,41 @@ function runMigrations(db: Database.Database): void {
     db.exec(`ALTER TABLE bg_processes ADD COLUMN project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL`);
     db.prepare(`INSERT OR REPLACE INTO meta VALUES ('schema_version', '9')`).run();
   }
+  if (version < 10) {
+    // The default launch command gained --append-system-prompt-file so every
+    // agent loads the parallel-dispatch naming rule. Upgrade rows that still
+    // hold the exact old default; customised commands are left untouched.
+    const oldDefault = 'claude --dangerously-skip-permissions';
+    const newDefault = 'claude --dangerously-skip-permissions --append-system-prompt-file ~/.claude/rules/agent-teams-preference.md';
+    db.prepare(`UPDATE agents SET launch_cmd=? WHERE TRIM(launch_cmd)=?`).run(newDefault, oldDefault);
+    db.prepare(`UPDATE projects SET default_launch_cmd=? WHERE TRIM(default_launch_cmd)=?`).run(newDefault, oldDefault);
+    db.prepare(`INSERT OR REPLACE INTO meta VALUES ('schema_version', '10')`).run();
+  }
+  if (version < 11) {
+    // TASK-0196: bg process names become unique per project, not globally, and
+    // every bg process must belong to a project (TASK-0186 amendment). Rebuild
+    // bg_processes (see rebuildBgProcesses). Legacy rows with no matching project
+    // must not block startup: when any exist, the rebuild keeps project_id nullable
+    // (guarded by a partial unique index on name) and enforceBgProjectRequired()
+    // promotes it to NOT NULL on a later openDb once backfill/manual assignment has
+    // resolved them. schema_version is bumped either way so later migrations are
+    // never blocked by an unmatched row.
+    seedBgProjectFromLinkedAgent(db);
+    rebuildBgProcesses(db, { projectNotNull: countBgRowsMissingProject(db) === 0 });
+    db.prepare(`INSERT OR REPLACE INTO meta VALUES ('schema_version', '11')`).run();
+  }
+  if (version < 12) {
+    // TASK-0198: drop bg_processes.linked_agent_id (retired by TASK-0187, no longer
+    // read or written since TASK-0197). rebuildBgProcesses always omits the column,
+    // so a DB that still carries it (v11 or older that skipped the rebuild) is
+    // seeded from the linked agent's project, then rebuilt. A DB that never had the
+    // column (fresh install, or already rebuilt by v11 above) needs nothing.
+    if (bgHasLinkedAgentColumn(db)) {
+      seedBgProjectFromLinkedAgent(db);
+      rebuildBgProcesses(db, { projectNotNull: countBgRowsMissingProject(db) === 0 });
+    }
+    db.prepare(`INSERT OR REPLACE INTO meta VALUES ('schema_version', '12')`).run();
+  }
 }
 
 function seedFromLegacy(db: Database.Database): void {
@@ -465,18 +544,26 @@ function seedFromLegacy(db: Database.Database): void {
   }
 
   const insertAgent = db.prepare(`INSERT OR IGNORE INTO agents (name, workdir, launch_cmd) VALUES (?, ?, ?)`);
-  const insertBg = db.prepare(`INSERT OR IGNORE INTO bg_processes (name, workdir, launch_cmd) VALUES (?, ?, ?)`);
-  const linkBg = db.prepare(`UPDATE bg_processes SET linked_agent_id=(SELECT id FROM agents WHERE name=?) WHERE name=?`);
+  // bg_processes names are unique per project (schema v11) and every bg process
+  // needs a project, so a legacy conf bg entry is only seeded when its workdir
+  // resolves to exactly one project; otherwise it is skipped with a warning
+  // (a NULL-project row would violate NOT NULL, or, on a deferred DB, sit unowned).
+  // INSERT OR IGNORE now dedupes on (project_id, name), so re-seeding never
+  // duplicates an existing row.
+  const insertBg = db.prepare(`INSERT OR IGNORE INTO bg_processes (name, workdir, launch_cmd, project_id) VALUES (?, ?, ?, ?)`);
 
   const seedTx = db.transaction(() => {
     for (const agent of conf.agents) {
       insertAgent.run(agent.name, agent.workdir, agent.launchCmd);
     }
+    const projects = db.prepare(`SELECT id, workdir FROM projects`).all() as Array<{ id: number; workdir: string }>;
     for (const bg of conf.bgProcesses) {
-      insertBg.run(bg.name, bg.workdir, bg.launchCmd);
-    }
-    for (const [agentName, bgName] of Object.entries(conf.agentBgLinks)) {
-      linkBg.run(agentName, bgName);
+      const projectId = matchProjectIdByWorkdir(projects, bg.workdir);
+      if (projectId === null) {
+        console.warn(`[conductor] seedFromLegacy: skipping bg process '${bg.name}' — no unique project matches workdir ${bg.workdir}; add it via the dashboard once its project exists`);
+        continue;
+      }
+      insertBg.run(bg.name, bg.workdir, bg.launchCmd, projectId);
     }
 
     db.prepare(`INSERT INTO meta VALUES ('legacy_import', '1')`).run();
@@ -484,6 +571,160 @@ function seedFromLegacy(db: Database.Database): void {
 
   seedTx();
   console.log(`[conductor] Legacy import complete — agents: ${String(conf.agents.length)}`);
+}
+
+// TASK-0195: every bg process must belong to a project. Rows created before
+// that rule (bg_processes.project_id IS NULL) are backfilled by matching the
+// bg process's workdir to a project's workdir (trailing slashes ignored). A row
+// with no match, or with several equally-good matches, is left NULL and
+// reported via console.warn for manual assignment; this never throws or drops
+// rows. Idempotent and non-versioned: it runs on every openDb() (after the
+// migrations and legacy seed) and only touches rows that are still NULL. The
+// NOT NULL / ON DELETE CASCADE column rebuild is deliberately NOT done here
+// (TASK-0196); it should be gated on this returning `unmatched: []`.
+export function backfillBgProcessProjects(db: Database.Database): { matched: string[]; unmatched: string[] } {
+  const norm = (p: string): string => (p.length > 1 ? p.replace(/\/+$/, '') : p);
+  const orphans = db.prepare(`SELECT id, name, workdir FROM bg_processes WHERE project_id IS NULL ORDER BY name`).all() as Array<{ id: number; name: string; workdir: string }>;
+  if (orphans.length === 0) return { matched: [], unmatched: [] };
+
+  const projects = db.prepare(`SELECT id, workdir FROM projects`).all() as Array<{ id: number; workdir: string }>;
+  const setProject = db.prepare(`UPDATE bg_processes SET project_id=? WHERE id=? AND project_id IS NULL`);
+  const matched: string[] = [];
+  const unmatched: string[] = [];
+  db.transaction(() => {
+    for (const bg of orphans) {
+      const candidates = projects.filter((p) => norm(p.workdir) === norm(bg.workdir));
+      const [only] = candidates;
+      if (candidates.length === 1 && only) {
+        setProject.run(only.id, bg.id);
+        matched.push(bg.name);
+      } else {
+        unmatched.push(bg.name);
+      }
+    }
+  })();
+  if (matched.length > 0) {
+    console.log(`[conductor] Backfilled project_id for ${String(matched.length)} bg process(es) by workdir: ${matched.join(', ')}`);
+  }
+  if (unmatched.length > 0) {
+    console.warn(`[conductor] ${String(unmatched.length)} bg process(es) have no project and could not be matched to a project by workdir (assign a project manually): ${unmatched.join(', ')}`);
+  }
+  return { matched, unmatched };
+}
+
+/**
+ * Count bg_processes rows that cannot satisfy `project_id NOT NULL REFERENCES
+ * projects(id)`: rows with a NULL project_id or one that points at a project
+ * that no longer exists. (SQLite only enforces the FK when foreign_keys=ON,
+ * so a dangling id can survive from an older run.)
+ */
+function countBgRowsMissingProject(db: Database.Database): number {
+  const row = db
+    .prepare(`SELECT COUNT(*) AS n FROM bg_processes WHERE project_id IS NULL OR project_id NOT IN (SELECT id FROM projects)`)
+    .get() as { n: number };
+  return row.n;
+}
+
+/** True while `bg_processes` still carries the retired `linked_agent_id` column (pre-v12 shape). */
+function bgHasLinkedAgentColumn(db: Database.Database): boolean {
+  const cols = db.pragma('table_info(bg_processes)') as Array<{ name: string }>;
+  return cols.some((c) => c.name === 'linked_agent_id');
+}
+
+/**
+ * Before `linked_agent_id` is dropped (TASK-0198), let it contribute its last bit of
+ * data: an unscoped row (`project_id IS NULL`) inherits the project of the agent it
+ * was linked to. Rows that already have a project are never overwritten, and rows
+ * whose agent has no project stay NULL for the workdir backfill to handle. No-op once
+ * the column is gone.
+ */
+function seedBgProjectFromLinkedAgent(db: Database.Database): void {
+  if (!bgHasLinkedAgentColumn(db)) return;
+  db.exec(`
+    UPDATE bg_processes
+       SET project_id = (SELECT a.project_id FROM agents a WHERE a.id = bg_processes.linked_agent_id)
+     WHERE project_id IS NULL AND linked_agent_id IS NOT NULL
+  `);
+}
+
+/**
+ * Rebuild `bg_processes` into its per-project-unique shape (schema v11, TASK-0196).
+ * SQLite cannot drop a column-level UNIQUE or add NOT NULL in place, so this follows
+ * the v2/v8 table-rebuild pattern: foreign_keys=OFF, one transaction, create
+ * `bg_processes_v11`, explicit-column INSERT...SELECT preserving `id`, DROP, RENAME,
+ * recreate indexes, foreign_keys=ON.
+ *
+ * - The global `UNIQUE` on `name` is dropped; the `GLOB` CHECK is kept.
+ * - `(project_id, name)` becomes the unique key (`idx_bg_processes_project_name`).
+ * - `project_id` is `REFERENCES projects(id) ON DELETE CASCADE`, and `NOT NULL` when
+ *   `projectNotNull` is true. When false (some legacy rows have no matching project
+ *   yet) the column stays nullable and a partial unique index on `name WHERE
+ *   project_id IS NULL` keeps NULL-project names unique, because SQLite treats NULLs
+ *   as distinct inside a plain unique index.
+ * - The retired `linked_agent_id` column is never copied (TASK-0198, schema v12), so any
+ *   rebuild drops it. Callers that need its data (the project seed) must run
+ *   `seedBgProjectFromLinkedAgent` first. A dangling `project_id` is nulled in the copy.
+ *
+ * Callers must ensure that, when `projectNotNull` is true, `countBgRowsMissingProject`
+ * is 0. Idempotent in effect: safe to call again with the same shape.
+ */
+function rebuildBgProcesses(db: Database.Database, opts: { projectNotNull: boolean }): void {
+  db.pragma('foreign_keys = OFF');
+  try {
+    db.transaction(() => {
+      db.exec(`
+        DROP TABLE IF EXISTS bg_processes_v11;
+        CREATE TABLE bg_processes_v11 (
+          id INTEGER PRIMARY KEY,
+          name TEXT NOT NULL CHECK (name GLOB '[A-Za-z0-9_-]*'),
+          workdir TEXT NOT NULL,
+          launch_cmd TEXT NOT NULL,
+          project_id INTEGER ${opts.projectNotNull ? 'NOT NULL ' : ''}REFERENCES projects(id) ON DELETE CASCADE
+        );
+        INSERT INTO bg_processes_v11 (id, name, workdir, launch_cmd, project_id)
+          SELECT id, name, workdir, launch_cmd,
+                 CASE WHEN project_id IN (SELECT id FROM projects) THEN project_id END
+            FROM bg_processes ORDER BY id;
+        DROP TABLE bg_processes;
+        ALTER TABLE bg_processes_v11 RENAME TO bg_processes;
+        CREATE UNIQUE INDEX idx_bg_processes_project_name ON bg_processes(project_id, name);
+      `);
+      if (!opts.projectNotNull) {
+        db.exec(`CREATE UNIQUE INDEX idx_bg_processes_null_name ON bg_processes(name) WHERE project_id IS NULL`);
+      }
+      const violations = db.pragma('foreign_key_check(bg_processes)') as unknown[];
+      if (violations.length > 0) {
+        console.warn(`[conductor] bg_processes rebuild left ${String(violations.length)} foreign-key violation(s)`);
+      }
+    })();
+  } finally {
+    db.pragma('foreign_keys = ON');
+  }
+}
+
+/**
+ * Deferred half of the TASK-0196 NOT NULL enforcement. Schema v11 leaves
+ * `bg_processes.project_id` nullable when some legacy rows could not be matched to a
+ * project (server startup must never fail on them). Once every row has a project —
+ * after `backfillBgProcessProjects` or the operator assigning one — this promotes the
+ * column to NOT NULL. Non-versioned and idempotent: a cheap `table_info` check on every
+ * open, a rebuild at most once.
+ */
+function enforceBgProjectRequired(db: Database.Database): void {
+  const cols = db.pragma('table_info(bg_processes)') as Array<{ name: string; notnull: number }>;
+  const projectCol = cols.find((c) => c.name === 'project_id');
+  if (!projectCol || projectCol.notnull === 1) return;
+  if (countBgRowsMissingProject(db) > 0) return;
+  rebuildBgProcesses(db, { projectNotNull: true });
+  console.log('[conductor] bg_processes.project_id is now NOT NULL (every bg process has a project)');
+}
+
+/** Exact (trailing-slash-normalised) workdir match against exactly one project, else null. */
+function matchProjectIdByWorkdir(projects: Array<{ id: number; workdir: string }>, workdir: string): number | null {
+  const norm = (p: string): string => (p.length > 1 ? p.replace(/\/+$/, '') : p);
+  const candidates = projects.filter((p) => norm(p.workdir) === norm(workdir));
+  const [only] = candidates;
+  return candidates.length === 1 && only ? only.id : null;
 }
 
 // ─── Projects CRUD ────────────────────────────────────────────────────────────
@@ -512,12 +753,25 @@ export function updateProject(db: Database.Database, id: number, data: Partial<{
   return mapProject(row);
 }
 
-export function deleteProject(db: Database.Database, id: number, force = false): void {
+// Deletes a project together with every bg process scoped to it (TASK-0195:
+// a bg process must always belong to a project, so it cannot outlive its
+// project). The cascade is explicit here (so the removed rows can be returned
+// for tmux cleanup) even though bg_processes.project_id is also ON DELETE
+// CASCADE at the schema level since v11 (TASK-0196).
+// The agents-conflict check runs before any write, and the bg-row deletes plus
+// the project delete share one transaction. Returns the removed bg process
+// rows so the caller can close their tmux windows / unlink state files.
+export function deleteProject(db: Database.Database, id: number, force = false): BgProcess[] {
   if (!force) {
     const count = (db.prepare(`SELECT COUNT(*) as n FROM agents WHERE project_id=?`).get(id) as { n: number }).n;
     if (count > 0) throw new Error(`Project ${String(id)} has ${String(count)} agent(s) — pass force=true to delete anyway`);
   }
-  db.prepare(`DELETE FROM projects WHERE id=?`).run(id);
+  return db.transaction((): BgProcess[] => {
+    const removed = listBgProcesses(db, { projectId: id });
+    db.prepare(`DELETE FROM bg_processes WHERE project_id=?`).run(id);
+    db.prepare(`DELETE FROM projects WHERE id=?`).run(id);
+    return removed;
+  })();
 }
 
 export function nextAgentName(db: Database.Database, projectId: number, role: string = 'generic'): string {
@@ -578,7 +832,16 @@ export function getAgentById(db: Database.Database, id: number): Agent | undefin
   return row ? mapAgent(row) : undefined;
 }
 
-export function createAgent(db: Database.Database, data: { name: string; workdir: string; launchCmd: string; projectId?: number; role?: string; useWorktree?: boolean }): Agent {
+export function createAgent(db: Database.Database, data: { name: string; workdir: string; launchCmd: string; projectId?: number; role?: string; useWorktree?: boolean; requireWorktree?: boolean }): Agent {
+  // TASK-0213: `requireWorktree` turns the best-effort worktree step below into
+  // a hard requirement (an explicit "clone into a new worktree" request must
+  // never silently hand back a second agent on the same directory). The
+  // common not-a-repo case is refused before any row is written.
+  const requireWorktree = data.useWorktree === true && data.requireWorktree === true;
+  if (requireWorktree && !getGitRoot(data.workdir)) {
+    throw new WorktreeError('not-git-repo', `workdir ${data.workdir} is not inside a git repository`);
+  }
+
   // Guard against two agents resolving to the same tmux window name. The DB's
   // per-project name uniqueness doesn't catch cross-scope collisions on the
   // computed `${project}-${name}` window name, and a duplicate window name is
@@ -601,23 +864,73 @@ export function createAgent(db: Database.Database, data: { name: string; workdir
   // `gitRoot` is `null` when workdir isn't a git repo (or git is
   // unavailable/times out); in that case we proceed without a worktree.
   // Worktree creation itself is still best-effort: a failure is logged as a
-  // warning and the columns are left NULL, but it never aborts agent creation.
+  // warning and the columns are left NULL, but it never aborts agent creation
+  // — unless `requireWorktree` is set, in which case the just-inserted row is
+  // rolled back and a WorktreeError is thrown.
   if (data.useWorktree) {
     const gitRoot = getGitRoot(data.workdir);
     if (gitRoot) {
       const worktreePath = siblingWorktreePath(gitRoot, row.id);
       const branch = `conductor/${String(row.id)}`;
-      const created = createWorktree(gitRoot, worktreePath, branch);
-      if (created) {
+      const existedBefore = fs.existsSync(worktreePath);
+      // Recorded before the attempt: `git worktree add -b` can create the
+      // branch and then fail (e.g. the sibling dir is a plain file), and agent
+      // ids are reused (no AUTOINCREMENT), so a stray branch would collide with
+      // the next agent. Only a branch that did not pre-exist is ours to drop.
+      const branchExistedBefore = branchExists(gitRoot, branch);
+      const created = tryCreateWorktree(gitRoot, worktreePath, branch);
+      if (created.ok) {
         db.prepare(`UPDATE agents SET worktree_path = ?, branch = ? WHERE id = ?`).run(worktreePath, branch, row.id);
         applyRoleFragmentToWorktree(worktreePath, data.role ?? 'generic');
+      } else if (requireWorktree) {
+        db.prepare(`DELETE FROM agents WHERE id = ?`).run(row.id);
+        // Best-effort: drop a partially created worktree, but never a directory
+        // that was already there before this attempt (it is not ours).
+        if (!existedBefore && fs.existsSync(worktreePath)) {
+          removeWorktree(gitRoot, worktreePath);
+          fs.rmSync(worktreePath, { recursive: true, force: true });
+        }
+        // Best-effort: drop a branch the failed attempt left behind, but never
+        // one that already existed before it. Prune first so a stale worktree
+        // registration does not make `branch -D` refuse.
+        if (!branchExistedBefore && branchExists(gitRoot, branch)) {
+          pruneWorktrees(gitRoot);
+          deleteBranch(gitRoot, branch);
+        }
+        throw new WorktreeError('git-failed', `failed to create git worktree at ${worktreePath}: ${created.reason}`);
       } else {
-        console.warn(`[conductor] createAgent: failed to create worktree at ${worktreePath} for branch ${branch} (agent ${String(row.id)}); continuing without a worktree`);
+        console.warn(`[conductor] createAgent: failed to create worktree at ${worktreePath} for branch ${branch} (agent ${String(row.id)}): ${created.reason}; continuing without a worktree`);
       }
+    } else if (requireWorktree) {
+      // Raced with the preflight (repo vanished between the two git calls).
+      db.prepare(`DELETE FROM agents WHERE id = ?`).run(row.id);
+      throw new WorktreeError('not-git-repo', `workdir ${data.workdir} is not inside a git repository`);
     }
   }
 
   return findAgentById(db, row.id);
+}
+
+/**
+ * TASK-0213: create a clone of `source` (same workdir/launchCmd/project/role,
+ * derived unique name). The clone gets its own worktree when `forceWorktree`
+ * is set — a FRESH branch off the repo's detected base branch, not a copy of
+ * the source's branch or uncommitted work, whether or not the source has one —
+ * and otherwise only when the source itself has one (previous behaviour).
+ * A forced clone that cannot get its worktree throws a WorktreeError and
+ * leaves no `agents` row behind.
+ */
+export function cloneAgentRecord(db: Database.Database, source: Agent, opts: { forceWorktree?: boolean } = {}): Agent {
+  const forceWorktree = opts.forceWorktree === true;
+  return createAgent(db, {
+    name: deriveCloneName(db, source),
+    workdir: source.workdir,
+    launchCmd: source.launchCmd,
+    ...(source.projectId != null ? { projectId: source.projectId } : {}),
+    role: source.role,
+    useWorktree: forceWorktree || Boolean(source.worktreePath),
+    requireWorktree: forceWorktree,
+  });
 }
 
 /**
@@ -631,19 +944,20 @@ export function createAgent(db: Database.Database, data: { name: string; workdir
 export function addWorktreeToAgent(db: Database.Database, agentId: number): Agent {
   const agent = getAgentById(db, agentId);
   if (!agent) {
-    throw new Error(`agent ${String(agentId)} not found`);
+    throw new WorktreeError('not-found', `agent ${String(agentId)} not found`);
   }
   if (agent.worktreePath) {
-    throw new Error(`agent ${String(agentId)} already has a worktree`);
+    throw new WorktreeError('already-has-worktree', `agent ${String(agentId)} already has a worktree`);
   }
   const gitRoot = getGitRoot(agent.workdir);
   if (!gitRoot) {
-    throw new Error(`agent ${String(agentId)} workdir is not inside a git repository`);
+    throw new WorktreeError('not-git-repo', `agent ${String(agentId)} workdir is not inside a git repository`);
   }
   const worktreePath = siblingWorktreePath(gitRoot, agentId);
   const branch = `conductor/${String(agentId)}`;
-  if (!createWorktree(gitRoot, worktreePath, branch)) {
-    throw new Error(`failed to create git worktree at ${worktreePath}`);
+  const result = tryCreateWorktree(gitRoot, worktreePath, branch);
+  if (!result.ok) {
+    throw new WorktreeError('git-failed', `failed to create git worktree at ${worktreePath}: ${result.reason}`);
   }
   db.prepare(`UPDATE agents SET worktree_path = ?, branch = ? WHERE id = ?`).run(worktreePath, branch, agentId);
   applyRoleFragmentToWorktree(worktreePath, agent.role);
@@ -691,10 +1005,10 @@ export function listBgProcesses(db: Database.Database, opts?: { projectId?: numb
   return (db.prepare(`SELECT * FROM bg_processes ORDER BY name`).all() as BgProcessRow[]).map(mapBgProcess);
 }
 
-export function createBgProcess(db: Database.Database, data: { name: string; workdir: string; launchCmd: string; linkedAgentId?: number; projectId?: number }): BgProcess {
+export function createBgProcess(db: Database.Database, data: { name: string; workdir: string; launchCmd: string; projectId: number }): BgProcess {
   const row = db.prepare(
-    `INSERT INTO bg_processes (name, workdir, launch_cmd, linked_agent_id, project_id) VALUES (?, ?, ?, ?, ?) RETURNING *`
-  ).get(data.name, data.workdir, data.launchCmd, data.linkedAgentId ?? null, data.projectId ?? null) as BgProcessRow;
+    `INSERT INTO bg_processes (name, workdir, launch_cmd, project_id) VALUES (?, ?, ?, ?) RETURNING *`
+  ).get(data.name, data.workdir, data.launchCmd, data.projectId) as BgProcessRow;
   return mapBgProcess(row);
 }
 
@@ -705,7 +1019,7 @@ export function createBgProcess(db: Database.Database, data: { name: string; wor
 // window, and this function never touches that window. The new values take
 // effect the next time the window is (re)created (POST /bg-processes/:name/window,
 // or a fresh conductor.sh/spawn.sh run) — not retroactively.
-export function updateBgProcess(db: Database.Database, id: number, data: Partial<{ workdir: string; launchCmd: string; projectId: number | null }>): BgProcess {
+export function updateBgProcess(db: Database.Database, id: number, data: Partial<{ workdir: string; launchCmd: string; projectId: number }>): BgProcess {
   const sets: string[] = [];
   const vals: unknown[] = [];
   if (data.workdir !== undefined) { sets.push('workdir=?'); vals.push(data.workdir); }
@@ -842,6 +1156,22 @@ export function jumpTaskToHead(db: Database.Database, id: number): void {
   const r = db.prepare(`SELECT MIN(position) as m FROM tasks WHERE status='queued'`).get() as { m: number | null };
   const newPos = (r.m ?? 0) - 1.0;
   db.prepare(`UPDATE tasks SET position=? WHERE id=?`).run(newPos, id);
+}
+
+
+export function moveTaskToProject(db: Database.Database, id: number): { ok: true; task: Task } | { ok: false; reason: 'not-found' | 'not-queued' | 'not-agent-scoped' | 'agent-has-no-project' } {
+  const row = db.prepare(`SELECT * FROM tasks WHERE id = ?`).get(id) as TaskRow | undefined;
+  if (!row) return { ok: false, reason: 'not-found' };
+  if (row.status !== 'queued') return { ok: false, reason: 'not-queued' };
+  if (row.agent_id === null) return { ok: false, reason: 'not-agent-scoped' };
+
+  const agent = db.prepare(`SELECT project_id FROM agents WHERE id = ?`).get(row.agent_id) as { project_id: number | null } | undefined;
+  if (!agent || agent.project_id === null) return { ok: false, reason: 'agent-has-no-project' };
+
+  const updated = db.prepare(
+    `UPDATE tasks SET project_id = ?, agent_id = NULL WHERE id = ? RETURNING *`
+  ).get(agent.project_id, id) as TaskRow;
+  return { ok: true, task: mapTask(updated) };
 }
 
 export function popTask(db: Database.Database, agentName: string): { id: number; command: string; kind: 'scoped' | 'project' | 'global' } | null {

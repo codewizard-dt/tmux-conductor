@@ -6,13 +6,13 @@ status: in-progress
 severity: critical
 priority: P1
 created: 2026-08-15
-updated: 2026-09-04
+updated: 2026-09-19
 reporter: David Taylor
 assignee: "—"
 tags: host-server, dispatch, hooks, subagents
 impact: "Affects any agent running a skill that spawns background Task-tool sub-agents (observed with /power-mode) while it has additional queued tasks behind the current one. Risk: task-queue ordering guarantee (one task at a time per agent) is violated — a queued task can dispatch into an agent that is still mid-turn, waiting on its own sub-agent work. Confirmed 2026-09-03: the current sentinel fix does not protect the primary case (a background sub-agent running without ever needing input) — see the Update in Resolution. Confirmed 2026-09-04: the proposed pane-text (footer-hint) fallback is disqualified — it's global/account-scoped, not per-agent — and an undocumented ~/.claude/jobs/*/state.json internal was found as a riskier alternative candidate. Awaiting a user decision on how to proceed."
 workaround: "Avoid queuing follow-on tasks during sub-agent-heavy skills — manually hold off queuing the next /power-mode (or similar) task until the current one, including its sub-agents, has actually finished. Process workaround only, not a fix."
-linked_task: "[[TASK-120]], [[TASK-121]]"
+linked_task: "[[TASK-120]], [[TASK-121]], [[TASK-0184]]"
 ---
 
 # BUG-0001 — Main agent falsely marked idle while waiting on a background sub-agent (Task tool), causing premature task dequeue
@@ -105,9 +105,37 @@ While investigating why, found `~/.claude/jobs/<id>/state.json` (Claude Code's o
 
 **Status now**: three options on the table, none implemented — (1) keep only the existing hook-based sentinel, accept the known no-input-needed gap, no new work; (2) poll `~/.claude/jobs/*/state.json` with a loud fallback if the format ever looks unexpected; (3) something else. Flagged back to the user for a decision — not proceeding unilaterally on (2) given its undocumented-internals risk, same caution class as the earlier global-config-change flag.
 
+### Update 2026-09-19 — fresh live repro; found the missing correlator for option 2; user approved proceeding with option 2
+
+Fresh screenshot repro (`tmp/dashboard-drops/1789799698836-Screenshot-2026-09-19-at-1.02.12-AM.png`): an agent's pane transcript shows an in-progress teammate/sub-agent conversation ("Teammate @tackle-0182-step2-index-ts finished", `main` still waiting on `tackle-0182-step3-terminal-loops`), while the dashboard badges it `NO TASKS` (the frontend's `empty` status — `idle` state + zero queued tasks, see `frontend/src/components/AgentList.tsx:118`). Confirms the gap is still live and reproduces exactly as before: `host-server/state.ts`'s `detectAgentStatus()` never calls `hasPendingBackgroundAgents()` — that check still only gates the two dispatch call sites in `host-server/index.ts`, not status detection, so the *displayed* status is wrong even on ticks where dispatch itself is correctly held.
+
+**New finding, not previously known**: a real per-job correlator exists after all, just not inside `~/.claude/jobs/<id>/state.json` itself — it's in the **parent session's own transcript**. When a session spawns a background job, the parent's `.jsonl` (the same file tracked per-agent by this repo's hook sidecar, `logs/state/<agent>.meta.json` → `transcript_path`/`session_id`) gets a dedicated record:
+
+```json
+{"type":"continued-in","sessionId":"<parent-session-id>","continuedInSessionId":"<job-session-id>"}
+```
+
+Verified live against two independent, unrelated background jobs currently on this machine (`~/.claude/jobs/5aa8a27d/`, `~/.claude/jobs/7290ca9d/`) — in both cases, grepping the job's own `sessionId` across `~/.claude/projects/<project-dir>/*.jsonl` turned up exactly one other transcript containing a `continued-in` record whose `continuedInSessionId` matched, and that transcript's own `sessionId` was the spawning session. This resolves the correlator gap the 2026-09-04 update flagged (§104) as "no per-agent correlator field is documented anywhere on the payload" — the correlator isn't on the job's `state.json`, it's a event type in the parent's transcript.
+
+This changes the design for option 2: instead of matching background jobs to an agent by `cwd` alone (ambiguous whenever [[project_agents_share_workdir|multiple agents share a workdir]]), the poller can scan the agent's own transcript (already known via the hook sidecar) for `continued-in` records, collect the `continuedInSessionId`s, and check only those specific jobs' `state.json` for non-terminal state — a precise, per-agent match, not a `cwd` heuristic. Observed `state` values so far: `"working"` (in a job's `timeline.jsonl`, non-terminal) and `"done"` (in `state.json`, terminal) — the full enum (e.g. whether `"blocked"`/`"stopped"`/`"failed"` also occur) is still unconfirmed, so the staleness-bound fallback (mirroring `PENDING_AGENT_STALE_S`) stays load-bearing: an unrecognized `state` value should log a loud warning and be treated as non-terminal (busy) only until the job's `updatedAt` ages past the staleness bound, so an unknown-format job can never wedge a status read forever.
+
+**User decision**: proceed with option 2 (poll `~/.claude/jobs/*/state.json`, correlated via the transcript's `continued-in` records), given the correlator gap is now resolved. Filed as `[[TASK-0184]]`.
+
 Original next-step text, superseded by the above but kept for the historical record:
 
 > Recommended next step before closing: reproduce the original repro live (stack `/power-mode` tasks, one of which spawns background sub-agents) with this fix installed, inspect `$CONDUCTOR_LOG_DIR/notification-debug.jsonl` for the real payload shape, and confirm via `$LOG_DIR/dispatch.jsonl` that no premature dispatch occurs while `<agent>.pending-agents/` is non-empty. `TASK-133` (status `todo` as of this fix, which independently designed this same remedy from the same research) already scopes exactly this live-investigation-and-confirm step — worth reconciling/closing out alongside this bug rather than duplicating it.
+
+### Update 2026-09-19 — TASK-0184 Steps 1-3 implemented; Step 5 (live verification) still outstanding
+
+Implemented option 2 from the update above. `host-server/backgroundJobs.ts` (new module) exports `hasActiveBackgroundJob(stateDir, agentName, workdir, staleMs, jobsDir?)`, which resolves an agent's transcript via the existing `resolveTranscriptPath` (`host-server/context.ts`), collects `continuedInSessionId`s from `{"type":"continued-in",...}` records, and checks each matching `~/.claude/jobs/<id>/state.json`.
+
+**Confirmed final `state` enum** (Step 1's live investigation, against two real jobs' full `timeline.jsonl` histories — `5aa8a27d`, `7290ca9d`): `"working"` and `"blocked"` are non-terminal (job still outstanding — `"blocked"` was a new finding not previously known, a coordination stall waiting on a peer session, not an error); `"done"` is terminal; anything else is unrecognized, logged via `console.warn`, and treated as active only within the staleness bound of the job's `updatedAt` (mirroring `pendingAgents.ts`'s stale-sentinel fallback). No `"failed"`/`"stopped"`/`"error"`/`"cancelled"` state was ever observed in either job's full history. **Staleness bound used**: `conf.pendingAgentStaleMs` — the same `PENDING_AGENT_STALE_S` conductor.conf setting the existing `hasPendingBackgroundAgents()` sentinel already uses; no new config key was added.
+
+`host-server/state.ts` gained `detectAgentStatusWithBackgroundJobs()`, a wrapper that calls the existing `detectAgentStatus()` unchanged and, only when its result is `{state: 'idle', ...}`, additionally checks `hasActiveBackgroundJob(...)` and upgrades to `{state: 'busy', reason: 'background-job'}`. `detectAgentStatus()` itself and its 18-case test matrix (`state.test.ts`) are untouched — this is strictly additive. All 8 `detectAgentStatus(...)` call sites in `host-server/index.ts` (the task's own estimate of 7 was stale) now call the wrapper, each threading that call site's `agent.workdir`. `cd host-server && npx tsc --noEmit` clean; `npm test` 179/179.
+
+This is deliberately independent of `host-server/pendingAgents.ts` / `hasPendingBackgroundAgents()` (the Notification-hook-driven dispatch-gating sentinel from this bug's original fix / `TASK-133`) — that mechanism is untouched and still gates dispatch exactly as before. This new signal only affects status *detection/display*, via a completely different, hook-independent mechanism (polling Claude Code's own `~/.claude/jobs/*/state.json`), so it does not depend on `agent_needs_input` ever firing — closing exactly the gap the 2026-09-03 update above found in the hook-driven sentinel alone.
+
+**Still outstanding**: Step 5's live check — confirming against a real, genuinely-`"working"` background job that `GET /agents`/the dashboard shows `busy` for its duration and reverts once the job's `state.json` reads `"done"` — has not yet been performed by anyone. `status:` stays `in-progress`; this is **not** being closed here. Closing this bug is the user's call via `/bug-close BUG-0001` once Step 5's live check confirms the fix, per `wiki/work/bugs/lifecycle.md`'s regression-test-and-fix-commit gate — the same pattern `TASK-133` followed.
 
 ### What remains unverified (original, 2026-08-26 — see the update above for what's now confirmed)
 

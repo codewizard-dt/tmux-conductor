@@ -1,0 +1,9 @@
+● I finished the first part of the change.
+  Should I continue with the second part now?
+
+✻ Simmering… (21s · ↓ 2.0k tokens)
+
+────────────────────────────────────────
+❯
+────────────────────────────────────────
+  ⏵⏵ accept edits on (shift+tab to cycle) · esc to interrupt

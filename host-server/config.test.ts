@@ -128,3 +128,36 @@ void test('PENDING_AGENT_STALE_S falls back to the default for a non-positive va
   const conf = readConductorConf(confPath);
   assert.equal(conf.pendingAgentStaleMs, 3_600_000);
 });
+
+// TASK-0193: BG_RESTART_COOLDOWN_S follows the same declare -p list +
+// parsePositiveIntSetting + ConductorConf field pattern as PENDING_AGENT_STALE_S
+// (seconds in the conf, milliseconds on ConductorConf).
+void test('BG_RESTART_COOLDOWN_S defaults to 30s (30000ms) when absent from conductor.conf', () => {
+  const confPath = writeTempConf(
+    'config-test-bg-restart-cooldown-default.conf',
+    'SESSION_NAME="task0193-default"\n',
+  );
+  clearConfCache();
+  const conf = readConductorConf(confPath);
+  assert.equal(conf.bgRestartCooldownMs, 30_000);
+});
+
+void test('BG_RESTART_COOLDOWN_S honors an explicit positive value from conductor.conf, converted from seconds to ms', () => {
+  const confPath = writeTempConf(
+    'config-test-bg-restart-cooldown-custom.conf',
+    'SESSION_NAME="task0193-custom"\nBG_RESTART_COOLDOWN_S=90\n',
+  );
+  clearConfCache();
+  const conf = readConductorConf(confPath);
+  assert.equal(conf.bgRestartCooldownMs, 90_000);
+});
+
+void test('BG_RESTART_COOLDOWN_S falls back to the default for a non-positive value', () => {
+  const confPath = writeTempConf(
+    'config-test-bg-restart-cooldown-invalid.conf',
+    'SESSION_NAME="task0193-invalid"\nBG_RESTART_COOLDOWN_S=0\n',
+  );
+  clearConfCache();
+  const conf = readConductorConf(confPath);
+  assert.equal(conf.bgRestartCooldownMs, 30_000);
+});

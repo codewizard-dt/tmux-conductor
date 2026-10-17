@@ -1,0 +1,10 @@
+● UAT test 3 of 5: waiting badge appears
+  Steps: open the sample page and trigger the dialog.
+  Expected: the badge reads "waiting".
+
+  Verdict? P/F/Fix/Skip
+
+────────────────────────────────────────
+❯
+────────────────────────────────────────
+  ? for shortcuts

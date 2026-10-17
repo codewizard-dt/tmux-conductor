@@ -2,7 +2,7 @@
 id: claude-code-cli
 title: Claude Code CLI
 aliases: [claude, Claude Code]
-updated: 2026-09-13
+updated: 2026-09-19
 sources:
   - ../../../raw/research/claude-usage-quota-signal/index.md
   - ../../../raw/research/terminal-keyboard-clipboard/index.md
@@ -11,6 +11,7 @@ sources:
   - ../../../raw/research/bug-0001-background-agent-detection/index.md
   - ../../../raw/research/detect-active-claude-code-sessions-kanban/index.md
   - ../../../raw/research/host-agent-identification-and-control/index.md
+  - ../../../raw/research/orchestrator-agent-routing/index-3.md
 confidence: ambiguous
 tags: [claude-code, cli, agent-teams]
 ---
@@ -87,6 +88,10 @@ Underneath this command sits an **undocumented internal per-process registry**, 
 `claude agents --json`'s documented field-presence rules: `cwd`/`kind`/`startedAt` always present; `id` only on **background** sessions; `state` only on background sessions — one of `working`/`blocked`/`done`/`failed`/`stopped`; `pid`/`status` present only **while the process is alive**; `waitingFor` present when `status` is `waiting` (`permission prompt`, `input needed`, `sandbox request`, `worker request`, `dialog open`); `sessionId`/`name` present when set. Shipped ~May 2026 (`code.claude.com/docs/en/whats-new/2026-w21`: "`claude agents --json` lists live sessions as JSON for scripting, such as status bars and session pickers").
 
 The same feature documents a full shell control surface keyed by a background session's `id`: `claude attach <id>` (reattach in this terminal), `claude logs <id>`, `claude stop <id>` (alias `claude kill`), `claude respawn <id>` / `claude respawn --all` (restart, resuming the saved conversation or re-running the original prompt), `claude rm <id>` (remove from the list; transcript stays on disk, still usable via `claude --resume`), `claude daemon status`, `claude daemon stop --any` (`--keep-workers` leaves background sessions running for the next supervisor to reconnect to). None of this control surface applies to plain **interactive** sessions (no `id` field) — those remain detect-only from outside their own terminal/pane. See `relates_to::[[claude-code-session-discovery]]`.
+
+## Project-level subagents — `.claude/agents/*.md` (confirmed via Brave Search, 2026-09-19)
+
+Distinct from cross-session messaging and agent teams above, Claude Code natively supports **project-level subagent definitions**: a Markdown file at `.claude/agents/<name>.md` with `name`, `description`, an optional `tools` allowlist, and an optional `model` override. The main agent selects a subagent by matching the current task context against its `description` — the same "Agent Registry" shape Spring AI names explicitly for its own orchestrator implementation (`relates_to::[[Specialized-Agent Registry / Catalog Pattern]]`). This session's own "Available agent types" list (`claude-code-guide`, `codebase-inquiry-architect`, `compose-stack-doctor`, `Explore`, `general-purpose`, `Plan`, `statusline-setup`) is a live instance of this mechanism. **`uses::[[tmux-conductor]]` has no files under `.claude/agents/`** — confirmed 2026-09-19 — despite the mechanism requiring no new project infrastructure to use at this layer. See `derived_from::[[An Orchestrator Agent That Routes Commands/Tasks to Other Agents]]`.
 
 ### SessionEnd hook reliability (confirmed via Context7 + Brave Search, 2026-09-13)
 

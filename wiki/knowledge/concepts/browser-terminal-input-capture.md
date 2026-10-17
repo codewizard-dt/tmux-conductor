@@ -2,9 +2,10 @@
 id: browser-terminal-input-capture
 title: Browser Terminal Input Capture (read-only mirror + external key capture)
 aliases: [interact-mode-input, xterm-input-interception, capture-phase-paste]
-updated: 2026-08-15
+updated: 2026-09-19
 sources:
   - ../../../raw/research/terminal-keyboard-clipboard/index.md
+  - ../../../raw/research/terminal-typed-command-persistence/index.md
 confidence: extracted
 tags: [frontend, terminal, xterm, keyboard, clipboard, pattern]
 ---
@@ -34,5 +35,9 @@ Clicking inside the terminal a second time, or drag-selecting text, moves focus 
 ## Corollary — snapshot repaint versus selection
 
 A mirror that repaints by writing `\x1bc` (RIS, full terminal reset) plus the whole snapshot on every frame resets the buffer each time. Selections survive only while no frames arrive. If user selection matters, gate the repaint on `term.hasSelection()` the same way it is already gated on the user having scrolled up.
+
+## Corollary — the capture layer has no command boundary
+
+Because capture forwards **keystrokes**, not lines, the frontend never knows what "the command" was when the user pressed `Enter` — the pane's line editor owns the buffer. Features that need the submitted command (e.g. showing the last typed command) must reconstruct it from the stream, and that is lossy for history recall, Tab completion, cursor edits and paste. See `[[keystroke-stream-command-reconstruction]]` and `derived_from::[[terminal-typed-command-persistence]]`.
 
 relates_to::[[log-tail]] relates_to::[[xterm-js]] relates_to::[[terminal-keyboard-clipboard]] relates_to::[[ansi-terminal-emulation-browser]] relates_to::[[focused-terminal-transport]] relates_to::[[direct-input-mode-focus-reliability]]

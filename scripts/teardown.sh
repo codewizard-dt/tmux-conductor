@@ -25,13 +25,13 @@ echo ""
 for name in "${AGENT_NAMES[@]}"; do
   window_name="${AGENT_WINDOW_NAMES[$name]:-$name}"
   echo "[$(date +%H:%M:%S)] Sending /exit to $name..."
-  "$SCRIPT_DIR/dispatch.sh" "$SESSION_NAME:$window_name" "/exit" || true
+  "$SCRIPT_DIR/dispatch.sh" "$SESSION_NAME:=$window_name" "/exit" || true
 done
 
 # Send C-c to each bg-process window (ignore errors — window may already be gone)
 for name in "${BG_NAMES[@]}"; do
   echo "[$(date +%H:%M:%S)] Sending C-c to bg '$name'..."
-  tmux send-keys -t "$SESSION_NAME:$name" C-c 2>/dev/null || true
+  tmux send-keys -t "$SESSION_NAME:=$name" C-c 2>/dev/null || true
 done
 
 echo ""

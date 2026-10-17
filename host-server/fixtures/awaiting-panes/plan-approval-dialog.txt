@@ -1,0 +1,14 @@
+ Ready to code?
+
+ Here is Claude's plan:
+ ╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+ 1. Add a helper to the sample module
+ 2. Cover it with a unit test
+
+ Would you like to proceed?
+
+ ❯ 1. Yes, and auto-accept edits
+   2. Yes, and manually approve each edit
+   3. No, keep planning
+
+ ctrl-g to edit plan · shift+tab to approve

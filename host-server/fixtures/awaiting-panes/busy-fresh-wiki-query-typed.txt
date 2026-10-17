@@ -1,0 +1,6 @@
+● Previous task complete.
+
+────────────────────────────────────────
+❯ /wiki-query <question>
+────────────────────────────────────────
+  ⏵⏵ accept edits on (shift+tab to cycle)

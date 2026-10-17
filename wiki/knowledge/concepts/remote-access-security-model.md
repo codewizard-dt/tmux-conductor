@@ -2,8 +2,9 @@
 id: remote-access-security-model
 title: "Remote Access Security Model: Network Admission, Not Application Auth"
 aliases: [remote access security model, tunnel vs vpn security]
-updated: 2026-09-13
+updated: 2026-09-20
 sources:
+  - ../../raw/research/project-file-tree/index.md
   - ../../raw/research/remote-tunnel-access/index.md
   - ../../raw/research/remote-tunnel-access/sources.md
 confidence: inferred
@@ -20,6 +21,8 @@ For a local-first, single-user application whose backend has no built-in authent
 Option 2 is the better fit whenever "single-user, no deployment, no auth" is a standing constraint (as it currently is for this project — see `ROADMAP-009`'s abandonment note under [[Host Server]]/`wiki/log.md`): it reuses a managed or self-hosted control plane instead of building one, and it covers *both* dashboard access and SSH/`tmux attach` with one piece of infrastructure. Cloudflare Tunnel + Cloudflare Access is a hybrid worth naming separately: the tunnel gives outbound-only connectivity (no listening port), but it does **not** supply option 2's admission control by itself — Access has to be configured as a genuinely separate, easy-to-forget step, because "the tunnel already works" without it. Reach for it only when a shareable public URL (not a VPN-gated one) is an actual requirement, and treat the Access step as non-optional given the origin has no auth of its own.
 
 **When option 1 becomes necessary again:** if the requirement shifts from "I want to reach my own machine" to genuine multi-user access (several distinct people, not just several of your own devices), a mesh VPN's per-account model stops being a natural fit and some form of per-user identity in front of the app (Cloudflare Access with real per-user policy, or rebuilding the auth layer) becomes the right tool again — that's a different requirement and should go through its own decision process rather than defaulting back into a full relay rebuild.
+
+**Adjacent, distinct threat (2026-09-20):** all of the above is about *network* reachability. Even with the port bound to loopback and no remote access at all, a wildcard CORS origin lets any web page in the user's own browser read the host-server's responses — see [[local-server-cors-wildcard-exposure]]. A mesh VPN does not address it; restricting `CORS_ORIGIN` does.
 
 **Decision**: [[DEC-0003-remote-access-and-trust-boundary|DEC-0003#D2: where the trust boundary lives]] records this choice formally — `proposed`, outcome left open pending `/decision-finalize`.
 

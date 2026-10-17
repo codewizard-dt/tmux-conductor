@@ -9,6 +9,7 @@ import {
   openDb,
   createAgent,
   addWorktreeToAgent,
+  cloneAgentRecord,
   clearAgentWorktree,
   listAgents,
   deleteAgent,
@@ -24,6 +25,7 @@ import {
   addTask,
   popTask,
 } from './db.ts';
+import { WorktreeError } from './worktreeErrors.ts';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const tmpDir = path.resolve(__dirname, '../tmp');
@@ -298,6 +300,189 @@ void test('existing pre-v9 DB gains bg_processes.project_id and preserves rows',
   }
 });
 
+// v10 rewrites rows holding the exact old default launch command to the new
+// default (adds --append-system-prompt-file) and leaves customised commands alone.
+void test('v10 migration upgrades old default launch cmds on agents and projects only', () => {
+  const dbPath = tmpDbPath('prev10');
+  const oldCmd = 'claude --dangerously-skip-permissions';
+  const newCmd =
+    'claude --dangerously-skip-permissions --append-system-prompt-file ~/.claude/rules/agent-teams-preference.md';
+  try {
+    const legacy = new Database(dbPath);
+    legacy.exec(`
+      CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+      CREATE TABLE projects (
+        id INTEGER PRIMARY KEY,
+        name TEXT NOT NULL UNIQUE CHECK (name GLOB '[A-Za-z0-9_-]*'),
+        workdir TEXT NOT NULL,
+        default_launch_cmd TEXT NOT NULL DEFAULT 'claude --dangerously-skip-permissions',
+        created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))
+      );
+      CREATE TABLE agents (
+        id INTEGER PRIMARY KEY,
+        name TEXT NOT NULL,
+        workdir TEXT NOT NULL,
+        launch_cmd TEXT NOT NULL,
+        project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL,
+        created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+        worktree_path TEXT,
+        branch TEXT,
+        role TEXT NOT NULL DEFAULT 'generic' CHECK (role IN ('generic','frontend','backend','qa','devops','security','architect'))
+      );
+      CREATE TABLE bg_processes (
+        id INTEGER PRIMARY KEY,
+        name TEXT NOT NULL UNIQUE CHECK (name GLOB '[A-Za-z0-9_-]*'),
+        workdir TEXT NOT NULL,
+        launch_cmd TEXT NOT NULL,
+        linked_agent_id INTEGER REFERENCES agents(id) ON DELETE SET NULL,
+        project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL
+      );
+      CREATE TABLE tasks (
+        id INTEGER PRIMARY KEY,
+        command TEXT NOT NULL,
+        agent_id INTEGER REFERENCES agents(id) ON DELETE CASCADE,
+        project_id INTEGER REFERENCES projects(id) ON DELETE CASCADE,
+        position REAL NOT NULL,
+        status TEXT NOT NULL DEFAULT 'queued' CHECK (status IN ('queued','backlog','done')),
+        source TEXT NOT NULL DEFAULT 'manual' CHECK (source IN ('manual','schedule')),
+        schedule_id INTEGER,
+        created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+        completed_at TEXT,
+        CHECK (agent_id IS NULL OR project_id IS NULL)
+      );
+    `);
+    legacy.prepare(`INSERT INTO projects (name, workdir, default_launch_cmd) VALUES (?, ?, ?)`).run('p_old', '/w/p1', oldCmd);
+    legacy.prepare(`INSERT INTO projects (name, workdir, default_launch_cmd) VALUES (?, ?, ?)`).run('p_custom', '/w/p2', 'codex --yolo');
+    legacy.prepare(`INSERT INTO agents (name, workdir, launch_cmd) VALUES (?, ?, ?)`).run('a_old', '/w/a1', oldCmd);
+    legacy.prepare(`INSERT INTO agents (name, workdir, launch_cmd) VALUES (?, ?, ?)`).run('a_custom', '/w/a2', 'claude --model opus');
+    legacy.prepare(`INSERT INTO bg_processes (name, workdir, launch_cmd) VALUES (?, ?, ?)`).run('bg_old', '/w/b1', oldCmd);
+    legacy.prepare(`INSERT OR REPLACE INTO meta VALUES ('schema_version', '9')`).run();
+    legacy.prepare(`INSERT OR REPLACE INTO meta VALUES ('legacy_import', '1')`).run();
+    legacy.close();
+
+    const db = openDb(dbPath);
+    try {
+      const agentCmd = (n: string) =>
+        (db.prepare(`SELECT launch_cmd FROM agents WHERE name=?`).get(n) as { launch_cmd: string }).launch_cmd;
+      const projCmd = (n: string) =>
+        (db.prepare(`SELECT default_launch_cmd AS c FROM projects WHERE name=?`).get(n) as { c: string }).c;
+      assert.equal(agentCmd('a_old'), newCmd);
+      assert.equal(agentCmd('a_custom'), 'claude --model opus');
+      assert.equal(projCmd('p_old'), newCmd);
+      assert.equal(projCmd('p_custom'), 'codex --yolo');
+      // bg_processes are not agents; their commands must not be touched.
+      const bg = db.prepare(`SELECT launch_cmd FROM bg_processes WHERE name='bg_old'`).get() as { launch_cmd: string };
+      assert.equal(bg.launch_cmd, oldCmd);
+      assertSchemaVersionAtLeast(db, 10);
+    } finally {
+      db.close();
+    }
+  } finally {
+    cleanupDbFiles(dbPath);
+  }
+});
+
+// TASK-0195: existing project-less bg_processes rows are backfilled from their
+// workdir on open. Fixture is a faithful post-v10 (current-schema) DB whose
+// bg_processes rows predate the "every bg process needs a project" rule. The
+// NOT NULL rebuild is intentionally not part of this (TASK-0196); unmatched
+// rows must only warn, never fail startup or be dropped.
+void test('TASK-0195: openDb backfills bg_processes.project_id by workdir; unmatched rows warn and survive; scoped rows untouched; idempotent', () => {
+  const dbPath = tmpDbPath('bgbackfill');
+  const warnings: string[] = [];
+  const origWarn = console.warn;
+  const origLog = console.log;
+  try {
+    const legacy = new Database(dbPath);
+    legacy.exec(`
+      CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+      CREATE TABLE projects (
+        id INTEGER PRIMARY KEY,
+        name TEXT NOT NULL UNIQUE CHECK (name GLOB '[A-Za-z0-9_-]*'),
+        workdir TEXT NOT NULL,
+        default_launch_cmd TEXT NOT NULL DEFAULT 'claude --dangerously-skip-permissions --append-system-prompt-file ~/.claude/rules/agent-teams-preference.md',
+        created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))
+      );
+      CREATE TABLE agents (
+        id INTEGER PRIMARY KEY,
+        name TEXT NOT NULL,
+        workdir TEXT NOT NULL,
+        launch_cmd TEXT NOT NULL,
+        project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL,
+        created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+        worktree_path TEXT,
+        branch TEXT,
+        role TEXT NOT NULL DEFAULT 'generic' CHECK (role IN ('generic','frontend','backend','qa','devops','security','architect'))
+      );
+      CREATE TABLE bg_processes (
+        id INTEGER PRIMARY KEY,
+        name TEXT NOT NULL UNIQUE CHECK (name GLOB '[A-Za-z0-9_-]*'),
+        workdir TEXT NOT NULL,
+        launch_cmd TEXT NOT NULL,
+        linked_agent_id INTEGER REFERENCES agents(id) ON DELETE SET NULL,
+        project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL
+      );
+      CREATE TABLE tasks (
+        id INTEGER PRIMARY KEY,
+        command TEXT NOT NULL,
+        agent_id INTEGER REFERENCES agents(id) ON DELETE CASCADE,
+        project_id INTEGER REFERENCES projects(id) ON DELETE CASCADE,
+        position REAL NOT NULL,
+        status TEXT NOT NULL DEFAULT 'queued' CHECK (status IN ('queued','backlog','done')),
+        source TEXT NOT NULL DEFAULT 'manual' CHECK (source IN ('manual','schedule')),
+        schedule_id INTEGER,
+        created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+        completed_at TEXT,
+        CHECK (agent_id IS NULL OR project_id IS NULL)
+      );
+    `);
+    legacy.prepare(`INSERT INTO projects (id, name, workdir) VALUES (1, 'p_a', '/w/p_a')`).run();
+    legacy.prepare(`INSERT INTO projects (id, name, workdir) VALUES (2, 'p_b', '/w/p_b')`).run();
+    const insBg = legacy.prepare(`INSERT INTO bg_processes (name, workdir, launch_cmd, project_id) VALUES (?, ?, 'npm run dev', ?)`);
+    insBg.run('bg_matched', '/w/p_a', null);
+    insBg.run('bg_unmatched', '/w/nowhere', null);
+    insBg.run('bg_scoped', '/w/p_a', 2); // workdir matches p_a but is already scoped to p_b
+    legacy.prepare(`INSERT OR REPLACE INTO meta VALUES ('schema_version', '10')`).run();
+    legacy.prepare(`INSERT OR REPLACE INTO meta VALUES ('legacy_import', '1')`).run();
+    legacy.close();
+
+    console.warn = (...args: unknown[]) => { warnings.push(args.map(String).join(' ')); };
+    console.log = () => { /* silence backfill info log */ };
+
+    const projectOf = (db: Database.Database, name: string): number | null =>
+      (db.prepare(`SELECT project_id AS p FROM bg_processes WHERE name=?`).get(name) as { p: number | null }).p;
+
+    const db = openDb(dbPath);
+    try {
+      assert.equal(projectOf(db, 'bg_matched'), 1, 'workdir match assigns the project');
+      assert.equal(projectOf(db, 'bg_unmatched'), null, 'unmatched row stays NULL (not dropped, no crash)');
+      assert.equal(projectOf(db, 'bg_scoped'), 2, 'already-scoped row is never reassigned');
+      assert.equal((db.prepare(`SELECT COUNT(*) AS n FROM bg_processes`).get() as { n: number }).n, 3);
+      assert.equal(warnings.length, 1);
+      assert.match(warnings[0] ?? '', /bg_unmatched/);
+      assert.ok(!/bg_matched|bg_scoped/.test(warnings[0] ?? ''), 'only unmatched rows are listed in the warning');
+    } finally {
+      db.close();
+    }
+
+    // Idempotent: reopening changes nothing and warns about the same lone row.
+    warnings.length = 0;
+    const db2 = openDb(dbPath);
+    try {
+      assert.equal(projectOf(db2, 'bg_matched'), 1);
+      assert.equal(projectOf(db2, 'bg_unmatched'), null);
+      assert.equal(projectOf(db2, 'bg_scoped'), 2);
+      assert.equal(warnings.length, 1);
+    } finally {
+      db2.close();
+    }
+  } finally {
+    console.warn = origWarn;
+    console.log = origLog;
+    cleanupDbFiles(dbPath);
+  }
+});
+
 void test('fresh DB has agent_usage table with expected columns', () => {
   const db = openDb(':memory:');
   try {
@@ -339,6 +524,11 @@ void test('TASK-063: createAgent leaves worktreePath and branch null when workdi
 function git(dir: string, ...args: string[]): void {
   const r = spawnSync('git', ['-C', dir, ...args], { encoding: 'utf8' });
   assert.equal(r.status, 0, `git ${args.join(' ')} failed: ${r.stderr}`);
+}
+
+/** Trimmed `git branch --list <branch>` output for `gitRoot`, `''` when the branch does not exist. */
+function branchListing(gitRoot: string, branch: string): string {
+  return spawnSync('git', ['-C', gitRoot, 'branch', '--list', branch], { encoding: 'utf8' }).stdout.trim();
 }
 
 /** Create a throwaway git repo under ./tmp with one commit on `main`. */
@@ -416,7 +606,10 @@ void test('ROADMAP-007: addWorktreeToAgent opts an existing agent into a worktre
       assert.equal(updated.branch, `conductor/${String(created.id)}`);
       assert.ok(updated.worktreePath && fs.existsSync(updated.worktreePath));
 
-      assert.throws(() => { addWorktreeToAgent(db, created.id); }, /already has a worktree/);
+      assert.throws(
+        () => { addWorktreeToAgent(db, created.id); },
+        (err: unknown) => err instanceof WorktreeError && err.code === 'already-has-worktree' && /already has a worktree/.test(err.message),
+      );
     } finally {
       db.close();
     }
@@ -429,10 +622,327 @@ void test('ROADMAP-007: addWorktreeToAgent throws for a non-git workdir and for 
   const db = openDb(':memory:');
   try {
     const nogit = createAgent(db, { name: 'wt-nogit', workdir: '/tmp/roadmap007-nogit-dir', launchCmd: 'claude' });
-    assert.throws(() => { addWorktreeToAgent(db, nogit.id); }, /not inside a git repository/);
-    assert.throws(() => { addWorktreeToAgent(db, 999999); }, /not found/);
+    assert.throws(
+      () => { addWorktreeToAgent(db, nogit.id); },
+      (err: unknown) => err instanceof WorktreeError && err.code === 'not-git-repo' && /not inside a git repository/.test(err.message),
+    );
+    assert.throws(
+      () => { addWorktreeToAgent(db, 999999); },
+      (err: unknown) => err instanceof WorktreeError && err.code === 'not-found' && /not found/.test(err.message),
+    );
   } finally {
     db.close();
+  }
+});
+
+void test('TASK-0210: addWorktreeToAgent surfaces the real git reason as a git-failed WorktreeError', () => {
+  const repo = makeRepo('git-failed-reason');
+  try {
+    const db = openDb(':memory:');
+    try {
+      const created = createAgent(db, { name: 'wt-collide', workdir: repo, launchCmd: 'claude' });
+      assert.equal(created.worktreePath, null);
+
+      // Pre-create the branch createWorktree will try to `-b` so `git worktree add` fails.
+      git(repo, 'branch', `conductor/${String(created.id)}`);
+
+      assert.throws(
+        () => { addWorktreeToAgent(db, created.id); },
+        (err: unknown) =>
+          err instanceof WorktreeError &&
+          err.code === 'git-failed' &&
+          /failed to create git worktree at/.test(err.message) &&
+          /already exists/.test(err.message),
+      );
+    } finally {
+      db.close();
+    }
+  } finally {
+    cleanupRepoAndWorktrees(repo);
+  }
+});
+
+function worktreeListPaths(gitRoot: string): string[] {
+  return spawnSync('git', ['-C', gitRoot, 'worktree', 'list', '--porcelain'], { encoding: 'utf8' }).stdout
+    .split('\n')
+    .filter((l) => l.startsWith('worktree '))
+    .map((l) => fs.realpathSync(l.slice('worktree '.length)));
+}
+
+void test('TASK-0213: cloneAgentRecord with forceWorktree gives a worktree-less source a fresh sibling worktree', () => {
+  const repo = makeRepo('clone-force-none');
+  try {
+    const db = openDb(':memory:');
+    try {
+      const source = createAgent(db, { name: 'src', workdir: repo, launchCmd: 'claude' });
+      assert.equal(source.worktreePath, null);
+
+      const clone = cloneAgentRecord(db, source, { forceWorktree: true });
+      assert.notEqual(clone.id, source.id);
+      assert.equal(clone.branch, `conductor/${String(clone.id)}`);
+      assert.ok(clone.worktreePath);
+      assert.equal(path.dirname(clone.worktreePath), `${repo}-worktrees`);
+      assert.equal(path.basename(clone.worktreePath), String(clone.id));
+      assert.ok(fs.existsSync(clone.worktreePath));
+      // The clone keeps the source's workdir; the source is untouched.
+      assert.equal(clone.workdir, repo);
+      assert.equal(listAgents(db).find((a) => a.id === source.id)?.worktreePath, null);
+    } finally {
+      db.close();
+    }
+  } finally {
+    cleanupRepoAndWorktrees(repo);
+  }
+});
+
+void test('TASK-0213: cloneAgentRecord with forceWorktree gives a worktree-backed source a second, distinct worktree', () => {
+  const repo = makeRepo('clone-force-has');
+  try {
+    const db = openDb(':memory:');
+    try {
+      const source = createAgent(db, { name: 'src', workdir: repo, launchCmd: 'claude', useWorktree: true });
+      assert.ok(source.worktreePath);
+
+      const clone = cloneAgentRecord(db, source, { forceWorktree: true });
+      assert.ok(clone.worktreePath);
+      assert.notEqual(clone.worktreePath, source.worktreePath);
+      assert.notEqual(clone.branch, source.branch);
+      assert.ok(fs.existsSync(source.worktreePath));
+      assert.ok(fs.existsSync(clone.worktreePath));
+      const listed = worktreeListPaths(repo);
+      assert.ok(listed.includes(fs.realpathSync(source.worktreePath)));
+      assert.ok(listed.includes(fs.realpathSync(clone.worktreePath)));
+    } finally {
+      db.close();
+    }
+  } finally {
+    cleanupRepoAndWorktrees(repo);
+  }
+});
+
+void test('TASK-0213: cloneAgentRecord without the flag keeps the previous worktree-ness of the source', () => {
+  const repo = makeRepo('clone-noflag');
+  try {
+    const db = openDb(':memory:');
+    try {
+      const plain = createAgent(db, { name: 'plain', workdir: repo, launchCmd: 'claude' });
+      const plainClone = cloneAgentRecord(db, plain);
+      assert.equal(plainClone.worktreePath, null);
+      assert.equal(plainClone.branch, null);
+
+      const backed = createAgent(db, { name: 'backed', workdir: repo, launchCmd: 'claude', useWorktree: true });
+      const backedClone = cloneAgentRecord(db, backed);
+      assert.ok(backedClone.worktreePath);
+      assert.notEqual(backedClone.worktreePath, backed.worktreePath);
+    } finally {
+      db.close();
+    }
+  } finally {
+    cleanupRepoAndWorktrees(repo);
+  }
+});
+
+void test('TASK-0213: forceWorktree on a non-git workdir throws not-git-repo and leaves no clone row', () => {
+  const db = openDb(':memory:');
+  const plainDir = fs.mkdtempSync(path.join(tmpDir, 'task0213-nogit-'));
+  // ./tmp sits inside the tmux-conductor work tree; cap git's upward search there.
+  const prevCeiling = process.env['GIT_CEILING_DIRECTORIES'];
+  process.env['GIT_CEILING_DIRECTORIES'] = tmpDir;
+  try {
+    const source = createAgent(db, { name: 'src', workdir: plainDir, launchCmd: 'claude' });
+    const before = listAgents(db).length;
+    assert.throws(
+      () => cloneAgentRecord(db, source, { forceWorktree: true }),
+      (err: unknown) => err instanceof WorktreeError && err.code === 'not-git-repo',
+    );
+    assert.equal(listAgents(db).length, before);
+  } finally {
+    if (prevCeiling === undefined) delete process.env['GIT_CEILING_DIRECTORIES'];
+    else process.env['GIT_CEILING_DIRECTORIES'] = prevCeiling;
+    db.close();
+    fs.rmSync(plainDir, { recursive: true, force: true });
+  }
+});
+
+void test('TASK-0213: a forced clone whose git worktree add fails throws git-failed, rolls the row back and leaves no directory', () => {
+  const repo = makeRepo('clone-force-gitfail');
+  try {
+    const db = openDb(':memory:');
+    try {
+      const source = createAgent(db, { name: 'src', workdir: repo, launchCmd: 'claude' });
+      const nextId = (db.prepare(`SELECT MAX(id) AS m FROM agents`).get() as { m: number }).m + 1;
+      // Pre-create the branch the clone's `git worktree add -b` will want.
+      git(repo, 'branch', `conductor/${String(nextId)}`);
+      const before = listAgents(db).length;
+
+      assert.throws(
+        () => cloneAgentRecord(db, source, { forceWorktree: true }),
+        (err: unknown) =>
+          err instanceof WorktreeError && err.code === 'git-failed' && /already exists/.test(err.message),
+      );
+      assert.equal(listAgents(db).length, before);
+      assert.equal(fs.existsSync(path.join(`${repo}-worktrees`, String(nextId))), false);
+    } finally {
+      db.close();
+    }
+  } finally {
+    cleanupRepoAndWorktrees(repo);
+  }
+});
+
+void test('TASK-0213: a forced clone whose worktree add fails after creating the branch leaves no stray conductor/<id> branch, and a retry succeeds', () => {
+  const repo = makeRepo('clone-force-strayrefs');
+  try {
+    const db = openDb(':memory:');
+    try {
+      const source = createAgent(db, { name: 'src', workdir: repo, launchCmd: 'claude' });
+      const nextId = (db.prepare(`SELECT MAX(id) AS m FROM agents`).get() as { m: number }).m + 1;
+      const branch = `conductor/${String(nextId)}`;
+      // A plain file where the sibling worktrees dir should be: `git worktree add -b`
+      // creates the branch, then fails to create the leading directories.
+      const siblingDir = `${repo}-worktrees`;
+      fs.writeFileSync(siblingDir, 'not a directory\n');
+      const before = listAgents(db).length;
+
+      assert.throws(
+        () => cloneAgentRecord(db, source, { forceWorktree: true }),
+        (err: unknown) => err instanceof WorktreeError && err.code === 'git-failed',
+      );
+      assert.equal(listAgents(db).length, before);
+      assert.equal(branchListing(repo, branch), '', 'failed attempt must not leak its branch');
+
+      // The id is reused by the retry; its `-b` must not collide with a leftover branch.
+      fs.rmSync(siblingDir, { force: true });
+      const clone = cloneAgentRecord(db, source, { forceWorktree: true });
+      assert.equal(clone.id, nextId);
+      assert.equal(clone.branch, branch);
+      assert.ok(clone.worktreePath && fs.existsSync(clone.worktreePath));
+    } finally {
+      db.close();
+    }
+  } finally {
+    cleanupRepoAndWorktrees(repo);
+  }
+});
+
+void test('TASK-0213: rolling back a failed forced clone does not delete a conductor/<id> branch that pre-existed', () => {
+  const repo = makeRepo('clone-force-keepbranch');
+  try {
+    const db = openDb(':memory:');
+    try {
+      const source = createAgent(db, { name: 'src', workdir: repo, launchCmd: 'claude' });
+      const nextId = (db.prepare(`SELECT MAX(id) AS m FROM agents`).get() as { m: number }).m + 1;
+      const branch = `conductor/${String(nextId)}`;
+      git(repo, 'branch', branch);
+
+      assert.throws(
+        () => cloneAgentRecord(db, source, { forceWorktree: true }),
+        (err: unknown) => err instanceof WorktreeError && err.code === 'git-failed',
+      );
+      assert.equal(branchListing(repo, branch), branch, 'a pre-existing branch is not ours to delete');
+    } finally {
+      db.close();
+    }
+  } finally {
+    cleanupRepoAndWorktrees(repo);
+  }
+});
+
+void test('TASK-0213: forceWorktree from a subdirectory workdir lands the worktree beside the git root, not the subdirectory', () => {
+  const repo = makeRepo('clone-force-subdir');
+  try {
+    const sub = path.join(repo, 'packages', 'app');
+    fs.mkdirSync(sub, { recursive: true });
+    fs.writeFileSync(path.join(sub, 'index.txt'), 'x\n');
+    git(repo, 'add', '.');
+    git(repo, '-c', 'user.email=test@test.local', '-c', 'user.name=Test', 'commit', '-m', 'subdir');
+
+    const db = openDb(':memory:');
+    try {
+      const source = createAgent(db, { name: 'src', workdir: sub, launchCmd: 'claude' });
+      const clone = cloneAgentRecord(db, source, { forceWorktree: true });
+      assert.ok(clone.worktreePath);
+      assert.equal(path.dirname(clone.worktreePath), `${repo}-worktrees`);
+      assert.equal(clone.workdir, sub);
+      assert.ok(fs.existsSync(path.join(clone.worktreePath, 'packages', 'app', 'index.txt')));
+    } finally {
+      db.close();
+    }
+  } finally {
+    cleanupRepoAndWorktrees(repo);
+  }
+});
+
+// TASK-0212: sibling-directory guard, end to end through createAgent / addWorktreeToAgent.
+// The "guard refusal" path is intentionally NOT covered here: siblingWorktreePath is
+// not injectable into db.ts (no seam to force a nested target), so the refusal is
+// covered at the unit level via tryCreateWorktree / assertWorktreeOutsideRoot in git.test.ts.
+
+/** makeRepo plus a committed file at packages/app, so the subdir is tracked and `git status` is meaningful. */
+function makeRepoWithSubdir(label: string): { repo: string; subdir: string } {
+  const repo = makeRepo(label);
+  const subdir = path.join(repo, 'packages', 'app');
+  fs.mkdirSync(subdir, { recursive: true });
+  fs.writeFileSync(path.join(subdir, 'index.txt'), 'app\n');
+  git(repo, 'add', '-A');
+  git(repo, '-c', 'user.email=test@test.local', '-c', 'user.name=Test', 'commit', '-m', 'add packages/app');
+  return { repo, subdir };
+}
+
+function assertSiblingWorktree(repo: string, agentId: number, worktreePath: string | null, siblingExistedBefore: boolean): void {
+  const realParent = fs.realpathSync(path.dirname(repo));
+  const siblingDir = path.join(realParent, `${path.basename(repo)}-worktrees`);
+  assert.equal(siblingExistedBefore, false, 'precondition: sibling worktrees dir must not exist before creation');
+  assert.ok(worktreePath);
+  assert.equal(worktreePath, path.join(siblingDir, String(agentId)));
+  // Not equal to, or nested under, the repo root.
+  assert.ok(path.relative(repo, worktreePath).startsWith('..'), `worktree ${worktreePath} must be outside ${repo}`);
+  assert.ok(path.relative(fs.realpathSync(repo), worktreePath).startsWith('..'), 'worktree must be outside the real repo root');
+  // Newly created sibling directory.
+  assert.ok(fs.existsSync(siblingDir), 'sibling worktrees dir should exist after creation');
+  assert.ok(fs.existsSync(worktreePath));
+  // Source tree stays clean: no untracked worktree directory inside the repo.
+  const status = spawnSync('git', ['-C', repo, 'status', '--porcelain'], { encoding: 'utf8' });
+  assert.equal(status.status, 0, `git status failed: ${status.stderr}`);
+  assert.equal(status.stdout.trim(), '');
+}
+
+void test('TASK-0212: addWorktreeToAgent for a subdirectory workdir creates the worktree as a sibling of the repo root', () => {
+  const { repo, subdir } = makeRepoWithSubdir('subdir-retro');
+  try {
+    const db = openDb(':memory:');
+    try {
+      const created = createAgent(db, { name: 'wt-subdir-retro', workdir: subdir, launchCmd: 'claude' });
+      assert.equal(created.worktreePath, null);
+
+      const siblingDir = path.join(fs.realpathSync(path.dirname(repo)), `${path.basename(repo)}-worktrees`);
+      const existedBefore = fs.existsSync(siblingDir);
+
+      const updated = addWorktreeToAgent(db, created.id);
+      assertSiblingWorktree(repo, created.id, updated.worktreePath, existedBefore);
+    } finally {
+      db.close();
+    }
+  } finally {
+    cleanupRepoAndWorktrees(repo);
+  }
+});
+
+void test('TASK-0212: createAgent({ useWorktree: true }) for a subdirectory workdir creates the worktree as a sibling of the repo root', () => {
+  const { repo, subdir } = makeRepoWithSubdir('subdir-create');
+  try {
+    const db = openDb(':memory:');
+    try {
+      const siblingDir = path.join(fs.realpathSync(path.dirname(repo)), `${path.basename(repo)}-worktrees`);
+      const existedBefore = fs.existsSync(siblingDir);
+
+      const agent = createAgent(db, { name: 'wt-subdir-create', workdir: subdir, launchCmd: 'claude', useWorktree: true });
+      assertSiblingWorktree(repo, agent.id, agent.worktreePath, existedBefore);
+    } finally {
+      db.close();
+    }
+  } finally {
+    cleanupRepoAndWorktrees(repo);
   }
 });
 
@@ -1002,6 +1512,24 @@ void test('TASK-125: v8 migration preserves every existing tasks row exactly and
     const legacy = new Database(dbPath);
     legacy.exec(`
       CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+      -- projects/agents exist in every real v7 DB; the v10 default-launch-cmd
+      -- migration UPDATEs both, so a faithful fixture must include them
+      -- (empty is fine; this test is about tasks).
+      CREATE TABLE projects (
+        id INTEGER PRIMARY KEY,
+        name TEXT,
+        workdir TEXT,
+        default_launch_cmd TEXT NOT NULL DEFAULT 'claude --dangerously-skip-permissions'
+      );
+      -- agents.project_id exists in every real v7 DB; the v11/v12 linked_agent_id
+      -- seed reads it, so the fixture must carry it too.
+      CREATE TABLE agents (
+        id INTEGER PRIMARY KEY,
+        name TEXT,
+        workdir TEXT,
+        launch_cmd TEXT,
+        project_id INTEGER
+      );
       CREATE TABLE tasks (
         id INTEGER PRIMARY KEY,
         command TEXT NOT NULL,
@@ -1118,5 +1646,446 @@ void test('TASK-125: popTask flips a popped row to done/completed_at instead of 
     assert.equal(secondPop, null, 'a task already flipped to done must never be popped again (candidate subquery still filters on status=queued)');
   } finally {
     db.close();
+  }
+});
+
+// TASK-0196 (schema v11): bg_processes drops the global UNIQUE(name) for a
+// per-project (project_id, name) unique index, and project_id becomes
+// NOT NULL ... ON DELETE CASCADE. The fixture below is a faithful post-v10 DB:
+// the real v1 bg_processes shape (`name TEXT NOT NULL UNIQUE CHECK (GLOB)`) plus
+// the v9 project_id column (ON DELETE SET NULL), with legacy_import='1' so
+// openDb's seedFromLegacy is a no-op. Only used by the two v11 tests below.
+function buildPreV11Fixture(
+  dbPath: string,
+  bgRows: Array<{ id: number; name: string; workdir: string; cmd: string; linkedAgentId: number | null; projectId: number | null }>,
+): void {
+  const legacy = new Database(dbPath);
+  legacy.exec(`
+    CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+    CREATE TABLE projects (
+      id INTEGER PRIMARY KEY,
+      name TEXT NOT NULL UNIQUE CHECK (name GLOB '[A-Za-z0-9_-]*'),
+      workdir TEXT NOT NULL,
+      default_launch_cmd TEXT NOT NULL DEFAULT 'claude --dangerously-skip-permissions --append-system-prompt-file ~/.claude/rules/agent-teams-preference.md',
+      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))
+    );
+    CREATE TABLE agents (
+      id INTEGER PRIMARY KEY,
+      name TEXT NOT NULL CHECK (name GLOB '[A-Za-z0-9_-]*'),
+      workdir TEXT NOT NULL,
+      launch_cmd TEXT NOT NULL,
+      project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL,
+      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+      worktree_path TEXT,
+      branch TEXT,
+      role TEXT NOT NULL DEFAULT 'generic' CHECK (role IN ('generic','frontend','backend','qa','devops','security','architect'))
+    );
+    CREATE UNIQUE INDEX idx_agents_project_name ON agents(project_id, name) WHERE project_id IS NOT NULL;
+    CREATE UNIQUE INDEX idx_agents_null_name ON agents(name) WHERE project_id IS NULL;
+    CREATE TABLE bg_processes (
+      id INTEGER PRIMARY KEY,
+      name TEXT NOT NULL UNIQUE CHECK (name GLOB '[A-Za-z0-9_-]*'),
+      workdir TEXT NOT NULL,
+      launch_cmd TEXT NOT NULL,
+      linked_agent_id INTEGER REFERENCES agents(id) ON DELETE SET NULL,
+      project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL
+    );
+    CREATE TABLE tasks (
+      id INTEGER PRIMARY KEY,
+      command TEXT NOT NULL,
+      agent_id INTEGER REFERENCES agents(id) ON DELETE CASCADE,
+      project_id INTEGER REFERENCES projects(id) ON DELETE CASCADE,
+      position REAL NOT NULL,
+      status TEXT NOT NULL DEFAULT 'queued' CHECK (status IN ('queued','backlog','done')),
+      source TEXT NOT NULL DEFAULT 'manual' CHECK (source IN ('manual','schedule')),
+      schedule_id INTEGER,
+      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+      completed_at TEXT,
+      CHECK (agent_id IS NULL OR project_id IS NULL)
+    );
+  `);
+  legacy.prepare(`INSERT INTO projects (id, name, workdir) VALUES (1, 'p_a', '/w/p_a')`).run();
+  legacy.prepare(`INSERT INTO projects (id, name, workdir) VALUES (2, 'p_b', '/w/p_b')`).run();
+  legacy.prepare(`INSERT INTO agents (id, name, workdir, launch_cmd) VALUES (7, 'agent7', '/w/p_a', 'claude')`).run();
+  const ins = legacy.prepare(
+    `INSERT INTO bg_processes (id, name, workdir, launch_cmd, linked_agent_id, project_id) VALUES (?, ?, ?, ?, ?, ?)`,
+  );
+  for (const r of bgRows) ins.run(r.id, r.name, r.workdir, r.cmd, r.linkedAgentId, r.projectId);
+  legacy.prepare(`INSERT OR REPLACE INTO meta VALUES ('schema_version', '10')`).run();
+  legacy.prepare(`INSERT OR REPLACE INTO meta VALUES ('legacy_import', '1')`).run();
+  legacy.close();
+}
+
+function bgProjectIdNotNull(db: Database.Database): boolean {
+  const cols = db.pragma('table_info(bg_processes)') as Array<{ name: string; notnull: number }>;
+  return cols.find((c) => c.name === 'project_id')?.notnull === 1;
+}
+
+function bgHasLinkedAgentColumn(db: Database.Database): boolean {
+  const cols = db.pragma('table_info(bg_processes)') as Array<{ name: string }>;
+  return cols.some((c) => c.name === 'linked_agent_id');
+}
+
+// TASK-0198 (schema v12): the retired bg_processes.linked_agent_id column is dropped
+// by a rebuild. The fixture is a faithful post-v11 DB in EITHER of the two shapes
+// TASK-0196's rebuild can leave behind: project_id nullable + partial unique index
+// idx_bg_processes_null_name, or project_id NOT NULL. Both keep the still-present
+// linked_agent_id column (ON DELETE SET NULL) and idx_bg_processes_project_name.
+function buildPreV12Fixture(
+  dbPath: string,
+  opts: { projectNotNull: boolean },
+  bgRows: Array<{ id: number; name: string; workdir: string; cmd: string; linkedAgentId: number | null; projectId: number | null }>,
+): void {
+  const legacy = new Database(dbPath);
+  legacy.exec(`
+    CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+    CREATE TABLE projects (
+      id INTEGER PRIMARY KEY,
+      name TEXT NOT NULL UNIQUE CHECK (name GLOB '[A-Za-z0-9_-]*'),
+      workdir TEXT NOT NULL,
+      default_launch_cmd TEXT NOT NULL DEFAULT 'claude --dangerously-skip-permissions --append-system-prompt-file ~/.claude/rules/agent-teams-preference.md',
+      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))
+    );
+    CREATE TABLE agents (
+      id INTEGER PRIMARY KEY,
+      name TEXT NOT NULL CHECK (name GLOB '[A-Za-z0-9_-]*'),
+      workdir TEXT NOT NULL,
+      launch_cmd TEXT NOT NULL,
+      project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL,
+      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+      worktree_path TEXT,
+      branch TEXT,
+      role TEXT NOT NULL DEFAULT 'generic' CHECK (role IN ('generic','frontend','backend','qa','devops','security','architect'))
+    );
+    CREATE UNIQUE INDEX idx_agents_project_name ON agents(project_id, name) WHERE project_id IS NOT NULL;
+    CREATE UNIQUE INDEX idx_agents_null_name ON agents(name) WHERE project_id IS NULL;
+    CREATE TABLE bg_processes (
+      id INTEGER PRIMARY KEY,
+      name TEXT NOT NULL CHECK (name GLOB '[A-Za-z0-9_-]*'),
+      workdir TEXT NOT NULL,
+      launch_cmd TEXT NOT NULL,
+      linked_agent_id INTEGER REFERENCES agents(id) ON DELETE SET NULL,
+      project_id INTEGER ${opts.projectNotNull ? 'NOT NULL ' : ''}REFERENCES projects(id) ON DELETE CASCADE
+    );
+    CREATE UNIQUE INDEX idx_bg_processes_project_name ON bg_processes(project_id, name);
+    ${opts.projectNotNull ? '' : 'CREATE UNIQUE INDEX idx_bg_processes_null_name ON bg_processes(name) WHERE project_id IS NULL;'}
+    CREATE TABLE tasks (
+      id INTEGER PRIMARY KEY,
+      command TEXT NOT NULL,
+      agent_id INTEGER REFERENCES agents(id) ON DELETE CASCADE,
+      project_id INTEGER REFERENCES projects(id) ON DELETE CASCADE,
+      position REAL NOT NULL,
+      status TEXT NOT NULL DEFAULT 'queued' CHECK (status IN ('queued','backlog','done')),
+      source TEXT NOT NULL DEFAULT 'manual' CHECK (source IN ('manual','schedule')),
+      schedule_id INTEGER,
+      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+      completed_at TEXT,
+      CHECK (agent_id IS NULL OR project_id IS NULL)
+    );
+  `);
+  legacy.prepare(`INSERT INTO projects (id, name, workdir) VALUES (1, 'p_a', '/w/p_a')`).run();
+  legacy.prepare(`INSERT INTO projects (id, name, workdir) VALUES (2, 'p_b', '/w/p_b')`).run();
+  legacy.prepare(`INSERT INTO agents (id, name, workdir, launch_cmd, project_id) VALUES (7, 'agent7', '/w/p_a', 'claude', 1)`).run();
+  legacy.prepare(`INSERT INTO agents (id, name, workdir, launch_cmd, project_id) VALUES (8, 'agent8', '/w/none', 'claude', NULL)`).run();
+  const ins = legacy.prepare(
+    `INSERT INTO bg_processes (id, name, workdir, launch_cmd, linked_agent_id, project_id) VALUES (?, ?, ?, ?, ?, ?)`,
+  );
+  for (const r of bgRows) ins.run(r.id, r.name, r.workdir, r.cmd, r.linkedAgentId, r.projectId);
+  legacy.prepare(`INSERT OR REPLACE INTO meta VALUES ('schema_version', '11')`).run();
+  legacy.prepare(`INSERT OR REPLACE INTO meta VALUES ('legacy_import', '1')`).run();
+  legacy.close();
+}
+
+function bgIndexNames(db: Database.Database): string[] {
+  return (db.pragma('index_list(bg_processes)') as Array<{ name: string }>)
+    .map((i) => i.name)
+    .filter((n) => !n.startsWith('sqlite_autoindex'))
+    .sort();
+}
+
+void test('TASK-0198: v12 seeds project_id from the linked agent, drops linked_agent_id, and keeps the nullable-shape indexes', () => {
+  const dbPath = tmpDbPath('v12-nullable');
+  const origLog = console.log;
+  const origWarn = console.warn;
+  try {
+    buildPreV12Fixture(dbPath, { projectNotNull: false }, [
+      { id: 1, name: 'linked-seed', workdir: '/w/x1', cmd: 'a', linkedAgentId: 7, projectId: null }, // (a) seeded from agent 7 -> project 1
+      { id: 2, name: 'linked-keep', workdir: '/w/x2', cmd: 'b', linkedAgentId: 7, projectId: 2 }, // (b) keeps project 2
+      { id: 3, name: 'linked-noproj', workdir: '/w/nowhere', cmd: 'c', linkedAgentId: 8, projectId: null }, // (c) agent has no project -> stays NULL
+      { id: 4, name: 'unlinked', workdir: '/w/x4', cmd: 'd', linkedAgentId: null, projectId: 1 }, // (d) untouched
+    ]);
+    console.log = () => { /* silence */ };
+    console.warn = () => { /* silence */ };
+
+    const db = openDb(dbPath);
+    try {
+      assertSchemaVersionAtLeast(db, 12);
+      assert.ok(!bgHasLinkedAgentColumn(db), 'linked_agent_id must be gone');
+      assert.deepEqual(
+        db.prepare(`SELECT id, name, workdir, launch_cmd, project_id FROM bg_processes ORDER BY id`).all(),
+        [
+          { id: 1, name: 'linked-seed', workdir: '/w/x1', launch_cmd: 'a', project_id: 1 },
+          { id: 2, name: 'linked-keep', workdir: '/w/x2', launch_cmd: 'b', project_id: 2 },
+          { id: 3, name: 'linked-noproj', workdir: '/w/nowhere', launch_cmd: 'c', project_id: null },
+          { id: 4, name: 'unlinked', workdir: '/w/x4', launch_cmd: 'd', project_id: 1 },
+        ],
+      );
+
+      // Unmatched NULL row keeps project_id nullable, with both indexes recreated and the enforce step not rebuilding the column back.
+      assert.ok(!bgProjectIdNotNull(db));
+      assert.deepEqual(bgIndexNames(db), ['idx_bg_processes_null_name', 'idx_bg_processes_project_name']);
+      assert.deepEqual(db.pragma('foreign_key_check'), []);
+
+      const ins = db.prepare(`INSERT INTO bg_processes (name, workdir, launch_cmd, project_id) VALUES (?, ?, 'x', ?)`);
+      assert.throws(() => ins.run('linked-seed', '/w/y', 1), /UNIQUE/, '(project_id, name) unique index survives');
+      assert.throws(() => ins.run('linked-noproj', '/w/y', null), /UNIQUE/, 'NULL-project partial unique index survives');
+      assert.throws(() => ins.run('!bad', '/w/y', 1), /CHECK/, 'name GLOB CHECK survives');
+
+      // ON DELETE CASCADE from projects survives the rebuild.
+      db.prepare(`DELETE FROM projects WHERE id=2`).run();
+      assert.deepEqual(db.prepare(`SELECT id FROM bg_processes ORDER BY id`).all(), [{ id: 1 }, { id: 3 }, { id: 4 }]);
+    } finally {
+      db.close();
+    }
+
+    // Reopening is a no-op: the column does not come back.
+    const again = openDb(dbPath);
+    try {
+      assert.ok(!bgHasLinkedAgentColumn(again));
+      assert.equal((again.prepare(`SELECT COUNT(*) AS n FROM bg_processes`).get() as { n: number }).n, 3);
+    } finally {
+      again.close();
+    }
+  } finally {
+    console.log = origLog;
+    console.warn = origWarn;
+    cleanupDbFiles(dbPath);
+  }
+});
+
+void test('TASK-0198: v12 handles the NOT NULL project_id shape, preserving rows, the unique index and cascade', () => {
+  const dbPath = tmpDbPath('v12-notnull');
+  const origLog = console.log;
+  const origWarn = console.warn;
+  try {
+    buildPreV12Fixture(dbPath, { projectNotNull: true }, [
+      { id: 5, name: 'dev', workdir: '/w/p_a', cmd: 'npm run dev', linkedAgentId: 7, projectId: 1 },
+      { id: 6, name: 'dev', workdir: '/w/p_b', cmd: 'npm run dev', linkedAgentId: null, projectId: 2 },
+      { id: 9, name: 'stack', workdir: '/w/p_a', cmd: 'make up', linkedAgentId: 8, projectId: 1 },
+    ]);
+    console.log = () => { /* silence */ };
+    console.warn = () => { /* silence */ };
+
+    const db = openDb(dbPath);
+    try {
+      assertSchemaVersionAtLeast(db, 12);
+      assert.ok(!bgHasLinkedAgentColumn(db));
+      assert.ok(bgProjectIdNotNull(db), 'NOT NULL shape is preserved');
+      assert.deepEqual(bgIndexNames(db), ['idx_bg_processes_project_name']);
+      assert.deepEqual(
+        db.prepare(`SELECT id, name, workdir, launch_cmd, project_id FROM bg_processes ORDER BY id`).all(),
+        [
+          { id: 5, name: 'dev', workdir: '/w/p_a', launch_cmd: 'npm run dev', project_id: 1 },
+          { id: 6, name: 'dev', workdir: '/w/p_b', launch_cmd: 'npm run dev', project_id: 2 },
+          { id: 9, name: 'stack', workdir: '/w/p_a', launch_cmd: 'make up', project_id: 1 },
+        ],
+      );
+      const ins = db.prepare(`INSERT INTO bg_processes (name, workdir, launch_cmd, project_id) VALUES (?, ?, 'x', ?)`);
+      assert.throws(() => ins.run('dev', '/w/y', 1), /UNIQUE/);
+      assert.throws(() => ins.run('nameless', '/w/y', null), /NOT NULL/);
+      db.prepare(`DELETE FROM projects WHERE id=1`).run();
+      assert.deepEqual(db.prepare(`SELECT id FROM bg_processes ORDER BY id`).all(), [{ id: 6 }]);
+    } finally {
+      db.close();
+    }
+  } finally {
+    console.log = origLog;
+    console.warn = origWarn;
+    cleanupDbFiles(dbPath);
+  }
+});
+
+void test('TASK-0198: v12 promotes a nullable shape to NOT NULL when the linked-agent seed resolves every NULL project', () => {
+  const dbPath = tmpDbPath('v12-seed-promote');
+  const origLog = console.log;
+  const origWarn = console.warn;
+  try {
+    buildPreV12Fixture(dbPath, { projectNotNull: false }, [
+      { id: 1, name: 'only-linked', workdir: '/w/unmatched', cmd: 'a', linkedAgentId: 7, projectId: null },
+      { id: 2, name: 'has-project', workdir: '/w/x', cmd: 'b', linkedAgentId: null, projectId: 2 },
+    ]);
+    console.log = () => { /* silence */ };
+    console.warn = () => { /* silence */ };
+
+    const db = openDb(dbPath);
+    try {
+      assertSchemaVersionAtLeast(db, 12);
+      assert.ok(!bgHasLinkedAgentColumn(db));
+      assert.ok(bgProjectIdNotNull(db), 'no NULL-project rows remain after the seed, so NOT NULL is enforced');
+      assert.deepEqual(db.prepare(`SELECT id, project_id FROM bg_processes ORDER BY id`).all(), [
+        { id: 1, project_id: 1 },
+        { id: 2, project_id: 2 },
+      ]);
+      assert.deepEqual(bgIndexNames(db), ['idx_bg_processes_project_name']);
+    } finally {
+      db.close();
+    }
+  } finally {
+    console.log = origLog;
+    console.warn = origWarn;
+    cleanupDbFiles(dbPath);
+  }
+});
+
+void test('TASK-0198: a fresh database never creates linked_agent_id', () => {
+  const dbPath = tmpDbPath('v12-fresh');
+  const origLog = console.log;
+  try {
+    console.log = () => { /* silence */ };
+    const db = openDb(dbPath);
+    try {
+      assertSchemaVersionAtLeast(db, 12);
+      assert.ok(!bgHasLinkedAgentColumn(db));
+      assert.ok(bgProjectIdNotNull(db));
+    } finally {
+      db.close();
+    }
+  } finally {
+    console.log = origLog;
+    cleanupDbFiles(dbPath);
+  }
+});
+
+void test('TASK-0196: v11 rebuilds bg_processes with per-project uniqueness, NOT NULL project_id and cascade, preserving every row', () => {
+  const dbPath = tmpDbPath('v11-rebuild');
+  const origLog = console.log;
+  const origWarn = console.warn;
+  try {
+    buildPreV11Fixture(dbPath, [
+      { id: 5, name: 'dev', workdir: '/w/p_a', cmd: 'npm run dev', linkedAgentId: 7, projectId: 1 },
+      { id: 9, name: 'web', workdir: '/w/p_b/', cmd: 'vite', linkedAgentId: null, projectId: null }, // NULL project, workdir matches p_b (trailing slash)
+      { id: 12, name: 'dev-stack', workdir: '/w/p_a', cmd: 'make up', linkedAgentId: null, projectId: 1 },
+    ]);
+    console.log = () => { /* silence backfill/enforce info logs */ };
+    console.warn = () => { /* silence */ };
+
+    const db = openDb(dbPath);
+    try {
+      assertSchemaVersionAtLeast(db, 11);
+      assert.ok(bgProjectIdNotNull(db), 'after the workdir backfill every row has a project, so project_id must be NOT NULL');
+
+      const rows = db.prepare(`SELECT id, name, workdir, launch_cmd, project_id FROM bg_processes ORDER BY id`).all();
+      assert.deepEqual(rows, [
+        { id: 5, name: 'dev', workdir: '/w/p_a', launch_cmd: 'npm run dev', project_id: 1 },
+        { id: 9, name: 'web', workdir: '/w/p_b/', launch_cmd: 'vite', project_id: 2 },
+        { id: 12, name: 'dev-stack', workdir: '/w/p_a', launch_cmd: 'make up', project_id: 1 },
+      ]);
+
+      const idx = (db.pragma('index_list(bg_processes)') as Array<{ name: string; unique: number; partial: number }>).filter((i) => !i.name.startsWith('sqlite_autoindex'));
+      assert.deepEqual(idx.map((i) => i.name), ['idx_bg_processes_project_name'], 'only the per-project unique index remains (no global UNIQUE, no NULL-project partial index)');
+      assert.equal(idx[0]?.unique, 1);
+      assert.equal(
+        (db.prepare(`SELECT COUNT(*) AS n FROM sqlite_master WHERE type='table' AND name='bg_processes_v11'`).get() as { n: number }).n,
+        0,
+        'temp rebuild table must not linger',
+      );
+      assert.deepEqual(db.pragma('foreign_key_check'), []);
+
+      // Cross-project duplicate names are now accepted; a same-project duplicate is rejected.
+      const ins = db.prepare(`INSERT INTO bg_processes (name, workdir, launch_cmd, project_id) VALUES (?, ?, 'x', ?)`);
+      assert.doesNotThrow(() => ins.run('dev', '/w/p_b', 2), 'same name in a different project must be accepted');
+      assert.throws(() => ins.run('dev', '/w/p_a-2', 1), /UNIQUE/, 'same (project, name) must be rejected');
+      assert.throws(() => ins.run('nameless', '/w/p_a', null), /NOT NULL/, 'a project-less row must be rejected');
+      assert.throws(() => ins.run('!bad', '/w/p_a', 1), /CHECK/, 'the GLOB name CHECK must survive the rebuild');
+
+      // The retired linked_agent_id column is gone (TASK-0198, v12), so deleting an agent leaves bg rows untouched.
+      assert.ok(!bgHasLinkedAgentColumn(db), 'linked_agent_id must not survive the rebuild');
+      db.prepare(`DELETE FROM agents WHERE id=7`).run();
+      assert.equal((db.prepare(`SELECT COUNT(*) AS n FROM bg_processes WHERE id=5`).get() as { n: number }).n, 1);
+
+      // Deleting a project cascades to its bg rows at the schema level.
+      db.prepare(`DELETE FROM projects WHERE id=1`).run();
+      assert.deepEqual(
+        db.prepare(`SELECT id FROM bg_processes ORDER BY id`).all(),
+        [{ id: 9 }, { id: 13 }],
+        "project 1's bg rows (5, 12) are cascaded away; project 2's rows remain",
+      );
+    } finally {
+      db.close();
+    }
+
+    // Reopening an already-v11 DB is a no-op.
+    const again = openDb(dbPath);
+    try {
+      assertSchemaVersionAtLeast(again, 11);
+      assert.ok(bgProjectIdNotNull(again));
+      assert.equal((again.prepare(`SELECT COUNT(*) AS n FROM bg_processes`).get() as { n: number }).n, 2);
+    } finally {
+      again.close();
+    }
+  } finally {
+    console.log = origLog;
+    console.warn = origWarn;
+    cleanupDbFiles(dbPath);
+  }
+});
+
+void test('TASK-0196: v11 never fails startup on unmatched NULL-project rows; it keeps project_id nullable (partial unique index) and enforces NOT NULL on a later open once resolved', () => {
+  const dbPath = tmpDbPath('v11-deferred');
+  const warnings: string[] = [];
+  const origLog = console.log;
+  const origWarn = console.warn;
+  try {
+    buildPreV11Fixture(dbPath, [
+      { id: 3, name: 'dev', workdir: '/w/p_a', cmd: 'npm run dev', linkedAgentId: 7, projectId: 1 },
+      { id: 4, name: 'orphan', workdir: '/w/nowhere', cmd: 'sleep 1', linkedAgentId: null, projectId: null },
+    ]);
+    console.log = () => { /* silence */ };
+    console.warn = (...args: unknown[]) => { warnings.push(args.map(String).join(' ')); };
+
+    const db = openDb(dbPath); // must not throw
+    try {
+      assertSchemaVersionAtLeast(db, 11);
+      assert.ok(!bgProjectIdNotNull(db), 'an unmatched row defers NOT NULL enforcement');
+      assert.ok(warnings.some((w) => /orphan/.test(w)), 'the unmatched row is named in a warning');
+
+      // The row survives with every column intact.
+      assert.deepEqual(
+        db.prepare(`SELECT id, name, workdir, launch_cmd, project_id FROM bg_processes ORDER BY id`).all(),
+        [
+          { id: 3, name: 'dev', workdir: '/w/p_a', launch_cmd: 'npm run dev', project_id: 1 },
+          { id: 4, name: 'orphan', workdir: '/w/nowhere', launch_cmd: 'sleep 1', project_id: null },
+        ],
+      );
+
+      // Per-project uniqueness still works, and NULL-project names stay unique via the partial index.
+      const ins = db.prepare(`INSERT INTO bg_processes (name, workdir, launch_cmd, project_id) VALUES (?, ?, 'x', ?)`);
+      assert.doesNotThrow(() => ins.run('dev', '/w/p_b', 2));
+      assert.throws(() => ins.run('dev', '/w/p_a-2', 1), /UNIQUE/);
+      assert.throws(() => ins.run('orphan', '/w/other', null), /UNIQUE/, 'partial index keeps NULL-project names unique');
+
+      // The operator assigns the orphan to a project.
+      db.prepare(`UPDATE bg_processes SET project_id=2 WHERE id=4`).run();
+    } finally {
+      db.close();
+    }
+
+    // Next open: enforceBgProjectRequired promotes the column; schema_version is unchanged.
+    const db2 = openDb(dbPath);
+    try {
+      assert.ok(bgProjectIdNotNull(db2), 'NOT NULL is enforced once no NULL-project rows remain');
+      assert.deepEqual(
+        db2.prepare(`SELECT id, project_id FROM bg_processes ORDER BY id`).all(),
+        [{ id: 3, project_id: 1 }, { id: 4, project_id: 2 }, { id: 5, project_id: 2 }],
+      );
+      const idx = (db2.pragma('index_list(bg_processes)') as Array<{ name: string }>).map((i) => i.name).filter((n) => !n.startsWith('sqlite_autoindex'));
+      assert.deepEqual(idx, ['idx_bg_processes_project_name'], 'the NULL-project partial index is dropped with the rebuild');
+    } finally {
+      db2.close();
+    }
+  } finally {
+    console.log = origLog;
+    console.warn = origWarn;
+    cleanupDbFiles(dbPath);
   }
 });

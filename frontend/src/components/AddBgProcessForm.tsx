@@ -8,10 +8,6 @@ interface ApiErrorBody {
   error?: string;
 }
 
-interface Agent {
-  name: string;
-}
-
 const fieldCls = 'flex flex-col gap-1.5';
 const labelCls = 'text-[10px] font-semibold uppercase tracking-[0.08em] text-muted';
 const inputCls = [
@@ -25,16 +21,11 @@ const inputCls = [
 interface AddBgProcessFormProps {
   open: boolean;
   onClose: () => void;
+  /** Preselects this project in the Project dropdown (used when opened from an agent's menu). */
+  defaultProjectId?: number | null;
 }
 
-export default function AddBgProcessForm({ open, onClose }: AddBgProcessFormProps) {
-  const [agents, setAgents] = useState<Agent[]>([]);
-  useEffect(() => {
-    void fetch(`${API_URL}/status`)
-      .then((r) => r.json())
-      .then((d: { agents?: Agent[] }) => { if (d.agents) setAgents(d.agents); })
-      .catch(() => { /* best-effort */ });
-  }, []);
+export default function AddBgProcessForm({ open, onClose, defaultProjectId = null }: AddBgProcessFormProps) {
   const [projects, setProjects] = useState<Project[]>([]);
   useEffect(() => {
     void (async () => {
@@ -45,12 +36,10 @@ export default function AddBgProcessForm({ open, onClose }: AddBgProcessFormProp
       }
     })();
   }, []);
-  const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null);
+  const [selectedProjectId, setSelectedProjectId] = useState<number | null>(defaultProjectId);
   const [name, setName] = useState('');
   const [workdir, setWorkdir] = useState('');
   const [launchCmd, setLaunchCmd] = useState('');
-  const [linkedAgent, setLinkedAgent] = useState('');
-  const [showAdvanced, setShowAdvanced] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const gitRoot = useGitRoot(workdir);
@@ -94,16 +83,14 @@ export default function AddBgProcessForm({ open, onClose }: AddBgProcessFormProp
       const res = await fetch(`${API_URL}/bg-processes`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, workdir: effectiveWorkdir, launchCmd, linkedAgent: linkedAgent || undefined, projectId: selectedProjectId }),
+        body: JSON.stringify({ name, workdir: effectiveWorkdir, launchCmd, projectId: selectedProjectId }),
       });
 
       if (res.status === 201) {
         setName('');
         setWorkdir('');
         setLaunchCmd('');
-        setLinkedAgent('');
         setSelectedProjectId(null);
-        setShowAdvanced(false);
         onClose();
       } else if (res.status === 409) {
         const body = await res.json() as ApiErrorBody;
@@ -219,35 +206,6 @@ export default function AddBgProcessForm({ open, onClose }: AddBgProcessFormProp
             required
             className={inputCls}
           />
-        </div>
-
-        <div>
-          <button
-            type="button"
-            onClick={() => { setShowAdvanced((v) => !v); }}
-            className="border-0 bg-transparent p-0 text-[12px] font-medium text-muted transition-colors hover:text-ink cursor-pointer leading-none"
-          >
-            {showAdvanced ? '▾ Hide advanced' : '▸ Show advanced'}
-          </button>
-          {showAdvanced && (
-            <div className={`mt-2.5 ${fieldCls}`}>
-              <label htmlFor="bg-linked-agent" className={labelCls}>Link to Agent (optional)</label>
-              <select
-                id="bg-linked-agent"
-                value={linkedAgent}
-                onChange={(e) => { setLinkedAgent(e.target.value); }}
-                className={inputCls}
-              >
-                <option value="">— none —</option>
-                {agents.map((a) => (
-                  <option key={a.name} value={a.name}>{a.name}</option>
-                ))}
-              </select>
-              <p className="text-[10px] text-muted">
-                The linked agent will receive <code>CONDUCTOR_BG_NAME</code>, <code>CONDUCTOR_BG_LOG</code>, and <code>CONDUCTOR_BG_STATE</code> env vars at next startup.
-              </p>
-            </div>
-          )}
         </div>
 
         <div className="flex items-center gap-3 pt-0.5">

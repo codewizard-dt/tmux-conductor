@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { listProjects, spawnAgentInProject, deleteProject, type Project } from '../lib/api';
+import { listProjects, spawnAgentInProject, deleteProject, listProjectBgProcessNames, type Project } from '../lib/api';
 import { ROLE_VALUES } from './AgentList';
 
 import { Link } from 'react-router-dom';
@@ -13,6 +13,10 @@ export default function ProjectList() {
   const [rowErrorMsg, setRowErrorMsg] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null);
   const [deleteBusy, setDeleteBusy] = useState<number | null>(null);
+  // Bg processes the pending delete will stop and remove (TASK-0195 cascade);
+  // loaded when the confirmation opens. Best-effort — the server cascades
+  // regardless of whether this list could be fetched.
+  const [confirmBgNames, setConfirmBgNames] = useState<string[]>([]);
   // TASK-115: per-project spawn-role selection, keyed by project id — each
   // row's dropdown is independent. Missing entries default to 'generic'.
   const [roleByProject, setRoleByProject] = useState<Record<number, string>>({});
@@ -53,7 +57,11 @@ export default function ProjectList() {
 
   async function handleDelete(project: Project) {
     if (deleteConfirm !== project.id) {
+      setConfirmBgNames([]);
       setDeleteConfirm(project.id);
+      listProjectBgProcessNames(project.id)
+        .then((names) => { setConfirmBgNames(names); })
+        .catch(() => { /* best-effort */ });
       return;
     }
     setDeleteBusy(project.id);
@@ -136,6 +144,11 @@ export default function ProjectList() {
                     {deleting ? 'Deleting…' : confirming ? 'Confirm?' : 'Delete'}
                   </button>
                 </div>
+                {confirming && confirmBgNames.length > 0 && (
+                  <p className="m-0 text-[12px] text-accent-red">
+                    Deleting this project will also stop and delete {confirmBgNames.length.toString()} background process{confirmBgNames.length === 1 ? '' : 'es'}: {confirmBgNames.join(', ')}
+                  </p>
+                )}
                 {failed && rowErrorMsg && (
                   <p className="m-0 text-[12px] text-accent-red">{rowErrorMsg}</p>
                 )}

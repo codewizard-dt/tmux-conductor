@@ -34,8 +34,14 @@ vi.mock('./api', () => ({
 }))
 
 import { syncTerminalSize } from './api'
-import { SIDEBAR_WIDTH_PX } from './layoutConstants'
-import { maybeProbeOnFirstRender, registerResizeListener } from './terminalSizeProbe'
+import { SIDEBAR_COLLAPSED_WIDTH_PX, SIDEBAR_WIDTH_PX } from './layoutConstants'
+import { setSidebarCollapsed } from './sidebarState'
+import {
+  maybeProbeOnFirstRender,
+  probeAndSyncTerminalSize,
+  registerResizeListener,
+  reprobeTerminalSize,
+} from './terminalSizeProbe'
 
 afterAll(() => {
   document.body.innerHTML = ''
@@ -117,5 +123,43 @@ describe('terminalSizeProbe — first-render and resize guards (TASK-130)', () =
     expect(outer?.style.left).toBe(`${SIDEBAR_WIDTH_PX.toString()}px`)
     expect(outer?.style.visibility).toBe('hidden')
     expect(outer?.style.pointerEvents).toBe('none')
+  })
+
+  // TASK-0201: the sidebar can collapse to a narrow rail, so the probe must measure against the
+  // live sidebar width rather than the width captured when the node was first created.
+  it('positions the probe node at the collapsed rail width after setSidebarCollapsed(true) (TASK-0201)', () => {
+    setSidebarCollapsed(true)
+    probeAndSyncTerminalSize()
+
+    const outer = document.body.querySelector<HTMLElement>('.fixed.inset-y-0.right-0')
+    expect(outer?.style.left).toBe(`${SIDEBAR_COLLAPSED_WIDTH_PX.toString()}px`)
+    expect(SIDEBAR_COLLAPSED_WIDTH_PX).toBe(48)
+  })
+
+  it('a cached probe mount picks up a sidebar width change between probes (TASK-0201)', () => {
+    const before = document.body.querySelector<HTMLElement>('.fixed.inset-y-0.right-0')
+
+    setSidebarCollapsed(false)
+    probeAndSyncTerminalSize()
+
+    const after = document.body.querySelector<HTMLElement>('.fixed.inset-y-0.right-0')
+    // Same node reused (created once), but its left edge followed the width change.
+    expect(after).toBe(before)
+    expect(after?.style.left).toBe(`${SIDEBAR_WIDTH_PX.toString()}px`)
+    expect(document.body.querySelectorAll('.fixed.inset-y-0.right-0')).toHaveLength(1)
+  })
+
+  it('reprobeTerminalSize is debounced: rapid calls coalesce into a single sync (TASK-0201)', () => {
+    vi.useFakeTimers()
+    const callsBefore = vi.mocked(syncTerminalSize).mock.calls.length
+
+    reprobeTerminalSize()
+    reprobeTerminalSize()
+    reprobeTerminalSize()
+    vi.advanceTimersByTime(500)
+
+    expect(vi.mocked(syncTerminalSize).mock.calls.length).toBe(callsBefore + 1)
+
+    vi.useRealTimers()
   })
 })

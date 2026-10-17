@@ -1,0 +1,12 @@
+● UAT test 2 of 5: reorder persists after reload
+  Steps:
+    1. Drag the second row above the first.
+    2. Reload the sample page.
+  Expected: the new order is preserved.
+
+  Pass / Fail / Fix now / Skip?
+
+────────────────────────────────────────
+❯
+────────────────────────────────────────
+  ? for shortcuts

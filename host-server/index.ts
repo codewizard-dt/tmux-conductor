@@ -10,17 +10,27 @@ import fastifyStatic from '@fastify/static';
 import fastifyWebsocket from '@fastify/websocket';
 import type { WebSocket } from 'ws';
 import { readConductorConf, DEFAULT_CONF_PATH, type ConductorConf } from './config.ts';
+import { clampTailLines, readLogTail } from './bgOutput.ts';
+import { restartBgProcess, startBgWindow, defaultBgRestartDeps } from './bgRestart.ts';
+import { resolveCallerProject, authorizeRestart, describeCaller } from './bgAccess.ts';
+import { BG_CALLER_HEADER, parseCallerHeader, callerKindFor, evaluateCooldown, buildAuditRecord, defaultAuditDeps, appendAuditRecord, getRestartHistory, type BgRestartAuditInput } from './bgRestartPolicy.ts';
 import type Database from 'better-sqlite3';
-import { openDb, getDbPath, listAgents, getAgentById, createAgent, deriveCloneName, addWorktreeToAgent, clearAgentWorktree, deleteAgent, updateAgentName, updateAgentRole, agentWindowName, addTask, deleteTask, reorderTasks, jumpTaskToHead, listTasksForAgentId, listTasksByProject, listCompletedTasks, listProjects, createProject, updateProject, deleteProject, nextAgentName, listSchedules, createSchedule, updateSchedule, deleteSchedule, dueSchedules, fireSchedule, getAllAgentUsageTotals, listAgentUsage, listCheckpoints, insertCheckpoint, getCheckpoint, listTerminalLog, appendTerminalLogChunk, popTask, createBgProcess, deleteBgProcess, updateBgProcess, listBgProcesses, type AgentUsageTotals, type Agent } from './db.ts';
-import { detectAgentStatus, detectAgentMode, detectAgentType, readTmuxWindowInventory, isTmuxWindowPresent, windowState, getActiveTask, capturePaneTail as capturePaneTailUninstrumented, capturePaneTailRaw as capturePaneTailRawUninstrumented, sendTextToPane, extractPaneLabel, applyGlobalPaneSize, type AgentMode, type AgentRunState, type AgentType, type DetectionReason } from './state.ts';
+import { openDb, getDbPath, listAgents, getAgentById, createAgent, cloneAgentRecord, addWorktreeToAgent, clearAgentWorktree, deleteAgent, updateAgentName, updateAgentRole, agentWindowName, addTask, deleteTask, reorderTasks, jumpTaskToHead, moveTaskToProject, listTasksForAgentId, listTasksByProject, listCompletedTasks, listProjects, createProject, updateProject, deleteProject, nextAgentName, listSchedules, createSchedule, updateSchedule, deleteSchedule, dueSchedules, fireSchedule, getAllAgentUsageTotals, listAgentUsage, listCheckpoints, insertCheckpoint, getCheckpoint, listTerminalLog, appendTerminalLogChunk, popTask, createBgProcess, deleteBgProcess, updateBgProcess, listBgProcesses, bgSlug, bgSlugCollides, getBgBySlug, listBgSlugs, type AgentUsageTotals, type Agent } from './db.ts';
+import { detectAgentStatusWithBackgroundJobs, detectAgentMode, detectAgentType, readTmuxWindowInventory, isTmuxWindowPresent, bgLiveness, bgLivenessForWindow, windowTarget, windowState, getActiveTask, capturePaneTail as capturePaneTailUninstrumented, capturePaneTailRaw as capturePaneTailRawUninstrumented, sendDispatchToPane, extractPaneLabel, applyGlobalPaneSize, type AgentMode, type AgentRunState, type AgentType, type DetectionReason } from './state.ts';
 import { getAgentContext, getCodexAgentContext, type AgentContext } from './context.ts';
 import dotenv from 'dotenv';
 import { getUserSkills, getPluginSkills, getProjectSkills } from './skills.ts';
-import { isGitRepo, detectBaseBranch, getGitRoot, removeWorktree, deleteBranch, stashCheckpoint, applyStash } from './git.ts';
+import { buildNewAgentUpdate } from './agentUpdatePayload.ts';
+import { isGitRepo, isInGitRepoCached, detectBaseBranch, agentPaneCwd, stashCheckpoint, applyStash } from './git.ts';
+import { teardownAgentWorktree } from './worktreeTeardown.ts';
 import { ROLE_VALUES } from './rolePresets.ts';
+import { WorktreeError, worktreeErrorStatus } from './worktreeErrors.ts';
 import { extractUsageDeltas, resetUsageMemo } from './usage.ts';
 import { recordUsageDeltas, resetUsageStore } from './usage-store.ts';
 import { hasPendingBackgroundAgents } from './pendingAgents.ts';
+import { agentSnapshotChanged } from './agentDiff.ts';
+import { bgStatusChanged } from './bgDiff.ts';
+import { readLastPrompt, removeLastPromptSidecar, type LastPrompt } from './lastPrompt.ts';
 import { LIVE_UPDATE_PERF_BUDGETS } from './perfBudgets.ts';
 
 
@@ -123,7 +133,7 @@ function healMonitorWindow(sessionName: string): boolean {
   const monitorScript = path.join(REPO_ROOT, 'scripts', 'monitor.sh');
   const created = spawnSync('tmux', ['new-window', '-t', sessionName, '-n', 'monitor', '-c', REPO_ROOT], { encoding: 'utf8', timeout: TMUX_SYNC_TIMEOUT_MS });
   if (created.status !== 0) return false;
-  spawnSync('tmux', ['send-keys', '-t', `${sessionName}:monitor`, monitorScript, 'Enter'], { encoding: 'utf8', timeout: TMUX_SYNC_TIMEOUT_MS });
+  spawnSync('tmux', ['send-keys', '-t', windowTarget(sessionName, 'monitor'), monitorScript, 'Enter'], { encoding: 'utf8', timeout: TMUX_SYNC_TIMEOUT_MS });
   return true;
 }
 
@@ -134,42 +144,75 @@ const CONTEXT_REFRESH_MS = 10_000;
 
 // ── Background-process status (shared by /status and the poll loop) ──────────
 
+/** True for a better-sqlite3 UNIQUE constraint violation (e.g. the `(project_id, name)` bg index). */
+function isUniqueConstraintError(err: unknown): boolean {
+  const code = (err as { code?: unknown } | null)?.code;
+  return code === 'SQLITE_CONSTRAINT_UNIQUE' || (err instanceof Error && /UNIQUE constraint failed/.test(err.message));
+}
+
 interface BgStatus {
+  /** Derived identity `<projectName>-<name>` (bare name when no project): tmux window, `bg-<slug>.log|state`, `/bg-processes/:slug`. */
+  slug: string;
+  /** Display name (unique per project only). */
   name: string;
   workdir: string;
   launchCmd: string;
   windowPresent: boolean;
+  /** 'running' (process in pane) | 'exited' (window open but pane fell back to a shell) | 'stopped' (no window). */
+  liveness: 'running' | 'exited' | 'stopped';
   state: string | null;
   logPath: string;
   statePath: string;
-  linkedAgent: string | null;
   projectId: number | null;
   projectName: string | null;
+  /** TASK-0193: last successful restart (ISO timestamp + the `X-Conductor-Agent` caller, null = dashboard), or null. */
+  lastRestart: { at: string; caller: string | null } | null;
 }
 
-function buildBgStatuses(conf: ReturnType<typeof readConductorConf>, windowInventory?: Map<string, string>): BgStatus[] {
+function buildBgStatuses(
+  conf: ReturnType<typeof readConductorConf>,
+  windowInventory?: Map<string, string>,
+  windowActivityMs?: Map<string, number>,
+): BgStatus[] {
   const { sessionName, stateDir, logDir } = conf;
+  const nowMs = Date.now();
   const bgProcesses = listBgProcesses(db);
-  const agents = listAgents(db);
   const projects = listProjects(db);
 
   return bgProcesses.map((bg) => {
-    const linkedAgent = bg.linkedAgentId !== null ? (agents.find((a) => a.id === bg.linkedAgentId)?.name ?? null) : null;
     const projectName = bg.projectId !== null ? (projects.find((p) => p.id === bg.projectId)?.name ?? null) : null;
-    const statePath = path.join(stateDir, `bg-${bg.name}.state`);
+    const slug = bgSlug(bg, projectName);
+    const statePath = path.join(stateDir, `bg-${slug}.state`);
     let bgState: string | null = null;
     try { bgState = readFileSync(statePath, 'utf8').trim(); } catch { /* not written yet */ }
+    // Inventory path: window presence + pane command come from the one list-windows call (zero extra
+    // tmux cost). Fallback path: a single display-message resolves both.
+    const windowPresent = windowInventory ? windowInventory.has(slug) : isTmuxWindowPresent(sessionName, slug);
+    let liveness: BgStatus['liveness'];
+    if (windowInventory) {
+      const activityMs = windowActivityMs?.get(slug);
+      liveness = bgLiveness({
+        windowPresent,
+        paneCommand: windowInventory.get(slug),
+        launchCmd: bg.launchCmd,
+        ...(activityMs !== undefined ? { windowActivityMs: activityMs, nowMs } : {}),
+      });
+    } else {
+      liveness = windowPresent ? bgLivenessForWindow(sessionName, slug, bg.launchCmd) : 'stopped';
+    }
     return {
+      slug,
       name: bg.name,
       workdir: bg.workdir,
       launchCmd: bg.launchCmd,
-      windowPresent: windowInventory ? windowInventory.has(bg.name) : isTmuxWindowPresent(sessionName, bg.name),
+      windowPresent,
+      liveness,
       state: bgState,
-      logPath: path.join(logDir, `bg-${bg.name}.log`),
+      logPath: path.join(logDir, `bg-${slug}.log`),
       statePath,
-      linkedAgent,
       projectId: bg.projectId,
       projectName,
+      lastRestart: getRestartHistory(logDir).lastRestart(slug),
     };
   });
 }
@@ -239,11 +282,11 @@ function refreshAgentContextCache(conf: ReturnType<typeof readConductorConf>): v
     const paneCurrentCommand = inventory.windows.get(wn) ?? null;
     const windowPresent = paneCurrentCommand !== null;
     const tail15 = windowPresent ? capturePaneTail(sessionName, wn, 15, 'status') : '';
-    const { state } = detectAgentStatus(conf, wn, agent.launchCmd, tail15 || undefined, windowPresent, paneCurrentCommand);
+    const { state } = detectAgentStatusWithBackgroundJobs(conf, wn, agent.launchCmd, agentPaneCwd(agent), tail15 || undefined, windowPresent, paneCurrentCommand);
     const isBusy = state === 'busy' || state === 'awaiting' || state === 'stalled';
     const agentType = detectAgentType(agent.launchCmd);
     const ctx = windowPresent
-      ? getContextForAgent(conf, agentType, wn, agent.workdir, isBusy, tail15 || undefined)
+      ? getContextForAgent(conf, agentType, wn, agentPaneCwd(agent), isBusy, tail15 || undefined)
       : emptyAgentContext(conf);
     recordUsageDeltas(db, { id: agent.id, name: wn }, extractUsageDeltas(wn, agent.workdir, conf.stateDir));
 
@@ -258,14 +301,18 @@ function refreshAgentContextCache(conf: ReturnType<typeof readConductorConf>): v
 
 // ── Shared tmux helpers ───────────────────────────────────────────────────────
 
+// The pane starts in `agentPaneCwd(agent)`: the agent's worktree when it has one
+// (so the running agent edits its isolated checkout, matching what the dashboard
+// diffs/stashes/checkpoints), else its `workdir`.
 function spawnAgentWindow(
-  agent: { name: string; workdir: string; launchCmd: string; projectName?: string | null },
+  agent: { name: string; workdir: string; worktreePath?: string | null; launchCmd: string; projectName?: string | null },
   conf: ReturnType<typeof readConductorConf>,
 ): void {
   const { sessionName, stateDir, logDir } = conf;
   const winName = agent.projectName ? `${agent.projectName}-${agent.name}` : agent.name;
-  const target = `${sessionName}:${winName}`;
-  const created = spawnSync('tmux', ['new-window', '-t', sessionName, '-n', winName, '-c', agent.workdir], {
+  const target = windowTarget(sessionName, winName);
+  const paneCwd = agentPaneCwd({ workdir: agent.workdir, worktreePath: agent.worktreePath ?? null });
+  const created = spawnSync('tmux', ['new-window', '-t', sessionName, '-n', winName, '-c', paneCwd], {
     encoding: 'utf8',
     timeout: TMUX_LAUNCH_TIMEOUT_MS,
   });
@@ -492,14 +539,14 @@ function capturePaneTail(sessionName: string, windowName: string, n: number, own
  * the command text to the agent's pane. Used by any code path that hands a
  * task straight to an idle agent (currently: POST /api/tasks fast-path).
  */
-function dispatchTaskToAgent(
+async function dispatchTaskToAgent(
   db: Database.Database,
   conf: ConductorConf,
   agent: Agent,
   cmdText: string,
   detection: string,
   opts?: { clearFirst?: boolean },
-): void {
+): Promise<void> {
   const win = agentWindowName(agent);
 
   // Pre-dispatch checkpoint (ROADMAP-007): snapshot the agent's worktree so
@@ -535,10 +582,7 @@ function dispatchTaskToAgent(
   };
   appendFileSync(`${conf.logDir}/dispatch.jsonl`, JSON.stringify(dispatchRecord) + '\n', 'utf8');
 
-  if (opts?.clearFirst) {
-    sendTextToPane(conf.sessionName, win, '/clear');
-  }
-  sendTextToPane(conf.sessionName, win, cmdText);
+  await sendDispatchToPane(conf.sessionName, win, cmdText, { clearFirst: opts?.clearFirst === true });
 }
 
 function capturePaneTailRaw(sessionName: string, windowName: string, n: number, owner = 'unknown'): string {
@@ -611,7 +655,7 @@ async function sendDirectInput(agentId: number, payload: DirectInputPayload): Pr
   }
   if (enter !== undefined && typeof enter !== 'boolean') throw new Error('enter must be a boolean');
 
-  const target = `${sessionName}:${agentWindowName(entry)}`;
+  const target = windowTarget(sessionName, agentWindowName(entry));
   const multiline = textStr !== undefined && textStr.includes('\n');
   const sends: string[][] = [];
   if (keyList) sends.push(['send-keys', '-t', target, ...keyList]);
@@ -646,11 +690,14 @@ async function sendDirectInput(agentId: number, payload: DirectInputPayload): Pr
 // permanently win over the REST GET /api/status fetch, so any field present here but
 // missing from one of the two SSE payload builders below (search "agent-update") silently
 // never reaches the dashboard. Keep every field in this per-agent shape mirrored in BOTH
-// SSE builders — there is no other parity check.
+// SSE builders — there is no other parity check (sseLastPromptParity.test.ts pins lastPrompt).
+// The partial one-shot 'agent-update' payloads (spawn / clone / project-create / rename,
+// all `...ctx` spreads) intentionally omit lastPrompt: a brand-new agent has none, and an
+// omitted field means "unchanged" to the frontend's field-by-field merge.
 interface Snapshot {
   sessionAlive: boolean;
   sessionExists: boolean;
-  agents: Array<{ id: number; name: string; projectId: number | null; projectName: string | null; state: AgentRunState; status: AgentStatusContract; mode: AgentMode; agentType: AgentType; windowPresent: boolean; queuedTasks: number; launchCmd: string; workdir: string; worktreePath: string | null; branch: string | null; role: string; activeTask: string | null; label: string | null; linkedBg: string | null; usage: AgentUsageTotals | null } & AgentContext>;
+  agents: Array<{ id: number; name: string; projectId: number | null; projectName: string | null; state: AgentRunState; status: AgentStatusContract; mode: AgentMode; agentType: AgentType; windowPresent: boolean; queuedTasks: number; launchCmd: string; workdir: string; worktreePath: string | null; branch: string | null; inGitRepo: boolean; role: string; activeTask: string | null; lastPrompt: LastPrompt | null; label: string | null; usage: AgentUsageTotals | null } & AgentContext>;
   bgProcesses: BgStatus[];
 }
 
@@ -803,7 +850,9 @@ await fastify.register((api) => {
         launchCmd: agent.launchCmd,
         workdir: agent.workdir,
         ...resolveAgentWorktree(agent),
+        inGitRepo: isInGitRepoCached(agent.workdir),
         activeTask: null,
+        lastPrompt: null,
         label: null,
         ...emptyAgentContext(conf),
       };
@@ -936,7 +985,7 @@ await fastify.register((api) => {
     // live in a `${project}-${name}` window and the hooks write that state file).
     if (
       foundAgent !== undefined &&
-      detectAgentStatus(readConductorConf(), agentWindowName(foundAgent), foundAgent.launchCmd).state === 'idle' &&
+      detectAgentStatusWithBackgroundJobs(readConductorConf(), agentWindowName(foundAgent), foundAgent.launchCmd, agentPaneCwd(foundAgent)).state === 'idle' &&
       listTasksForAgentId(db, foundAgent.id, foundAgent.projectId).length === 0
     ) {
       const conf = readConductorConf();
@@ -949,7 +998,14 @@ await fastify.register((api) => {
       // once the sentinel clears. See host-server/pendingAgents.ts.
       if (!hasPendingBackgroundAgents(conf.stateDir, win, conf.pendingAgentStaleMs)) {
         const cmdText = command.trim();
-        dispatchTaskToAgent(db, conf, foundAgent, cmdText, 'immediate-enqueue');
+        try {
+          await dispatchTaskToAgent(db, conf, foundAgent, cmdText, 'immediate-enqueue');
+        } catch (err: unknown) {
+          // The busy state file was already written before the send, so do
+          // not fall through to the queue-add path.
+          console.error(`[conductor] dispatchTaskToAgent failed for agent ${String(foundAgent.id)}:`, err);
+          return reply.status(500).send({ error: 'dispatch failed' });
+        }
         broadcastSSE('snapshot', buildSnapshot());
         return reply.status(200).send({ ok: true, dispatched: true });
       }
@@ -997,6 +1053,27 @@ await fastify.register((api) => {
     jumpTaskToHead(db, id);
     broadcastSSE('task-moved', { id });
     return reply.send({ ok: true, id });
+  });
+
+  api.post<{ Params: { id: string } }>('/tasks/:id/scope-project', async (req, reply) => {
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) {
+      return reply.status(404).send({ error: 'invalid task id' });
+    }
+    const result = moveTaskToProject(db, id);
+    if (!result.ok) {
+      if (result.reason === 'not-found') {
+        return reply.status(404).send({ error: 'task not found' });
+      }
+      const messages: Record<Exclude<typeof result.reason, 'not-found'>, string> = {
+        'not-queued': 'task is not queued',
+        'not-agent-scoped': 'task is not agent-scoped',
+        'agent-has-no-project': 'agent has no project',
+      };
+      return reply.status(409).send({ error: messages[result.reason] });
+    }
+    broadcastSSE('task-moved', { id });
+    return reply.send({ ok: true, task: result.task });
   });
 
   // ── Agent Management ──────────────────────────────────────────────────────
@@ -1054,16 +1131,14 @@ await fastify.register((api) => {
     {
       const windowPresent = isTmuxWindowPresent(conf.sessionName, winName);
       const tail15 = windowPresent ? capturePaneTail(conf.sessionName, winName, 15, 'agent-window') : '';
-      const { state } = detectAgentStatus(conf, winName, launchCmd, tail15 || undefined);
+      const { state } = detectAgentStatusWithBackgroundJobs(conf, winName, launchCmd, agentPaneCwd(newAgent), tail15 || undefined);
       const isBusy = state === 'busy' || state === 'awaiting' || state === 'stalled';
       const agentType = detectAgentType(launchCmd);
-      const ctx = getContextForAgent(conf, agentType, winName, workdir, isBusy, tail15 || undefined);
-      broadcastSSE('agent-update', {
-        id: newAgent.id, name, projectId: newAgent.projectId, projectName: newAgent.projectName,
+      const ctx = getContextForAgent(conf, agentType, winName, agentPaneCwd(newAgent), isBusy, tail15 || undefined);
+      broadcastSSE('agent-update', buildNewAgentUpdate(newAgent, {
         state, mode: windowPresent ? detectAgentMode(conf, winName, launchCmd, tail15) : 'unknown',
-        agentType,
-        windowPresent, queuedTasks: 0, launchCmd, workdir, linkedBg: null, activeTask: null, ...ctx,
-      });
+        agentType, windowPresent, inGitRepo: isInGitRepoCached(newAgent.workdir), context: ctx,
+      }));
     }
 
     return reply.status(201).send({ ok: true, agent: newAgent });
@@ -1105,7 +1180,7 @@ await fastify.register((api) => {
     let action: 'spawned' | 'respawned' = 'spawned';
     try {
       if (count === 1) {
-        spawnSync('tmux', ['kill-window', '-t', `${sessionName}:${winName}`], { encoding: 'utf8', timeout: TMUX_SYNC_TIMEOUT_MS });
+        spawnSync('tmux', ['kill-window', '-t', windowTarget(sessionName, winName)], { encoding: 'utf8', timeout: TMUX_SYNC_TIMEOUT_MS });
         action = 'respawned';
       }
       spawnAgentWindow(entry, conf);
@@ -1117,16 +1192,16 @@ await fastify.register((api) => {
     {
       const windowPresent = isTmuxWindowPresent(conf.sessionName, winName);
       const tail15 = windowPresent ? capturePaneTail(conf.sessionName, winName, 15, 'mode-switch') : '';
-      const { state } = detectAgentStatus(conf, winName, entry.launchCmd, tail15 || undefined);
+      const { state } = detectAgentStatusWithBackgroundJobs(conf, winName, entry.launchCmd, agentPaneCwd(entry), tail15 || undefined);
       const isBusy = state === 'busy' || state === 'awaiting' || state === 'stalled';
       const agentType = detectAgentType(entry.launchCmd);
-      const ctx = getContextForAgent(conf, agentType, winName, entry.workdir, isBusy, tail15 || undefined);
+      const ctx = getContextForAgent(conf, agentType, winName, agentPaneCwd(entry), isBusy, tail15 || undefined);
       broadcastSSE('agent-update', {
         id: entry.id, name, projectId: entry.projectId, projectName: entry.projectName,
         state, mode: windowPresent ? detectAgentMode(conf, winName, entry.launchCmd, tail15) : 'unknown',
         agentType,
         windowPresent, queuedTasks: listTasksForAgentId(db, entry.id, entry.projectId).length,
-        launchCmd: entry.launchCmd, workdir: entry.workdir, linkedBg: conf.agentBgLinks[entry.name] ?? null,
+        launchCmd: entry.launchCmd, workdir: entry.workdir,
         activeTask: getActiveTask(conf, winName, state), ...ctx,
       });
     }
@@ -1149,16 +1224,17 @@ await fastify.register((api) => {
       // full status-shaped record (state/mode/agentType/...) that
       // AgentList's own SSE handler reads directly — a partial payload with
       // just worktreePath/branch would be misread as a status change. The
-      // route response updates the modal directly; the next status poll
-      // picks up worktreePath/branch for everyone else.
+      // route response updates the modal directly; for everyone else the
+      // periodic pollAndDiff emits a full-shaped 'agent-update' within one
+      // status tick, because worktreePath/branch are part of
+      // agentSnapshotChanged (agentDiff.ts).
       const agent = addWorktreeToAgent(db, agentId);
       return reply.status(201).send({ ok: true, agent });
     } catch (err) {
+      // addWorktreeToAgent throws a typed WorktreeError; its `code` picks the
+      // HTTP status and its message is the real, user-facing reason.
+      const status = err instanceof WorktreeError ? worktreeErrorStatus(err.code) : 500;
       const message = err instanceof Error ? err.message : 'failed to create worktree';
-      const status = /not found$/.test(message) ? 404
-        : /already has a worktree$/.test(message) ? 409
-        : /not inside a git repository$/.test(message) ? 400
-        : 500;
       return reply.status(status).send({ error: message });
     }
   });
@@ -1211,7 +1287,7 @@ await fastify.register((api) => {
       const seen: AgentMode[] = [origin];
 
       for (let press = 1; press <= MAX_PRESSES; press++) {
-        spawnSync('tmux', ['send-keys', '-t', `${sessionName}:${wn}`, 'BTab'], { encoding: 'utf8', timeout: TMUX_SYNC_TIMEOUT_MS });
+        spawnSync('tmux', ['send-keys', '-t', windowTarget(sessionName, wn), 'BTab'], { encoding: 'utf8', timeout: TMUX_SYNC_TIMEOUT_MS });
         await sleep(SETTLE_MS);
 
         // The footer can be mid-redraw right after a press — re-detect briefly.
@@ -1259,7 +1335,7 @@ await fastify.register((api) => {
       return reply.status(409).send({ error: 'agent window not present' });
     }
 
-    const r = spawnSync('tmux', ['kill-window', '-t', `${sessionName}:${winName}`], { encoding: 'utf8', timeout: TMUX_SYNC_TIMEOUT_MS });
+    const r = spawnSync('tmux', ['kill-window', '-t', windowTarget(sessionName, winName)], { encoding: 'utf8', timeout: TMUX_SYNC_TIMEOUT_MS });
     if (r.status !== 0) {
       return reply.status(500).send({ error: 'tmux kill-window failed', stderr: r.stderr });
     }
@@ -1340,7 +1416,7 @@ await fastify.register((api) => {
       pruneOldUploads();
 
       if (insertIntoPane) {
-        const r = spawnSync('tmux', ['send-keys', '-t', `${sessionName}:${agentWindowName(entry)}`, '-l', '--', `${filePath} `], { encoding: 'utf8', timeout: TMUX_SYNC_TIMEOUT_MS });
+        const r = spawnSync('tmux', ['send-keys', '-t', windowTarget(sessionName, agentWindowName(entry)), '-l', '--', `${filePath} `], { encoding: 'utf8', timeout: TMUX_SYNC_TIMEOUT_MS });
         if (r.status !== 0) {
           return reply.status(409).send({ error: 'tmux send-keys failed', stderr: r.stderr });
         }
@@ -1367,31 +1443,23 @@ await fastify.register((api) => {
 
     const winName = agentWindowName(entry);
     if (isTmuxWindowPresent(sessionName, winName)) {
-      execSync(`tmux kill-window -t ${sessionName}:${winName}`, { timeout: TMUX_SYNC_TIMEOUT_MS });
+      execSync(`tmux kill-window -t ${windowTarget(sessionName, winName)}`, { timeout: TMUX_SYNC_TIMEOUT_MS });
     }
 
     // TASK-063: best-effort worktree teardown. Never let a git failure block
     // the DB delete below — agents without a worktree_path (non-git workdirs)
     // are skipped silently.
-    if (entry.worktreePath) {
-      try {
-        const gitRoot = getGitRoot(entry.workdir) ?? path.dirname(path.dirname(entry.worktreePath));
-        if (!removeWorktree(gitRoot, entry.worktreePath)) {
-          console.warn(`[conductor] DELETE /agents/${String(entry.id)}: git worktree remove failed for ${entry.worktreePath}`);
-        }
-        if (entry.branch && !deleteBranch(gitRoot, entry.branch)) {
-          console.warn(`[conductor] DELETE /agents/${String(entry.id)}: git branch -D failed for ${entry.branch}`);
-        }
-      } catch (err) {
-        console.warn(`[conductor] DELETE /agents/${String(entry.id)}: worktree cleanup threw`, err);
-      }
-    }
+    // TASK-0217: extracted into worktreeTeardown.ts so it is testable against
+    // real git repos (also prunes the stale registration of a hand-deleted worktree).
+    teardownAgentWorktree(entry);
 
     deleteAgent(db, entry.id);
     resetUsageMemo(winName);
     resetUsageStore(entry.id);
 
     try { unlinkSync(path.join(stateDir, `${winName}.state`)); } catch { /* no state file — fine */ }
+    // TASK-0222: drop the hook sidecar too, so a re-created same-named agent doesn't inherit last_prompt.
+    removeLastPromptSidecar(stateDir, winName);
 
     focusedAgents.delete(entry.id);
     prevTailMap.delete(entry.id);
@@ -1457,7 +1525,7 @@ await fastify.register((api) => {
       updated = updateAgentName(db, entry.id, newName);
 
       if (isTmuxWindowPresent(sessionName, oldWindowName)) {
-        spawnSync('tmux', ['rename-window', '-t', `${sessionName}:${oldWindowName}`, newWindowName], { encoding: 'utf8', timeout: TMUX_SYNC_TIMEOUT_MS });
+        spawnSync('tmux', ['rename-window', '-t', windowTarget(sessionName, oldWindowName), newWindowName], { encoding: 'utf8', timeout: TMUX_SYNC_TIMEOUT_MS });
       }
 
       try { renameSync(path.join(stateDir, `${oldWindowName}.state`), path.join(stateDir, `${newWindowName}.state`)); } catch { /* no state file — fine */ }
@@ -1483,16 +1551,16 @@ await fastify.register((api) => {
       const winName = agentWindowName(updated);
       const windowPresent = isTmuxWindowPresent(sessionName, winName);
       const tail15 = windowPresent ? capturePaneTail(sessionName, winName, 15, 'agent-window') : '';
-      const { state } = detectAgentStatus(conf, winName, updated.launchCmd, tail15 || undefined);
+      const { state } = detectAgentStatusWithBackgroundJobs(conf, winName, updated.launchCmd, agentPaneCwd(updated), tail15 || undefined);
       const isBusy = state === 'busy' || state === 'awaiting' || state === 'stalled';
       const agentType = detectAgentType(updated.launchCmd);
-      const ctx = getContextForAgent(conf, agentType, winName, updated.workdir, isBusy, tail15 || undefined);
+      const ctx = getContextForAgent(conf, agentType, winName, agentPaneCwd(updated), isBusy, tail15 || undefined);
       broadcastSSE('agent-update', {
         id: updated.id, name: updated.name, projectId: updated.projectId, projectName: updated.projectName,
         state, mode: windowPresent ? detectAgentMode(conf, winName, updated.launchCmd, tail15) : 'unknown',
         agentType,
         windowPresent, queuedTasks: listTasksForAgentId(db, updated.id, updated.projectId).length,
-        launchCmd: updated.launchCmd, workdir: updated.workdir, linkedBg: conf.agentBgLinks[updated.name] ?? null,
+        launchCmd: updated.launchCmd, workdir: updated.workdir,
         activeTask: getActiveTask(conf, winName, state), role: updated.role, ...ctx,
       });
     }
@@ -1500,11 +1568,21 @@ await fastify.register((api) => {
     return reply.send({ ok: true, agent: updated });
   });
 
-  // Clone an existing agent: same workdir/launchCmd/project/role/worktree-ness,
-  // a derived unique name (deriveCloneName), and a freshly spawned tmux window
-  // — the dashboard's "Clone" action. Mirrors POST /agents' create-then-spawn
-  // flow, pre-filled from the source agent instead of the request body.
-  api.post<{ Params: { id: string } }>('/agents/:id/clone', async (req, reply) => {
+  // Clone an existing agent: same workdir/launchCmd/project/role, a derived
+  // unique name (deriveCloneName), and a freshly spawned tmux window — the
+  // dashboard's "Clone" action. Mirrors POST /agents' create-then-spawn flow,
+  // pre-filled from the source agent instead of the request body.
+  //
+  // Optional body `{ forceWorktree: true }` (TASK-0213) always gives the clone
+  // its own isolated worktree + branch (`<repo>-worktrees/<cloneId>`,
+  // `conductor/<cloneId>`), whether or not the source has one. That worktree is
+  // a FRESH branch off the repo's detected base branch — not a copy of the
+  // source's branch or uncommitted work. Without the flag the clone gets a
+  // worktree only when the source has one. A forced clone that cannot get its
+  // worktree fails loudly (no row is left behind): 400 when the workdir is not
+  // a git repo, 500 with the git reason otherwise. The clone's window starts in
+  // the worktree (see `agentPaneCwd`).
+  api.post<{ Params: { id: string }; Body?: { forceWorktree?: unknown } | null }>('/agents/:id/clone', async (req, reply) => {
     const agentId = parseInt(req.params.id, 10);
     if (isNaN(agentId)) return reply.status(400).send({ error: 'invalid agent id' });
 
@@ -1514,16 +1592,20 @@ await fastify.register((api) => {
     }
 
     const conf = readConductorConf();
-    const derivedName = deriveCloneName(db, source);
+    const forceWorktree = req.body?.forceWorktree === true;
 
-    const newAgent = createAgent(db, {
-      name: derivedName,
-      workdir: source.workdir,
-      launchCmd: source.launchCmd,
-      ...(source.projectId != null ? { projectId: source.projectId } : {}),
-      role: source.role,
-      useWorktree: Boolean(source.worktreePath),
-    });
+    let newAgent: Agent;
+    try {
+      newAgent = cloneAgentRecord(db, source, { forceWorktree });
+    } catch (err) {
+      // WorktreeError's `code` picks the status and its message is the real
+      // reason; anything else (e.g. duplicate window name) keeps bubbling to
+      // Fastify's default handler exactly as before.
+      if (err instanceof WorktreeError) {
+        return reply.status(worktreeErrorStatus(err.code)).send({ error: err.message });
+      }
+      throw err;
+    }
     const winName = agentWindowName(newAgent);
     spawnAgentWindow(newAgent, conf);
 
@@ -1531,16 +1613,14 @@ await fastify.register((api) => {
     {
       const windowPresent = isTmuxWindowPresent(conf.sessionName, winName);
       const tail15 = windowPresent ? capturePaneTail(conf.sessionName, winName, 15, 'agent-window') : '';
-      const { state } = detectAgentStatus(conf, winName, newAgent.launchCmd, tail15 || undefined);
+      const { state } = detectAgentStatusWithBackgroundJobs(conf, winName, newAgent.launchCmd, agentPaneCwd(newAgent), tail15 || undefined);
       const isBusy = state === 'busy' || state === 'awaiting' || state === 'stalled';
       const agentType = detectAgentType(newAgent.launchCmd);
-      const ctx = getContextForAgent(conf, agentType, winName, newAgent.workdir, isBusy, tail15 || undefined);
-      broadcastSSE('agent-update', {
-        id: newAgent.id, name: newAgent.name, projectId: newAgent.projectId, projectName: newAgent.projectName,
+      const ctx = getContextForAgent(conf, agentType, winName, agentPaneCwd(newAgent), isBusy, tail15 || undefined);
+      broadcastSSE('agent-update', buildNewAgentUpdate(newAgent, {
         state, mode: windowPresent ? detectAgentMode(conf, winName, newAgent.launchCmd, tail15) : 'unknown',
-        agentType,
-        windowPresent, queuedTasks: 0, launchCmd: newAgent.launchCmd, workdir: newAgent.workdir, linkedBg: null, activeTask: null, ...ctx,
-      });
+        agentType, windowPresent, inGitRepo: isInGitRepoCached(newAgent.workdir), context: ctx,
+      }));
     }
 
     return reply.status(201).send({ ok: true, agent: newAgent });
@@ -1861,10 +1941,23 @@ await fastify.register((api) => {
     return reply.send(agents);
   });
 
+  // TASK-0202: who is calling? Read-only; exists for the `dev-commands` skill to
+  // default `list` to the caller's project. Identity is the self-declared
+  // `X-Conductor-Agent` header, so this is NOT an authentication mechanism (same
+  // caveat as TASK-0194). Always 200; `kind` is agent|human|unknown|ambiguous. Agent
+  // rows already carry `projectName`, so no `listProjects` lookup is needed.
+  // Registered as a static path; there is no `GET /agents/:id` to collide with.
+  api.get('/agents/whoami', (req, reply) => {
+    const caller = parseCallerHeader(req.headers[BG_CALLER_HEADER]);
+    const agents = listAgents(db);
+    return reply.send(describeCaller(resolveCallerProject(caller, agents), agents));
+  });
+
   // ── Background Process Management ────────────────────────────────────────
 
-  api.post<{ Body: { name?: string; workdir?: string; launchCmd?: string; linkedAgent?: string; projectId?: number } }>('/bg-processes', async (req, reply) => {
-    const { name, workdir, launchCmd = '', linkedAgent, projectId } = req.body;
+  // A stale `linkedAgent` / `linkedAgentId` in the body from an old client is ignored (TASK-0197).
+  api.post<{ Body: { name?: string; workdir?: string; launchCmd?: string; projectId?: unknown } }>('/bg-processes', async (req, reply) => {
+    const { name, workdir, launchCmd = '', projectId } = req.body;
 
     if (!name || typeof name !== 'string' || !/^[a-zA-Z0-9_-]+$/.test(name)) {
       return reply.status(400).send({ error: 'name is required and must match ^[a-zA-Z0-9_-]+$' });
@@ -1875,6 +1968,18 @@ await fastify.register((api) => {
     if (!launchCmd || typeof launchCmd !== 'string') {
       return reply.status(400).send({ error: 'launchCmd is required' });
     }
+    // TASK-0195: every bg process belongs to a project — projectId is required
+    // and must reference an existing project. Validated before any tmux/session
+    // check so a bad request is always a 400 regardless of session state.
+    if (projectId === undefined || projectId === null) {
+      return reply.status(400).send({ error: 'projectId is required' });
+    }
+    if (typeof projectId !== 'number' || !Number.isInteger(projectId)) {
+      return reply.status(400).send({ error: 'projectId must be an integer' });
+    }
+    if (!listProjects(db).some((p) => p.id === projectId)) {
+      return reply.status(400).send({ error: `project ${String(projectId)} not found` });
+    }
 
     const conf = readConductorConf();
     const { sessionName, logDir } = conf;
@@ -1883,42 +1988,46 @@ await fastify.register((api) => {
     if (sessionCheck.status !== 0) {
       return reply.status(409).send({ error: 'session not running', sessionAlive: false });
     }
-    if (listBgProcesses(db).some((b) => b.name === name)) {
-      return reply.status(409).send({ error: `bg process '${name}' already defined` });
+    // TASK-0196: names are unique per project, and the derived slug
+    // `<project>-<name>` (window / log / state identity) must not collide with
+    // another bg slug or an agent window name in the shared tmux namespace.
+    const projectName = listProjects(db).find((p) => p.id === projectId)?.name ?? null;
+    const slug = bgSlug({ name }, projectName);
+    if (listBgProcesses(db, { projectId }).some((b) => b.name === name)) {
+      return reply.status(409).send({ error: `bg process '${name}' already defined in this project (slug '${slug}')` });
     }
-    if (isTmuxWindowPresent(sessionName, name)) {
-      return reply.status(409).send({ error: 'window already exists' });
+    if (bgSlugCollides(slug, listBgSlugs(db), listAgents(db).map((a) => agentWindowName(a)))) {
+      return reply.status(409).send({ error: `slug '${slug}' collides with an existing bg process or agent window` });
     }
-    if (linkedAgent !== undefined && typeof linkedAgent !== 'string') {
-      return reply.status(400).send({ error: 'linkedAgent must be a string' });
-    }
-    if (projectId !== undefined && (typeof projectId !== 'number' || !Number.isInteger(projectId))) {
-      return reply.status(400).send({ error: 'projectId must be an integer' });
-    }
-
-    // Resolve linkedAgent name to id
-    let linkedAgentId: number | undefined;
-    if (linkedAgent) {
-      const agent = listAgents(db).find((a) => a.name === linkedAgent);
-      if (!agent) {
-        return reply.status(400).send({ error: `linkedAgent '${linkedAgent}' not found` });
-      }
-      linkedAgentId = agent.id;
+    if (isTmuxWindowPresent(sessionName, slug)) {
+      return reply.status(409).send({ error: `window '${slug}' already exists` });
     }
 
     // Write the definition to SQLite — conductor.sh/spawn.sh load from there
-    createBgProcess(db, { name, workdir, launchCmd, ...(linkedAgentId !== undefined && { linkedAgentId }), ...(projectId !== undefined && { projectId }) });
+    try {
+      createBgProcess(db, { name, workdir, launchCmd, projectId });
+    } catch (err) {
+      // (project_id, name) unique index — a concurrent create raced past the check above.
+      if (isUniqueConstraintError(err)) {
+        return reply.status(409).send({ error: `bg process '${name}' already defined in this project (slug '${slug}')` });
+      }
+      throw err;
+    }
 
-    execSync(`tmux new-window -t ${sessionName} -n ${name} -c ${workdir}`, { timeout: TMUX_SYNC_TIMEOUT_MS });
-    execSync(`tmux send-keys -t ${sessionName}:${name} "${launchCmd}" Enter`, { timeout: TMUX_SYNC_TIMEOUT_MS });
-    execSync(`tmux pipe-pane -t ${sessionName}:${name} -o "cat >> '${logDir}/bg-${name}.log'"`, { timeout: TMUX_SYNC_TIMEOUT_MS });
+    // TASK-0190: argv-array spawn via the shared helper (launchCmd/workdir are
+    // single argv elements, pipe-pane attaches before typing).
+    const started = startBgWindow(defaultBgRestartDeps(), { slug, workdir, launchCmd }, { sessionName, logDir });
+    if (!started.ok) {
+      return reply.status(500).send({ error: 'window start failed', step: started.step, status: started.status });
+    }
 
-    return reply.status(201).send({ ok: true, bg: { name, workdir, launchCmd, linkedAgent: linkedAgent ?? null, projectId: projectId ?? null } });
+    return reply.status(201).send({ ok: true, bg: { slug, name, workdir, launchCmd, projectId } });
   });
 
   // Updates the stored bg-process definition (workdir, launchCmd, projectId).
-  // name is immutable — it's the tmux window key and the route param for
-  // delete/window actions, so it is never accepted in the body.
+  // name is immutable, and the `:slug` route param (`<project>-<name>`) is the
+  // tmux window key, so name is never accepted in the body. Changing projectId
+  // changes the slug: 409 while the window is open, or when the new slug collides.
   //
   // IMPORTANT semantics: launchCmd may already be running inside a live tmux
   // window. This route writes SQLite only and never kills/restarts that
@@ -1929,15 +2038,15 @@ await fastify.register((api) => {
   // user action elsewhere in the UI, and silently killing a running process
   // out from under the user on a field edit would violate that convention.
   // The frontend surfaces a note that changes take effect on next restart.
-  api.patch<{ Params: { name: string }; Body: { workdir?: unknown; launchCmd?: unknown; projectId?: unknown } }>('/bg-processes/:name', async (req, reply) => {
-    const { name } = req.params;
-    const entry = listBgProcesses(db).find((b) => b.name === name);
+  api.patch<{ Params: { slug: string }; Body: { workdir?: unknown; launchCmd?: unknown; projectId?: unknown } }>('/bg-processes/:slug', async (req, reply) => {
+    const { slug } = req.params;
+    const entry = getBgBySlug(db, slug);
     if (!entry) {
-      return reply.status(404).send({ error: `bg process '${name}' not found` });
+      return reply.status(404).send({ error: `bg process '${slug}' not found` });
     }
 
     const { workdir, launchCmd, projectId } = req.body;
-    const data: Partial<{ workdir: string; launchCmd: string; projectId: number | null }> = {};
+    const data: Partial<{ workdir: string; launchCmd: string; projectId: number }> = {};
     if (workdir !== undefined) {
       if (typeof workdir !== 'string' || !workdir.startsWith('/')) {
         return reply.status(400).send({ error: 'workdir must be an absolute path (starts with /)' });
@@ -1951,90 +2060,257 @@ await fastify.register((api) => {
       data.launchCmd = launchCmd;
     }
     if (projectId !== undefined) {
-      if (projectId !== null && (typeof projectId !== 'number' || !Number.isInteger(projectId))) {
-        return reply.status(400).send({ error: 'projectId must be an integer or null' });
+      // TASK-0195: a bg process must always belong to a project — it can be
+      // moved to another existing project but never unassigned.
+      if (projectId === null) {
+        return reply.status(400).send({ error: 'projectId cannot be null: a bg process must belong to a project' });
+      }
+      if (typeof projectId !== 'number' || !Number.isInteger(projectId)) {
+        return reply.status(400).send({ error: 'projectId must be an integer' });
+      }
+      if (!listProjects(db).some((p) => p.id === projectId)) {
+        return reply.status(400).send({ error: `project ${String(projectId)} not found` });
       }
       data.projectId = projectId;
     }
 
-    const updated = updateBgProcess(db, entry.id, data);
-    return reply.send(updated);
+    // TASK-0196: a project change alters the slug (window / log / state names).
+    // Refuse it while the window is live (the running window keeps the old name),
+    // and refuse a target slug that collides with another bg slug or agent window.
+    if (data.projectId !== undefined && data.projectId !== entry.projectId) {
+      const newProjectName = listProjects(db).find((p) => p.id === data.projectId)?.name ?? null;
+      const newSlug = bgSlug(entry, newProjectName);
+      if (newSlug !== slug) {
+        const { sessionName } = readConductorConf();
+        if (isTmuxWindowPresent(sessionName, slug)) {
+          return reply.status(409).send({ error: `cannot change project while window '${slug}' is open: close the window first (the slug would change to '${newSlug}')` });
+        }
+        if (bgSlugCollides(newSlug, listBgSlugs(db), listAgents(db).map((a) => agentWindowName(a)))) {
+          return reply.status(409).send({ error: `slug '${newSlug}' collides with an existing bg process or agent window` });
+        }
+      }
+    }
+
+    try {
+      const updated = updateBgProcess(db, entry.id, data);
+      return await reply.send(updated);
+    } catch (err) {
+      if (isUniqueConstraintError(err)) {
+        return reply.status(409).send({ error: `bg process '${entry.name}' already defined in the target project` });
+      }
+      throw err;
+    }
   });
 
-  api.delete<{ Params: { name: string } }>('/bg-processes/:name', async (req, reply) => {
-    const { name } = req.params;
+  api.delete<{ Params: { slug: string } }>('/bg-processes/:slug', async (req, reply) => {
+    const { slug } = req.params;
     const conf = readConductorConf();
     const { sessionName, stateDir } = conf;
 
-    const entry = listBgProcesses(db).find((b) => b.name === name);
+    const entry = getBgBySlug(db, slug);
     if (!entry) {
-      return reply.status(404).send({ error: `bg process '${name}' not found` });
+      return reply.status(404).send({ error: `bg process '${slug}' not found` });
     }
 
-    if (isTmuxWindowPresent(sessionName, name)) {
-      execSync(`tmux kill-window -t ${sessionName}:${name}`, { timeout: TMUX_SYNC_TIMEOUT_MS });
+    if (isTmuxWindowPresent(sessionName, slug)) {
+      execSync(`tmux kill-window -t ${windowTarget(sessionName, slug)}`, { timeout: TMUX_SYNC_TIMEOUT_MS });
     }
 
-    // Remove the definition from SQLite. Since linked_agent_id is on the
-    // bg_processes row, deleting the row drops the link automatically.
+    // Remove the definition from SQLite.
     deleteBgProcess(db, entry.id);
 
-    try { unlinkSync(path.join(stateDir, `bg-${name}.state`)); } catch { /* fine */ }
+    try { unlinkSync(path.join(stateDir, `bg-${slug}.state`)); } catch { /* fine */ }
 
-    return reply.send({ ok: true, removed: name });
+    return reply.send({ ok: true, removed: slug });
   });
 
   // Recreate the tmux window for a bg process that already exists in the DB but
   // whose window has died. Mirrors POST /agents/:agent/window — does not touch
   // SQLite. Re-attaches pipe-pane logging like conductor.sh does.
-  api.post<{ Params: { name: string } }>('/bg-processes/:name/window', async (req, reply) => {
-    const { name } = req.params;
+  api.post<{ Params: { slug: string } }>('/bg-processes/:slug/window', async (req, reply) => {
+    const { slug } = req.params;
     const conf = readConductorConf();
     const { sessionName, logDir } = conf;
 
-    const entry = listBgProcesses(db).find((b) => b.name === name);
+    const entry = getBgBySlug(db, slug);
     if (!entry) {
-      return reply.status(404).send({ error: `bg process '${name}' not found` });
+      return reply.status(404).send({ error: `bg process '${slug}' not found` });
     }
 
     if (!tmuxSessionExists(sessionName)) {
       return reply.status(409).send({ error: 'session not running', sessionAlive: false });
     }
-    if (isTmuxWindowPresent(sessionName, name)) {
+    if (isTmuxWindowPresent(sessionName, slug)) {
       return reply.status(409).send({ error: 'window already exists' });
     }
 
-    execSync(`tmux new-window -t ${sessionName} -n ${name} -c ${entry.workdir}`, { timeout: TMUX_SYNC_TIMEOUT_MS });
-    execSync(`tmux send-keys -t ${sessionName}:${name} "${entry.launchCmd}" Enter`, { timeout: TMUX_SYNC_TIMEOUT_MS });
-    execSync(`tmux pipe-pane -t ${sessionName}:${name} -o "cat >> '${logDir}/bg-${name}.log'"`, { timeout: TMUX_SYNC_TIMEOUT_MS });
+    // TASK-0190: shared argv-array spawn (no shell re-parsing of launchCmd or
+    // workdir; pipe-pane attaches before the command is typed). No restart
+    // marker on a plain open.
+    const started = startBgWindow(defaultBgRestartDeps(), { slug, workdir: entry.workdir, launchCmd: entry.launchCmd }, { sessionName, logDir });
+    if (!started.ok) {
+      return reply.status(500).send({ error: 'window start failed', step: started.step, status: started.status });
+    }
 
-    return reply.status(201).send({ ok: true, bg: { name, workdir: entry.workdir, launchCmd: entry.launchCmd } });
+    return reply.status(201).send({ ok: true, bg: { slug, name: entry.name, workdir: entry.workdir, launchCmd: entry.launchCmd } });
+  });
+
+  // TASK-0190: atomic restart. Stops the running process (respawn-window -k, then
+  // SIGKILL any survivor of the old process tree), starts a fresh one, keeps (or
+  // re-attaches) pipe-pane log capture and appends a `--- restart <ts> ---`
+  // marker to bg-<slug>.log. A missing window behaves like "start". The handler
+  // is synchronous tmux/ps work (like its siblings) and returns only after the
+  // command has been typed. No SSE is emitted here: bg-update is emitted from the
+  // status poll-diff (bgStatusChanged also compares lastRestart, TASK-0207), so the
+  // dashboard picks the new state up on the next poll.
+  api.post<{ Params: { slug: string } }>('/bg-processes/:slug/restart', async (req, reply) => {
+    const { slug } = req.params;
+    const conf = readConductorConf();
+    const { sessionName, logDir } = conf;
+
+    const entry = getBgBySlug(db, slug);
+    if (!entry) {
+      return reply.status(404).send({ error: `bg process '${slug}' not found` });
+    }
+    // TASK-0193: caller identification + cooldown + audit.
+    // Header convention: `X-Conductor-Agent: <raw tmux window/agent name>` (trimmed,
+    // capped at 128 chars); an absent/empty header means a human/dashboard caller,
+    // which is exempt from the cooldown. This is a runaway-loop guardrail, NOT
+    // authentication (single-user localhost, no auth): an agent that omits the
+    // header bypasses the agent cooldown. Every attempt past the 404 is appended
+    // to `<LOG_DIR>/bg-restarts.jsonl` (no rotation: bounded by nature, like the
+    // other JSONL logs).
+    const caller = parseCallerHeader(req.headers[BG_CALLER_HEADER]);
+    const callerKind = callerKindFor(caller);
+    const audit = (fields: Omit<BgRestartAuditInput, 'ts' | 'bg' | 'callerKind' | 'caller'>): void => {
+      appendAuditRecord(defaultAuditDeps, logDir, buildAuditRecord({ ts: Date.now(), bg: slug, callerKind, caller, ...fields }));
+    };
+
+    // TASK-0194: same-project guard. Check order is 404 unknown bg -> 403 guard ->
+    // 409 session -> 429 cooldown -> restart, so a denied caller learns neither
+    // session nor cooldown state and a denial never touches tmux or arms the
+    // cooldown. The header is resolved server-side to an agent row and its project
+    // (exact window-name match, see bgAccess.ts): a same-project agent or a
+    // header-less human/dashboard caller is allowed; a different-project agent, an
+    // agent restarting an unscoped bg process, and an unknown or ambiguous identity
+    // are denied (fail closed; an unresolvable identity never widens access).
+    // NOT a security boundary: same single-user, no-auth trust model as the rest of
+    // the host-server, so an agent that spoofs another agent's name (or omits the
+    // header) is not stopped. Read routes and the mutating open/close-window and
+    // PATCH/DELETE routes are unauthenticated by design and out of scope here.
+    const authz = authorizeRestart(resolveCallerProject(caller, listAgents(db)), { projectId: entry.projectId });
+    if (!authz.allowed) {
+      audit({ outcome: 'denied', reason: authz.reason });
+      return reply.status(403).send({
+        error: `restart denied: ${authz.reason}`,
+        reason: authz.reason,
+        callerProjectId: authz.callerProjectId,
+        bgProjectId: authz.bgProjectId,
+      });
+    }
+
+    if (!tmuxSessionExists(sessionName)) {
+      audit({ outcome: 'failed', step: 'session-check' });
+      return reply.status(409).send({ error: 'session not running', sessionAlive: false });
+    }
+
+    const history = getRestartHistory(logDir);
+    const last = history.last(slug);
+    const decision = evaluateCooldown({
+      now: Date.now(),
+      lastRestartAt: last?.at ?? null,
+      cooldownMs: conf.bgRestartCooldownMs,
+      callerKind,
+    });
+    if (!decision.allowed) {
+      audit({ outcome: 'cooldown', cooldownRemainingS: decision.cooldownRemainingS });
+      reply.header('Retry-After', String(decision.retryAfterS));
+      return reply.status(429).send({
+        error: 'restart cooldown',
+        retryAfterS: decision.retryAfterS,
+        lastRestartAt: last !== null ? new Date(last.at).toISOString() : null,
+        lastRestartBy: last?.caller ?? null,
+      });
+    }
+
+    const result = restartBgProcess(
+      defaultBgRestartDeps(),
+      { slug, workdir: entry.workdir, launchCmd: entry.launchCmd },
+      { sessionName, logDir },
+    );
+    if (!result.ok) {
+      // A failed restart does not arm the cooldown.
+      audit({ outcome: 'failed', step: result.step, ...(result.status !== null ? { status: result.status } : {}) });
+      return reply.status(500).send({ error: 'restart failed', step: result.step, status: result.status });
+    }
+
+    const restartedAtMs = Date.parse(result.restartedAt);
+    history.recordSuccess(slug, Number.isNaN(restartedAtMs) ? Date.now() : restartedAtMs, caller);
+    audit({ outcome: 'restarted', mechanism: result.mechanism });
+
+    return reply.send({ ok: true, name: slug, restartedAt: result.restartedAt, mechanism: result.mechanism });
   });
 
   // Close a bg process's tmux window without removing its registration — the
   // inverse of POST /bg-processes/:name/window, mirroring the agent variant
   // DELETE /agents/:agent/window. The state file is removed so a stale
   // alive/dead value doesn't linger until the next reopen.
-  api.delete<{ Params: { name: string } }>('/bg-processes/:name/window', (req, reply) => {
-    const { name } = req.params;
+  api.delete<{ Params: { slug: string } }>('/bg-processes/:slug/window', (req, reply) => {
+    const { slug } = req.params;
     const conf = readConductorConf();
     const { sessionName, stateDir } = conf;
 
-    const entry = listBgProcesses(db).find((b) => b.name === name);
+    const entry = getBgBySlug(db, slug);
     if (!entry) {
-      return reply.status(404).send({ error: `bg process '${name}' not found` });
+      return reply.status(404).send({ error: `bg process '${slug}' not found` });
     }
-    if (!isTmuxWindowPresent(sessionName, name)) {
+    if (!isTmuxWindowPresent(sessionName, slug)) {
       return reply.status(409).send({ error: 'bg window not present' });
     }
 
-    const r = spawnSync('tmux', ['kill-window', '-t', `${sessionName}:${name}`], { encoding: 'utf8', timeout: TMUX_SYNC_TIMEOUT_MS });
+    const r = spawnSync('tmux', ['kill-window', '-t', windowTarget(sessionName, slug)], { encoding: 'utf8', timeout: TMUX_SYNC_TIMEOUT_MS });
     if (r.status !== 0) {
       return reply.status(500).send({ error: 'tmux kill-window failed', stderr: r.stderr });
     }
-    try { unlinkSync(path.join(stateDir, `bg-${name}.state`)); } catch { /* no state file — fine */ }
+    try { unlinkSync(path.join(stateDir, `bg-${slug}.state`)); } catch { /* no state file — fine */ }
 
-    return reply.send({ ok: true, closed: name });
+    return reply.send({ ok: true, closed: slug });
+  });
+
+  // GET /bg-processes/:slug/tail — ANSI-stripped, bounded tail of the bg process's
+  // pipe-pane log (`bg-<slug>.log`, same path as buildBgStatuses' logPath). `lines`
+  // is parsed/clamped like /agents/:id/tail (1..1000, default 50). `?format=text`
+  // returns text/plain (lines joined by "\n", trailing newline when non-empty) so
+  // shell callers need no jq. A registered bg process whose log does not exist yet
+  // returns 200 with empty `lines`; an unknown name is 404.
+  // Security note: dev-server output may contain tokens. This route sits on the same
+  // unauthenticated single-user localhost server, adding no exposure beyond the file
+  // agents can already tail. No auth/project scoping here — read policy is
+  // TASK-0186/TASK-0194's concern (restart-only).
+  api.get<{ Params: { slug: string }; Querystring: { lines?: string; format?: string } }>('/bg-processes/:slug/tail', async (req, reply) => {
+    const { slug } = req.params;
+    const entry = getBgBySlug(db, slug);
+    if (!entry) {
+      return reply.status(404).send({ error: `bg process '${slug}' not found` });
+    }
+
+    const lines = clampTailLines(req.query.lines);
+    const logPath = path.join(readConductorConf().logDir, `bg-${slug}.log`);
+    const tail = await readLogTail(logPath, { lines });
+
+    if (req.query.format === 'text') {
+      const body = tail.lines.length > 0 ? `${tail.lines.join('\n')}\n` : '';
+      return reply.type('text/plain; charset=utf-8').send(body);
+    }
+    return reply.send({
+      slug,
+      name: entry.name,
+      lines: tail.lines,
+      truncated: tail.truncated,
+      sizeBytes: tail.sizeBytes,
+      logPath,
+      updatedAt: tail.updatedAt,
+    });
   });
 
   // Resolve the nearest git root for a given path. Used by the frontend to
@@ -2173,13 +2449,39 @@ await fastify.register((api) => {
     }
     const force = req.query.force === '1';
 
+    // TASK-0195: deleting a project cascades to its bg processes. deleteProject
+    // removes the bg rows + the project atomically (and throws before writing
+    // anything when agents block a non-forced delete), then we tear down each
+    // removed process's tmux window and state file, same as
+    // DELETE /bg-processes/:name/window. Window teardown is best-effort: the
+    // rows are already gone, so a tmux failure must not fail the request.
+    // TASK-0196: window/state names are the bg slug `<project>-<name>`, so the
+    // project name must be captured BEFORE deleteProject removes the row.
+    const projectName = listProjects(db).find((p) => p.id === id)?.name ?? null;
+    let removedBg: string[];
+    let removedBgSlugs: string[];
     try {
-      deleteProject(db, id, force);
-      return await reply.status(204).send();
+      const removedRows = deleteProject(db, id, force);
+      removedBg = removedRows.map((b) => b.name);
+      removedBgSlugs = removedRows.map((b) => bgSlug(b, projectName));
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       return reply.status(409).send({ error: msg });
     }
+
+    if (removedBgSlugs.length > 0) {
+      const { sessionName, stateDir } = readConductorConf();
+      for (const slug of removedBgSlugs) {
+        try {
+          if (isTmuxWindowPresent(sessionName, slug)) {
+            spawnSync('tmux', ['kill-window', '-t', windowTarget(sessionName, slug)], { encoding: 'utf8', timeout: TMUX_SYNC_TIMEOUT_MS });
+          }
+        } catch { /* best-effort: window already gone or tmux unavailable */ }
+        try { unlinkSync(path.join(stateDir, `bg-${slug}.state`)); } catch { /* no state file — fine */ }
+      }
+    }
+
+    return reply.send({ ok: true, removedBgProcesses: removedBg });
   });
 
   api.post<{ Params: { id: string }; Body: { name?: unknown; launchCmd?: unknown; role?: unknown; useWorktree?: unknown } }>('/projects/:id/agents', async (req, reply) => {
@@ -2227,17 +2529,14 @@ await fastify.register((api) => {
     {
       const windowPresent = isTmuxWindowPresent(conf.sessionName, winName);
       const tail15 = windowPresent ? capturePaneTail(conf.sessionName, winName, 15, 'snapshot') : '';
-      const { state } = detectAgentStatus(conf, winName, launchCmd, tail15 || undefined);
+      const { state } = detectAgentStatusWithBackgroundJobs(conf, winName, launchCmd, agentPaneCwd(newAgent), tail15 || undefined);
       const isBusy = state === 'busy' || state === 'awaiting' || state === 'stalled';
       const agentType = detectAgentType(launchCmd);
-      const ctx = getContextForAgent(conf, agentType, winName, project.workdir, isBusy, tail15 || undefined);
-      broadcastSSE('agent-update', {
-        id: newAgent.id, name: agentName, projectId: newAgent.projectId, projectName: newAgent.projectName,
+      const ctx = getContextForAgent(conf, agentType, winName, agentPaneCwd(newAgent), isBusy, tail15 || undefined);
+      broadcastSSE('agent-update', buildNewAgentUpdate(newAgent, {
         state, mode: windowPresent ? detectAgentMode(conf, winName, launchCmd, tail15) : 'unknown',
-        agentType,
-        windowPresent, queuedTasks: 0, launchCmd, workdir: project.workdir,
-        linkedBg: null, activeTask: null, ...ctx,
-      });
+        agentType, windowPresent, inGitRepo: isInGitRepoCached(newAgent.workdir), context: ctx,
+      }));
     }
 
     return reply.status(201).send(newAgent);
@@ -2367,7 +2666,6 @@ await fastify.register((api) => {
           projectName: agent.projectName,
           agentType: agent.agentType,
           label: agent.label,
-          linkedBg: agent.linkedBg,
           name: agent.name, state: agent.state, mode: agent.mode,
           status: agent.status,
           queuedTasks: agent.queuedTasks, windowPresent: agent.windowPresent,
@@ -2379,6 +2677,8 @@ await fastify.register((api) => {
           contextTokens: agent.contextTokens, contextPct: agent.contextPct, contextLimit: agent.contextLimit,
           contextLimitConfident: agent.contextLimitConfident,
           usage: agent.usage,
+          inGitRepo: agent.inGitRepo,
+          lastPrompt: agent.lastPrompt,
         });
       }
       for (const bg of prevSnapshot.bgProcesses) {
@@ -2473,7 +2773,7 @@ function buildSnapshot(): Snapshot {
     const windowPresent = paneCurrentCommand !== null;
     // One capture-pane per agent per tick, shared by status and mode detection.
     const tail15 = windowPresent ? capturePaneTail(sessionName, wn, 15, 'snapshot') : '';
-    const { state, reason, matchedPattern } = detectAgentStatus(conf, wn, agent.launchCmd, tail15 || undefined, windowPresent, paneCurrentCommand);
+    const { state, reason, matchedPattern } = detectAgentStatusWithBackgroundJobs(conf, wn, agent.launchCmd, agentPaneCwd(agent), tail15 || undefined, windowPresent, paneCurrentCommand);
     lastDetectionByAgentId.set(agent.id, { reason, matchedPattern, tail15 });
     // Clear label when window is gone; re-seed whenever cache is null (covers server restart + no-window reopen).
     if (state === 'no-window') {
@@ -2483,6 +2783,7 @@ function buildSnapshot(): Snapshot {
     }
     const label = agentLabelCache.get(agent.id) ?? null;
     const activeTask = getActiveTask(conf, wn, state);
+    const lastPrompt = readLastPrompt(conf.stateDir, wn);
     return {
       id: agent.id,
       name: agent.name,
@@ -2506,15 +2807,16 @@ function buildSnapshot(): Snapshot {
       launchCmd: agent.launchCmd,
       workdir: agent.workdir,
       ...resolveAgentWorktree(agent),
+      inGitRepo: isInGitRepoCached(agent.workdir),
       role: agent.role,
       activeTask,
       label,
-      linkedBg: conf.agentBgLinks[agent.name] ?? null,
       usage: usageByAgent.get(agent.id) ?? null,
+      lastPrompt,
       ...(agentContextCache.get(agent.id) ?? emptyAgentContext(conf)),
     };
   });
-  return { sessionAlive, sessionExists, agents: agentStatuses, bgProcesses: buildBgStatuses(conf, inventory.windows) };
+  return { sessionAlive, sessionExists, agents: agentStatuses, bgProcesses: buildBgStatuses(conf, inventory.windows, inventory.windowActivityMs) };
 }
 
 // Auto-heal: a live session whose monitor window died gets the monitor
@@ -2551,22 +2853,7 @@ function pollAndDiff() {
 
   for (const agent of current.agents) {
     const prev = prevSnapshot.agents.find((a) => a.id === agent.id);
-    if (
-      !prev ||
-      prev.state !== agent.state ||
-      prev.status.display !== agent.status.display ||
-      prev.status.reason !== agent.status.reason ||
-      prev.status.needsAttention !== agent.status.needsAttention ||
-      prev.mode !== agent.mode ||
-      prev.queuedTasks !== agent.queuedTasks ||
-      prev.windowPresent !== agent.windowPresent ||
-      prev.activeTask !== agent.activeTask ||
-      prev.modelId !== agent.modelId ||
-      prev.contextPct !== agent.contextPct ||
-      prev.label !== agent.label ||
-      prev.usage?.costUsd !== agent.usage?.costUsd ||
-      prev.usage?.outputTokens !== agent.usage?.outputTokens
-    ) {
+    if (agentSnapshotChanged(prev, agent)) {
       if (prev && prev.state !== agent.state) {
         const key = `${prev.state}->${agent.state}`;
         liveUpdateMetrics.statusTransitions[key] = (liveUpdateMetrics.statusTransitions[key] ?? 0) + 1;
@@ -2617,7 +2904,9 @@ function pollAndDiff() {
           if (!hasPendingBackgroundAgents(conf.stateDir, win, conf.pendingAgentStaleMs)) {
             const task = popTask(db, agent.name);
             if (task) {
-              dispatchTaskToAgent(db, conf, dbAgent, task.command, 'idle-transition-poll', { clearFirst: task.kind === 'project' });
+              void dispatchTaskToAgent(db, conf, dbAgent, task.command, 'idle-transition-poll', { clearFirst: task.kind === 'project' }).catch((err: unknown) => {
+                console.error(`[conductor] dispatchTaskToAgent failed for agent ${String(dbAgent.id)}:`, err);
+              });
             }
           }
         }
@@ -2641,7 +2930,6 @@ function pollAndDiff() {
         role: agent.role,
         activeTask: agent.activeTask,
         label: agent.label,
-        linkedBg: agent.linkedBg,
         model: agent.model,
         modelId: agent.modelId,
         contextTokens: agent.contextTokens,
@@ -2649,6 +2937,8 @@ function pollAndDiff() {
         contextLimit: agent.contextLimit,
         contextLimitConfident: agent.contextLimitConfident,
         usage: agent.usage,
+        inGitRepo: agent.inGitRepo,
+        lastPrompt: agent.lastPrompt,
       });
     }
   }
@@ -2660,15 +2950,15 @@ function pollAndDiff() {
   }
 
   for (const bg of current.bgProcesses) {
-    const prev = prevSnapshot.bgProcesses.find((b) => b.name === bg.name);
-    if (!prev || prev.windowPresent !== bg.windowPresent || prev.state !== bg.state || prev.linkedAgent !== bg.linkedAgent) {
+    const prev = prevSnapshot.bgProcesses.find((b) => b.slug === bg.slug);
+    if (bgStatusChanged(prev, bg)) {
       broadcastSSE('bg-update', bg);
     }
   }
 
   for (const prev of prevSnapshot.bgProcesses) {
-    if (!current.bgProcesses.some((b) => b.name === prev.name)) {
-      broadcastSSE('bg-removed', { name: prev.name });
+    if (!current.bgProcesses.some((b) => b.slug === prev.slug)) {
+      broadcastSSE('bg-removed', { slug: prev.slug, name: prev.name });
     }
   }
 
@@ -2681,12 +2971,23 @@ function tailPollLoop() {
     const inventory = readTmuxWindowInventory(conf.sessionName);
     if (inventory.timedOut) return;
     if (!inventory.sessionExists) return;
-    const agents = listAgents(db).filter(
-      (a) => !focusedAgents.has(a.id) && inventory.windows.has(agentWindowName(a)),
-    );
+    const lines = conf.terminalTailLines;
+    const agents: Agent[] = [];
+    for (const a of listAgents(db)) {
+      if (focusedAgents.has(a.id)) continue;
+      if (inventory.windows.has(agentWindowName(a))) {
+        agents.push(a);
+        continue;
+      }
+      // Windowless agent: never capture (a prefix-matching target could hit a
+      // sibling's window). Clear the stale terminal once, then stay quiet.
+      if ((prevTailMap.get(a.id) ?? '') !== '') {
+        broadcastSSE('terminal-output', { agentId: a.id, agent: a.name, text: '', lines });
+        prevTailMap.set(a.id, '');
+      }
+    }
     for (const a of agents) {
       const wn = agentWindowName(a);
-      const lines = conf.terminalTailLines;
       const text = capturePaneTail(conf.sessionName, wn, lines, 'terminal-loop');
       if (prevTailMap.get(a.id) !== text) {
         broadcastSSE('terminal-output', { agentId: a.id, agent: a.name, text, lines });
@@ -2710,12 +3011,22 @@ function tailPollLoopFocus() {
     const inventory = readTmuxWindowInventory(conf.sessionName);
     if (inventory.timedOut) return;
     if (!inventory.sessionExists) return;
-    const agents = listAgents(db).filter(
-      (a) => focusedAgents.has(a.id) && !focusedWebSocketAgents.has(a.id) && inventory.windows.has(agentWindowName(a)),
-    );
+    const lines = conf.focusedTerminalTailLines;
+    const agents: Agent[] = [];
+    for (const a of listAgents(db)) {
+      if (!focusedAgents.has(a.id) || focusedWebSocketAgents.has(a.id)) continue;
+      if (inventory.windows.has(agentWindowName(a))) {
+        agents.push(a);
+        continue;
+      }
+      // Windowless agent: skip capture/label update; clear the stale terminal once.
+      if ((prevTailMapFocus.get(a.id) ?? '') !== '') {
+        broadcastSSE('terminal-output-focus', { agentId: a.id, agent: a.name, text: '', lines });
+        prevTailMapFocus.set(a.id, '');
+      }
+    }
     for (const a of agents) {
       const wn = agentWindowName(a);
-      const lines = conf.focusedTerminalTailLines;
       const text = capturePaneTailRaw(conf.sessionName, wn, lines, 'focused-terminal-loop');
       if (prevTailMapFocus.get(a.id) !== text) {
         broadcastSSE('terminal-output-focus', { agentId: a.id, agent: a.name, text, lines });

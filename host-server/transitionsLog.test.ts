@@ -68,8 +68,8 @@ void test("observability.jsonl's status_transition event keeps its original 4-fi
 void test('buildSnapshot captures reason/matchedPattern/tail15 into lastDetectionByAgentId right after the single per-agent capturePaneTail/detectAgentStatus call — no second capture-pane call is added for transitions logging', () => {
   assert.match(
     indexSource,
-    /const tail15 = windowPresent \? capturePaneTail\(sessionName, wn, 15, 'snapshot'\) : '';\s*\n\s*const \{ state, reason, matchedPattern \} = detectAgentStatus\(conf, wn, agent\.launchCmd, tail15 \|\| undefined, windowPresent, paneCurrentCommand\);\s*\n\s*lastDetectionByAgentId\.set\(agent\.id, \{ reason, matchedPattern, tail15 \}\);/,
-    'expected buildSnapshot to set lastDetectionByAgentId from the same tail15/detectAgentStatus call already used for status/mode detection',
+    /const tail15 = windowPresent \? capturePaneTail\(sessionName, wn, 15, 'snapshot'\) : '';\s*\n\s*const \{ state, reason, matchedPattern \} = detectAgentStatusWithBackgroundJobs\(conf, wn, agent\.launchCmd, agent\.workdir, tail15 \|\| undefined, windowPresent, paneCurrentCommand\);\s*\n\s*lastDetectionByAgentId\.set\(agent\.id, \{ reason, matchedPattern, tail15 \}\);/,
+    'expected buildSnapshot to set lastDetectionByAgentId from the same tail15/detectAgentStatusWithBackgroundJobs call already used for status/mode detection',
   );
 
   const fnMatch = /function buildSnapshot\(\): Snapshot \{[\s\S]*?\n\}/.exec(indexSource);

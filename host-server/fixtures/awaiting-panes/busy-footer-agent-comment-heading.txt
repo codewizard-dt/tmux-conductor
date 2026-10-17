@@ -1,0 +1,9 @@
+● Plan outline:
+  ### 1. Implement the fix <!-- agent: general-purpose -->
+
+✻ Churning… (8s · ↓ 640 tokens)
+
+────────────────────────────────────────
+❯
+────────────────────────────────────────
+  ⏵⏵ accept edits on (shift+tab to cycle) · esc to interrupt

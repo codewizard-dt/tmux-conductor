@@ -4,7 +4,7 @@ aliases: [ROADMAP-0023]
 title: Replace the Agents Page Kanban Board with a Sidebar + Detail-Pane Layout
 status: active
 created: 2026-09-18
-updated: 2026-09-18
+updated: 2026-09-19
 owner: David Taylor
 derived_from: [agents-page-sidebar-layout, react-router-outlet-sidebar-layout]
 linked_requirements: —
@@ -26,7 +26,7 @@ The Agents page has no Kanban columns left. A left sidebar lists agents grouped 
 
 ## Phase 2: Detail Pane Relocation
 
-- [ ] [[TASK-0172: Extract AgentDetailModal's content into a non-overlay AgentDetailView]]
+- [x] [[TASK-0172: Extract AgentDetailModal's content into a non-overlay AgentDetailView]]
 - [ ] [[TASK-0173: Wire sidebar row click to render AgentDetailView in the main content area]]
 - [ ] [[TASK-0174: Preserve Cmd+Shift+Arrow cycling and notification-driven open/arm-interact against the pane selection]]
 

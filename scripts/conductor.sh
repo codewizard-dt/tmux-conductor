@@ -18,7 +18,7 @@ fi
 
 # Agent and background-process lists are loaded from SQLite via load_agents /
 # load_bg (see lib/db.sh). load_agents populates AGENT_NAMES + AGENT_DIRS/
-# AGENT_CMDS/AGENT_BG; load_bg populates BG_NAMES + BG_DIRS/BG_CMDS.
+# AGENT_CMDS; load_bg populates BG_NAMES + BG_DIRS/BG_CMDS.
 load_agents
 load_bg
 
@@ -58,13 +58,8 @@ workdir="${AGENT_DIRS["$name"]}"
 launch_cmd="${AGENT_CMDS["$name"]}"
 tmux new-session -d -s "$SESSION_NAME" -c "$workdir" -n "$window_name"
 
-_linked_bg="${AGENT_BG["$name"]}"
-_bg_env=""
-if [ -n "$_linked_bg" ]; then
-  _bg_env=" CONDUCTOR_BG_NAME='$_linked_bg' CONDUCTOR_BG_LOG='$LOG_DIR/bg-$_linked_bg.log' CONDUCTOR_BG_STATE='$STATE_DIR/bg-$_linked_bg.state'"
-fi
-env_prefix="CONDUCTOR_AGENT_NAME='$window_name' CONDUCTOR_STATE_DIR='$STATE_DIR' CONDUCTOR_LOG_DIR='$LOG_DIR'$_bg_env"
-tmux send-keys -t "$SESSION_NAME:$window_name" "$env_prefix $launch_cmd" Enter
+env_prefix="CONDUCTOR_AGENT_NAME='$window_name' CONDUCTOR_STATE_DIR='$STATE_DIR' CONDUCTOR_LOG_DIR='$LOG_DIR'"
+tmux send-keys -t "$SESSION_NAME:=$window_name" "$env_prefix $launch_cmd" Enter
 
 echo "Spawned: $name (window: $window_name) ($launch_cmd) in $workdir"
 
@@ -76,13 +71,8 @@ for (( i=1; i<${#AGENT_NAMES[@]}; i++ )); do
   launch_cmd="${AGENT_CMDS["$name"]}"
   tmux new-window -t "$SESSION_NAME" -n "$window_name" -c "$workdir"
 
-  _linked_bg="${AGENT_BG["$name"]}"
-  _bg_env=""
-  if [ -n "$_linked_bg" ]; then
-    _bg_env=" CONDUCTOR_BG_NAME='$_linked_bg' CONDUCTOR_BG_LOG='$LOG_DIR/bg-$_linked_bg.log' CONDUCTOR_BG_STATE='$STATE_DIR/bg-$_linked_bg.state'"
-  fi
-  env_prefix="CONDUCTOR_AGENT_NAME='$window_name' CONDUCTOR_STATE_DIR='$STATE_DIR' CONDUCTOR_LOG_DIR='$LOG_DIR'$_bg_env"
-  tmux send-keys -t "$SESSION_NAME:$window_name" "$env_prefix $launch_cmd" Enter
+  env_prefix="CONDUCTOR_AGENT_NAME='$window_name' CONDUCTOR_STATE_DIR='$STATE_DIR' CONDUCTOR_LOG_DIR='$LOG_DIR'"
+  tmux send-keys -t "$SESSION_NAME:=$window_name" "$env_prefix $launch_cmd" Enter
 
   echo "Spawned: $name (window: $window_name) ($launch_cmd) in $workdir"
 done
@@ -93,15 +83,15 @@ if [ "${#BG_NAMES[@]}" -gt 0 ]; then
     workdir="${BG_DIRS["$name"]}"
     launch_cmd="${BG_CMDS["$name"]}"
     tmux new-window -t "$SESSION_NAME" -n "$name" -c "$workdir"
-    tmux send-keys -t "$SESSION_NAME:$name" "$launch_cmd" Enter
-    tmux pipe-pane -t "$SESSION_NAME:$name" -o "cat >> '$LOG_DIR/bg-$name.log'"
+    tmux send-keys -t "$SESSION_NAME:=$name" "$launch_cmd" Enter
+    tmux pipe-pane -t "$SESSION_NAME:=$name" -o "cat >> '$LOG_DIR/bg-$name.log'"
     echo "Spawned bg: $name ($launch_cmd) in $workdir (logging to $LOG_DIR/bg-$name.log)"
   done
 fi
 
 # Create conductor/monitor window
 tmux new-window -t "$SESSION_NAME" -n "monitor" -c "$REPO_ROOT"
-tmux send-keys -t "$SESSION_NAME:monitor" "$SCRIPT_DIR/monitor.sh" Enter
+tmux send-keys -t "$SESSION_NAME:=monitor" "$SCRIPT_DIR/monitor.sh" Enter
 
 echo ""
 echo "All agents launched. Attaching to session..."

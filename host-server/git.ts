@@ -4,6 +4,7 @@
 // with a bounded timeout, mirroring the spawnSync style in index.ts.
 
 import { spawnSync } from 'child_process';
+import * as fs from 'fs';
 import * as path from 'path';
 
 export const SHELL_SYNC_TIMEOUT_MS = Number(process.env['SHELL_SYNC_TIMEOUT_MS'] ?? '2000');
@@ -32,6 +33,32 @@ export function getGitRoot(workdir: string): string | null {
   if (r.status !== 0) return null;
   const gitRoot = r.stdout.trim();
   return gitRoot || null;
+}
+
+/** How long a cached `isInGitRepoCached` answer stays valid. */
+const GIT_REPO_CACHE_TTL_MS = 30_000;
+
+const gitRepoCache = new Map<string, { value: boolean; at: number }>();
+
+/**
+ * Cached "is `workdir` inside a git repo" signal for the status payload, which
+ * is rebuilt every couple of seconds per agent — a spawnSync per agent per poll
+ * would be wasteful. Delegates to `getGitRoot(workdir) !== null` and memoises
+ * the result per workdir for 30 s. `now` is injectable so tests do not depend
+ * on wall time.
+ */
+export function isInGitRepoCached(workdir: string, now: number = Date.now()): boolean {
+  const hit = gitRepoCache.get(workdir);
+  if (hit && now - hit.at < GIT_REPO_CACHE_TTL_MS) return hit.value;
+  const value = getGitRoot(workdir) !== null;
+  gitRepoCache.set(workdir, { value, at: now });
+  return value;
+}
+
+/** Test-only: drop every cached `isInGitRepoCached` entry. */
+export function __resetGitRepoCacheForTests(): void {
+  gitRepoCache.clear();
+  paneSubpathCache.clear();
 }
 
 /** True when `ref` resolves to an existing ref in the repo at `dir`. */
@@ -75,7 +102,180 @@ export function detectBaseBranch(worktreePath: string): string {
  * `<parent-of-gitRoot>/<gitRoot-basename>-worktrees/<agentId>`.
  */
 export function siblingWorktreePath(gitRoot: string, agentId: number): string {
-  return path.join(path.dirname(gitRoot), `${path.basename(gitRoot)}-worktrees`, String(agentId));
+  return path.join(siblingWorktreeDir(gitRoot), String(agentId));
+}
+
+/**
+ * The directory that holds every worktree of `gitRoot`:
+ * `<parent-of-gitRoot>/<gitRoot-basename>-worktrees`. Kept in one place so the
+ * layout used by `siblingWorktreePath` and the tests cannot drift apart.
+ */
+export function siblingWorktreeDir(gitRoot: string): string {
+  return path.join(path.dirname(gitRoot), `${path.basename(gitRoot)}-worktrees`);
+}
+
+/**
+ * Directory an agent's tmux pane should start (and, for workdir-keyed
+ * transcript lookups, live) in. Without a worktree — or when the recorded
+ * `worktreePath` is gone from disk — that is the agent's `workdir`. With a
+ * worktree it is the worktree, plus the same relative sub-path when `workdir`
+ * is a strict subdirectory of its git root (the worktree mirrors the whole
+ * repo, so `<root>/packages/app` maps to `<worktree>/packages/app`); if that
+ * sub-path does not exist in the worktree the worktree root is used. `exists`
+ * is injectable so tests need not touch the filesystem for the stale case.
+ */
+export function agentPaneCwd(
+  agent: { workdir: string; worktreePath: string | null },
+  exists: (p: string) => boolean = fs.existsSync,
+  now: number = Date.now(),
+): string {
+  const { workdir, worktreePath } = agent;
+  if (!worktreePath || !exists(worktreePath)) return workdir;
+  const rel = workdirRelativeToGitRootCached(workdir, now);
+  if (!rel) return worktreePath;
+  const sub = path.join(worktreePath, rel);
+  return exists(sub) ? sub : worktreePath;
+}
+
+/** How long a cached workdir → sub-path answer stays valid (the poll loops call `agentPaneCwd` every tick). */
+const PANE_SUBPATH_CACHE_TTL_MS = 30_000;
+
+const paneSubpathCache = new Map<string, { rel: string | null; at: number }>();
+
+/**
+ * `workdir` relative to its git root when it is a strict subdirectory, else
+ * `null` (workdir IS the root, is not in a repo, or cannot be resolved).
+ * Memoised per workdir because it costs a `git rev-parse` spawn.
+ */
+function workdirRelativeToGitRootCached(workdir: string, now: number): string | null {
+  const hit = paneSubpathCache.get(workdir);
+  if (hit && now - hit.at < PANE_SUBPATH_CACHE_TTL_MS) return hit.rel;
+  let rel: string | null = null;
+  const gitRoot = getGitRoot(workdir);
+  if (gitRoot) {
+    try {
+      const r = path.relative(fs.realpathSync.native(gitRoot), fs.realpathSync.native(workdir));
+      if (r !== '' && r !== '..' && !r.startsWith(`..${path.sep}`) && !path.isAbsolute(r)) rel = r;
+    } catch {
+      rel = null;
+    }
+  }
+  paneSubpathCache.set(workdir, { rel, at: now });
+  return rel;
+}
+
+/**
+ * Resolve `p` to an absolute real path even when it does not exist yet: the
+ * deepest existing ancestor is passed through `fs.realpathSync.native` (so
+ * symlinked parents and macOS `/tmp` -> `/private/tmp` collapse), then the
+ * non-existent remainder is re-appended verbatim.
+ */
+function realpathThroughExistingAncestor(p: string): string {
+  const abs = path.resolve(p);
+  const remainder: string[] = [];
+  let current = abs;
+  for (;;) {
+    try {
+      return path.join(fs.realpathSync.native(current), ...remainder);
+    } catch {
+      const parent = path.dirname(current);
+      if (parent === current) return abs;
+      remainder.unshift(path.basename(current));
+      current = parent;
+    }
+  }
+}
+
+/**
+ * Guard: a new worktree must live OUTSIDE the repository root (a sibling, see
+ * `siblingWorktreePath`), never at or under it. Both paths are resolved through
+ * their deepest existing ancestor so a symlinked parent whose real path is
+ * inside the root is still caught. Also refuses a filesystem-root `gitRoot`
+ * (its "parent" is itself, so no sibling can exist). A target on a different
+ * root/drive is not inside the repo and is allowed.
+ */
+export function assertWorktreeOutsideRoot(
+  gitRoot: string,
+  worktreePath: string,
+): WorktreeCreateResult {
+  const realRoot = realpathThroughExistingAncestor(gitRoot);
+  const refusal: WorktreeCreateResult = {
+    ok: false,
+    reason: `refusing to create a worktree inside the repository root (${gitRoot}); worktrees must be siblings of the root`,
+  };
+  if (path.dirname(realRoot) === realRoot) return refusal;
+  const rel = path.relative(realRoot, realpathThroughExistingAncestor(worktreePath));
+  if (rel === '') return refusal;
+  if (path.isAbsolute(rel)) return { ok: true };
+  if (rel === '..' || rel.startsWith(`..${path.sep}`)) return { ok: true };
+  return refusal;
+}
+
+/** Outcome of `tryCreateWorktree`: success, or a human-readable failure reason. */
+export type WorktreeCreateResult = { ok: true } | { ok: false; reason: string };
+
+/** Timeout for `git worktree add` (checkout of a large repo can exceed the 2s shell default). */
+export const WORKTREE_ADD_TIMEOUT_MS = Number(process.env['WORKTREE_ADD_TIMEOUT_MS'] ?? '15000');
+
+/** Maximum length of a failure reason surfaced to callers/UI. */
+export const GIT_REASON_MAX_LEN = 300;
+
+/**
+ * Distil git's stderr into a short human-readable reason. Prefers the last
+ * `fatal:` / `error:` line (prefix stripped); falls back to the last non-blank
+ * line, then to a generic message. Capped at `maxLen` characters.
+ */
+export function extractGitReason(stderr: string, maxLen: number = GIT_REASON_MAX_LEN): string {
+  const lines = stderr
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0);
+  let picked: string | undefined;
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i] as string;
+    if (/^(fatal|error):/i.test(line)) {
+      picked = line.replace(/^(fatal|error):\s*/i, '');
+      break;
+    }
+  }
+  if (picked === undefined) picked = lines[lines.length - 1];
+  const reason = picked && picked.length > 0 ? picked : 'git worktree add failed';
+  return reason.length > maxLen ? reason.slice(0, maxLen) : reason;
+}
+
+/**
+ * Create a new git worktree at `worktreePath` on a new `branch`, based off
+ * the repo's detected base branch (see `detectBaseBranch`), reporting *why* it
+ * failed. Never throws. On timeout, best-effort removes the half-created
+ * worktree and prunes registrations before returning the reason.
+ */
+export function tryCreateWorktree(
+  gitRoot: string,
+  worktreePath: string,
+  branch: string,
+): WorktreeCreateResult {
+  const guard = assertWorktreeOutsideRoot(gitRoot, worktreePath);
+  if (!guard.ok) return guard;
+  const baseRef = detectBaseBranch(gitRoot);
+  const r = spawnSync(
+    'git',
+    ['-C', gitRoot, 'worktree', 'add', worktreePath, '-b', branch, baseRef],
+    { encoding: 'utf8', timeout: WORKTREE_ADD_TIMEOUT_MS },
+  );
+  if (r.status === 0 && !r.error) return { ok: true };
+
+  const code = (r.error as NodeJS.ErrnoException | undefined)?.code;
+  if (code === 'ENOENT') return { ok: false, reason: 'git is not installed or not on PATH' };
+  if (code === 'ETIMEDOUT' || r.signal === 'SIGTERM') {
+    removeWorktree(gitRoot, worktreePath);
+    spawnSync('git', ['-C', gitRoot, 'worktree', 'prune'], {
+      encoding: 'utf8',
+      timeout: SHELL_SYNC_TIMEOUT_MS,
+    });
+    return { ok: false, reason: `git worktree add timed out after ${String(WORKTREE_ADD_TIMEOUT_MS)} ms` };
+  }
+  if (r.error) return { ok: false, reason: extractGitReason(r.error.message) };
+  return { ok: false, reason: extractGitReason(r.stderr) };
 }
 
 /**
@@ -86,13 +286,7 @@ export function siblingWorktreePath(gitRoot: string, agentId: number): string {
  * must not abort agent creation when it fails.
  */
 export function createWorktree(gitRoot: string, worktreePath: string, branch: string): boolean {
-  const baseRef = detectBaseBranch(gitRoot);
-  const r = spawnSync(
-    'git',
-    ['-C', gitRoot, 'worktree', 'add', worktreePath, '-b', branch, baseRef],
-    { encoding: 'utf8', timeout: SHELL_SYNC_TIMEOUT_MS },
-  );
-  return r.status === 0;
+  return tryCreateWorktree(gitRoot, worktreePath, branch).ok;
 }
 
 /**
@@ -112,10 +306,40 @@ export function removeWorktree(gitRoot: string, worktreePath: string): boolean {
 }
 
 /**
+ * Prune stale worktree registrations (`git worktree prune`) in the repo at
+ * `gitRoot`. Needed when a worktree directory was removed by hand: git still
+ * lists it, `worktree remove` fails ("not a working tree") and `branch -D`
+ * refuses the branch because it is still "used by worktree". Best-effort
+ * boolean, same contract as `removeWorktree`.
+ */
+export function pruneWorktrees(gitRoot: string): boolean {
+  const r = spawnSync(
+    'git',
+    ['-C', gitRoot, 'worktree', 'prune'],
+    { encoding: 'utf8', timeout: SHELL_SYNC_TIMEOUT_MS },
+  );
+  return r.status === 0;
+}
+
+/**
  * Force-delete a local branch in the repo at `gitRoot`. Returns `false` on
  * any failure (branch missing, still checked out elsewhere, etc.) rather
  * than throwing — best-effort, same contract as `removeWorktree`.
  */
+/**
+ * True when a local branch named `branch` exists in the repo at `gitRoot`.
+ * Returns `false` on any failure (git unavailable, timeout) rather than
+ * throwing — used to tell whether a branch predates a worktree-add attempt.
+ */
+export function branchExists(gitRoot: string, branch: string): boolean {
+  const r = spawnSync(
+    'git',
+    ['-C', gitRoot, 'show-ref', '--verify', '--quiet', `refs/heads/${branch}`],
+    { encoding: 'utf8', timeout: SHELL_SYNC_TIMEOUT_MS },
+  );
+  return r.status === 0;
+}
+
 export function deleteBranch(gitRoot: string, branch: string): boolean {
   const r = spawnSync(
     'git',

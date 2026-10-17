@@ -1,0 +1,6 @@
+● Done. Nothing further to do for this task.
+
+────────────────────────────────────────
+❯ /research <topic or question to research>
+────────────────────────────────────────
+  ? for shortcuts

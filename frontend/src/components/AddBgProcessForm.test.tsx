@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, render, screen, fireEvent, waitFor } from '@testing-library/react'
 
 // Mock the API module + git-root hook so no real network runs; the form fetches the
-// project list and /status (agents) on mount, following AddAgentForm.test.tsx.
+// project list on mount, following AddAgentForm.test.tsx.
 vi.mock('../lib/api', () => ({
   API_BASE: 'http://localhost:8788/api',
   listProjects: vi.fn(),
@@ -22,13 +22,10 @@ const project = {
   createdAt: '2026-01-01T00:00:00Z',
 }
 
-// Routes fetch by URL: /status (mount-time agent list) always succeeds, POST /bg-processes
-// resolves with the supplied response.
-function stubFetch(postResponse?: Response, agents: { name: string }[] = []) {
-  const fetchMock = vi.fn<(url: string, init?: RequestInit) => Promise<Response>>((url) => {
-    if (url.endsWith('/status')) {
-      return Promise.resolve(new Response(JSON.stringify({ agents }), { status: 200 }))
-    }
+// POST /bg-processes resolves with the supplied response (the form no longer
+// fetches /status: the Link-to-Agent select was removed in TASK-0197).
+function stubFetch(postResponse?: Response) {
+  const fetchMock = vi.fn<(url: string, init?: RequestInit) => Promise<Response>>(() => {
     return Promise.resolve(postResponse ?? new Response('{}', { status: 201 }))
   })
   vi.stubGlobal('fetch', fetchMock)
@@ -151,10 +148,7 @@ describe('AddBgProcessForm', () => {
 
   it('shows the fallback error and keeps the modal open when the POST rejects (network failure)', async () => {
     vi.mocked(listProjects).mockResolvedValue([project])
-    vi.stubGlobal('fetch', vi.fn<(url: string, init?: RequestInit) => Promise<Response>>((url) => {
-      if (url.endsWith('/status')) {
-        return Promise.resolve(new Response(JSON.stringify({ agents: [] }), { status: 200 }))
-      }
+    vi.stubGlobal('fetch', vi.fn<(url: string, init?: RequestInit) => Promise<Response>>(() => {
       return Promise.reject(new TypeError('Failed to fetch'))
     }))
     const onClose = vi.fn()
@@ -193,27 +187,24 @@ describe('AddBgProcessForm', () => {
     expect(screen.queryByText(/Process spawned/)).not.toBeInTheDocument()
   })
 
-  it('lists the /status agents under "Link to Agent" and sends the choice as linkedAgent', async () => {
+  it('has no "Link to Agent" input and sends no linkedAgent in the POST body (TASK-0197)', async () => {
     vi.mocked(listProjects).mockResolvedValue([project])
-    const fetchMock = stubFetch(new Response('{}', { status: 201 }), [{ name: 'alpha' }, { name: 'beta' }])
+    const fetchMock = stubFetch(new Response('{}', { status: 201 }))
     const onClose = vi.fn()
 
     render(<AddBgProcessForm open onClose={onClose} />)
-    fireEvent.click(screen.getByRole('button', { name: '▸ Show advanced' }))
 
-    const select = screen.getByLabelText('Link to Agent (optional)')
-    await screen.findByRole('option', { name: 'alpha' })
-    expect(Array.from((select as HTMLSelectElement).options).map((o) => o.textContent)).toEqual([
-      '— none —',
-      'alpha',
-      'beta',
-    ])
+    expect(screen.queryByText(/Show advanced/)).not.toBeInTheDocument()
+    expect(screen.queryByLabelText(/Link to Agent/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/CONDUCTOR_BG_/)).not.toBeInTheDocument()
 
-    fireEvent.change(select, { target: { value: 'beta' } })
     await fillAndSubmit()
 
     await waitFor(() => { expect(onClose).toHaveBeenCalledTimes(1) })
     const post = fetchMock.mock.calls.find(([url]) => url.endsWith('/bg-processes'))
-    expect(JSON.parse(post?.[1]?.body as string)).toMatchObject({ linkedAgent: 'beta', projectId: 1 })
+    const body = JSON.parse(post?.[1]?.body as string) as Record<string, unknown>
+    expect(body).toMatchObject({ projectId: 1 })
+    expect(body).not.toHaveProperty('linkedAgent')
+    expect(body).not.toHaveProperty('linkedAgentId')
   })
 })

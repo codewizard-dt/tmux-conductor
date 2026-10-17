@@ -9,3 +9,4 @@ Decision group files where all decisions are `accepted` or `superseded`, moved h
 | [[DEC-0004]] | AgentDetailModal Rename: Menu Item vs. Click-to-Edit on the Agent Name | accepted | 2026-09-13 |
 | [[DEC-0005]] | AgentDetailModal Agent-Info Panel: Tabs (Reversing DEC-0002#D1), Adding a Terminal Tab | accepted | 2026-09-13 |
 | [[DEC-0006]] | How a Queued Task Finds Its Agent: Role Router vs. Ephemeral Worktree Worker | accepted | 2026-09-18 |
+| [[DEC-0003]] | Remote Access to the Conductor, and Where Its Trust Boundary Lives | accepted | 2026-09-20 |

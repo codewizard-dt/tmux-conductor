@@ -4,7 +4,16 @@ Terminal UAT files (`passed`, `skipped`, or `trashed`) moved here by `/wiki-arch
 
 | ID | Title | Final Status | Archived |
 |----|-------|--------------|----------|
+| [[UAT-0194]] | UAT: Resolve the calling agent's project on the server and restrict bg restart to same-project callers | passed | 2026-09-20 |
+| [[UAT-0198]] | UAT: Drop bg_processes.linked_agent_id via a table-rebuild migration (schema v12) | passed | 2026-09-20 |
+| [[UAT-0217]] | UAT: Cover delete-after-clone worktree and branch teardown with a test | passed | 2026-09-20 |
+| [[UAT-0190]] | UAT: Add one atomic restart operation for a bg process that reattaches log capture and writes a restart marker | passed | 2026-09-20 |
+| [[UAT-0212]] | UAT: Guard and test that new worktrees land in a newly created sibling directory of the repo root | passed | 2026-09-20 |
+| [[UAT-0184]] | UAT: Detect outstanding background jobs in agent status detection via ~/.claude/jobs/*/state.json | passed | 2026-09-19 |
+| [[UAT-0183]] | UAT: Sort the agent sidebar alphabetically by default with drag-to-reorder persisted in localStorage (15/15 auto-passed, unit-backed; UI/pointer-drag cases excluded at generation) | passed | 2026-09-19 |
+| [[UAT-0182]] | UAT: Address tmux windows with exact-match `=` targets (6/7 auto-passed; UI-001 skipped by user) | passed | 2026-09-19 |
 | [[UAT-0168]] | UAT: Update stale agent-status-observability wiki pages, then run a full audit of the shipped transitions.jsonl feature | skipped | 2026-09-18 |
+| [[UAT-0201]] | UAT: Make the agent sidebar collapsible into a status-dot rail | skipped | 2026-09-20 |
 | [[UAT-129]] | UAT: Port isolation for scripts/verify-sqlite-migration.sh | passed | 2026-09-17 |
 | [[UAT-155]] | UAT: Add a Bash >=4 self-check guard to scripts/lib/db.sh | passed | 2026-09-17 |
 | [[UAT-136]] | UAT: Audit every Direct Input focus-transition scenario | passed | 2026-09-13 |
@@ -138,3 +147,10 @@ Terminal UAT files (`passed`, `skipped`, or `trashed`) moved here by `/wiki-arch
 | [[UAT-149]] | UAT: Fix Cmd/Ctrl/Option+Arrow cursor navigation in the Direct Input terminal | passed | 2026-09-18 |
 | [[UAT-0163]] | UAT: Fix copy/paste reliability in the Direct Input terminal | passed | 2026-09-18 |
 | [[UAT-0165]] | UAT: Handle Cmd+Backspace and Option+Backspace in the Direct Input Terminal | passed | 2026-09-18 |
+| [[UAT-132]] | UAT: Fix context-window limit lookup in host-server/context.ts | passed | 2026-09-19 |
+| [[UAT-135]] | UAT: Dark-mode sweep — replace remaining hardcoded bg-white/surface literals across every page and component | passed | 2026-09-19 |
+| [[UAT-146]] | UAT: Toast-like notifications on agent status change (waiting / no tasks), click switches to that agent | passed | 2026-09-19 |
+| [[UAT-0172]] | UAT: Extract AgentDetailModal's content into a non-overlay AgentDetailView | passed | 2026-09-19 |
+| [[UAT-0181]] | UAT: Remove the Inactive Agents accordion — show all agents in the sidebar with a red border + Show inactive checkbox | passed | 2026-09-19 |
+| [[UAT-0179]] | UAT: Remove the toast notification feature (TASK-146) (Skipped) | skipped | 2026-09-19 |
+| [[UAT-0196]] | UAT: Per-project bg process name uniqueness with a derived project-name slug identity | passed | 2026-09-20 |

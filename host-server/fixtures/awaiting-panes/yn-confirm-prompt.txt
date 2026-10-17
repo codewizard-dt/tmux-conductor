@@ -1,0 +1,4 @@
+● Bash(./scripts/setup-sample.sh)
+  ⎿  Preparing sample workspace
+     Found existing config.example.yml
+     Overwrite existing config [Y/n]

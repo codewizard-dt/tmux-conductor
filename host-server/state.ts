@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { spawnSync } from 'child_process';
 import type { ConductorConf } from './config.ts';
+import { hasActiveBackgroundJob } from './backgroundJobs.ts';
 
 export type AgentType = 'claude' | 'codex' | 'custom';
 export type AgentRunState = 'no-window' | 'exited' | 'idle' | 'busy' | 'awaiting' | 'stalled' | 'starting' | 'unknown';
@@ -9,7 +10,7 @@ export type AgentRunState = 'no-window' | 'exited' | 'idle' | 'busy' | 'awaiting
 export type DetectionReason =
   | 'no-window' | 'exited' | 'starting'
   | 'state-file' | 'busy-recovered' | 'awaiting-pattern'
-  | 'regex-fallback' | 'inventory-timeout';
+  | 'regex-fallback' | 'inventory-timeout' | 'background-job';
 
 export interface DetectedStatus {
   state: AgentRunState;
@@ -18,6 +19,12 @@ export interface DetectedStatus {
 }
 
 const TMUX_SYNC_TIMEOUT_MS = Number(process.env['TMUX_SYNC_TIMEOUT_MS'] ?? '100');
+// Delay between typing text into a pane and pressing Enter; mirrors scripts/dispatch.sh's
+// `sleep 0.3  # let the UI render before submitting`.
+const DISPATCH_SUBMIT_DELAY_MS = Number(process.env['DISPATCH_SUBMIT_DELAY_MS'] ?? '300');
+// /clear resets the whole session and needs longer to settle than a plain prompt.
+const DISPATCH_POST_CLEAR_DELAY_MS = Number(process.env['DISPATCH_POST_CLEAR_DELAY_MS'] ?? '1000');
+const sleep = (ms: number): Promise<void> => new Promise<void>((resolve) => setTimeout(resolve, ms));
 const GREP_SYNC_TIMEOUT_MS = Number(process.env['GREP_SYNC_TIMEOUT_MS'] ?? '100');
 
 interface AgentStatusProfile {
@@ -56,12 +63,17 @@ export function readAgentState(stateDir: string, agentName: string): string {
   }
 }
 
+/** Exact-match tmux window target. Bare `sess:win` PREFIX-matches (e.g. `foo` → `foo-copy`); `=` forbids that. */
+export function windowTarget(sessionName: string, windowName: string): string {
+  return `${sessionName}:=${windowName}`;
+}
+
 /**
  * Capture the last `n` non-blank lines of an agent's tmux pane.
  * Returns '' if the pane can't be captured (window gone, tmux error).
  */
 export function capturePaneTail(sessionName: string, windowName: string, n: number): string {
-  const result = spawnSync('tmux', ['capture-pane', '-t', `${sessionName}:${windowName}`, '-p'], {
+  const result = spawnSync('tmux', ['capture-pane', '-t', windowTarget(sessionName, windowName), '-p'], {
     encoding: 'utf8',
     timeout: TMUX_SYNC_TIMEOUT_MS,
   });
@@ -81,7 +93,7 @@ export function capturePaneTail(sessionName: string, windowName: string, n: numb
  * Returns '' if the pane can't be captured.
  */
 export function capturePaneTailRaw(sessionName: string, windowName: string, n: number): string {
-  const target = `${sessionName}:${windowName}`;
+  const target = windowTarget(sessionName, windowName);
   const result = spawnSync(
     'tmux',
     ['capture-pane', '-t', target, '-p', '-e', '-S', `-${String(n)}`],
@@ -123,6 +135,12 @@ export interface TmuxWindowInventory {
   sessionExists: boolean;
   timedOut: boolean;
   windows: Map<string, string>;
+  /**
+   * Window name -> tmux `#{window_activity}` in epoch ms (last output/activity in the window).
+   * Only used to date the {@link BG_STARTUP_GRACE_MS} startup grace; a window missing here just
+   * gets no grace. Separate from `windows` so existing readers of that map are unaffected.
+   */
+  windowActivityMs: Map<string, number>;
 }
 
 /**
@@ -136,7 +154,7 @@ export interface TmuxWindowInventory {
 export function readTmuxWindowInventory(sessionName: string): TmuxWindowInventory {
   const result = spawnSync(
     'tmux',
-    ['list-windows', '-t', sessionName, '-F', '#{window_name}\t#{pane_current_command}'],
+    ['list-windows', '-t', sessionName, '-F', '#{window_name}\t#{pane_current_command}\t#{window_activity}'],
     { encoding: 'utf8', timeout: TMUX_SYNC_TIMEOUT_MS },
   );
   if (result.status !== 0 || typeof result.stdout !== 'string') {
@@ -145,19 +163,24 @@ export function readTmuxWindowInventory(sessionName: string): TmuxWindowInventor
       sessionExists: false,
       timedOut: err?.code === 'ETIMEDOUT',
       windows: new Map(),
+      windowActivityMs: new Map(),
     };
   }
 
   const windows = new Map<string, string>();
+  const windowActivityMs = new Map<string, number>();
   for (const line of result.stdout.split('\n')) {
     if (line.trim() === '') continue;
-    const tab = line.indexOf('\t');
-    const windowName = (tab >= 0 ? line.slice(0, tab) : line).trim();
+    const [rawName = '', rawCommand = '', rawActivity = ''] = line.split('\t');
+    const windowName = rawName.trim();
     if (windowName === '') continue;
-    const currentCommand = tab >= 0 ? line.slice(tab + 1).trim() : '';
-    windows.set(windowName, currentCommand);
+    windows.set(windowName, rawCommand.trim());
+    const activitySecs = Number(rawActivity.trim());
+    if (rawActivity.trim() !== '' && Number.isFinite(activitySecs)) {
+      windowActivityMs.set(windowName, activitySecs * 1000);
+    }
   }
-  return { sessionExists: true, timedOut: false, windows };
+  return { sessionExists: true, timedOut: false, windows, windowActivityMs };
 }
 
 /**
@@ -216,7 +239,7 @@ export function applyGlobalPaneSize(
   for (const windowName of windowNames) {
     const resize = spawnSync(
       'tmux',
-      ['resize-window', '-t', `${sessionName}:${windowName}`, '-x', String(cols), '-y', String(rows)],
+      ['resize-window', '-t', windowTarget(sessionName, windowName), '-x', String(cols), '-y', String(rows)],
       { encoding: 'utf8', timeout: TMUX_SYNC_TIMEOUT_MS },
     );
     if (resize.status === 0) resizedWindows += 1;
@@ -280,11 +303,67 @@ function isPaneDead(sessionName: string, windowName: string, launchCmd: string):
   if (SHELL_COMMANDS.has(cmdName)) return false; // shell agents are always "alive"
   const result = spawnSync(
     'tmux',
-    ['display-message', '-p', '-t', `${sessionName}:${windowName}`, '#{pane_current_command}'],
+    ['display-message', '-p', '-t', windowTarget(sessionName, windowName), '#{pane_current_command}'],
     { encoding: 'utf8', timeout: TMUX_SYNC_TIMEOUT_MS },
   );
   if (result.status !== 0 || typeof result.stdout !== 'string') return false;
   return SHELL_COMMANDS.has(result.stdout.trim());
+}
+
+/**
+ * How long after a bg window's last tmux activity a plain shell in the pane still reads as
+ * `running`. Right after `send-keys` the pane shows the shell for a moment before the child
+ * process forks, so an immediate `exited` would be a false positive on every (re)start.
+ */
+export const BG_STARTUP_GRACE_MS = 3000;
+
+export type BgLiveness = 'running' | 'exited' | 'stopped';
+
+/**
+ * Pure liveness classification for a background process, using the same
+ * `pane_current_command` rule as {@link isPaneDead}:
+ *   1. window absent                              -> 'stopped'
+ *   2. tmux gave no command (empty/whitespace)    -> 'running' (fail toward not restarting)
+ *   3. launch command is itself a shell           -> 'running' (a shell in the pane is normal)
+ *   4. pane fell back to a plain shell            -> 'exited', unless inside the startup grace
+ *   5. anything else                              -> 'running'
+ *
+ * `windowActivityMs` (epoch ms of the window's last activity) and `nowMs` date the
+ * {@link BG_STARTUP_GRACE_MS} grace; when either is omitted no grace applies.
+ */
+export function bgLiveness(args: {
+  windowPresent: boolean;
+  paneCommand?: string | null | undefined;
+  launchCmd: string;
+  windowActivityMs?: number;
+  nowMs?: number;
+}): BgLiveness {
+  if (!args.windowPresent) return 'stopped';
+  const paneCommand = path.basename((args.paneCommand ?? '').trim()).toLowerCase();
+  if (paneCommand === '') return 'running';
+  if (SHELL_COMMANDS.has(launchCommandBasename(args.launchCmd))) return 'running';
+  if (!SHELL_COMMANDS.has(paneCommand)) return 'running';
+  if (
+    args.windowActivityMs !== undefined &&
+    args.nowMs !== undefined &&
+    args.nowMs - args.windowActivityMs < BG_STARTUP_GRACE_MS
+  ) {
+    return 'running';
+  }
+  return 'exited';
+}
+
+/**
+ * The slice of a pane tail the awaiting pattern is matched against: the last 8
+ * non-blank lines, minus any `❯ <text>` prompt-draft line (text the user has
+ * typed into the input box must not be read as a dialog prompt).
+ */
+export function awaitingWindow(tail: string): string {
+  return tail
+    .split('\n')
+    .filter((line) => line.trim() !== '' && !/^\s*❯\s+\S/.test(line))
+    .slice(-8)
+    .join('\n');
 }
 
 /**
@@ -302,15 +381,17 @@ function isPaneDead(sessionName: string, windowName: string, launchCmd: string):
  *      (covers an agent relaunched without hook env on top of an old file).
  *      A 'busy' file whose pane shows no BUSY_PATTERN is refined read-only
  *      (the monitor owns the state file; the dashboard never writes it):
- *        - last non-blank line matches AWAITING_PATTERN -> 'awaiting'
+ *        - AWAITING_PATTERN matches the awaiting window (last 8 non-blank lines,
+ *          `❯ <text>` draft lines dropped; see awaitingWindow) -> 'awaiting'
  *          (an interactive dialog is open, e.g. Claude Code's AskUserQuestion
  *          "Enter to select · Esc to cancel" footer)
  *        - file older than 2×POLL_INTERVAL and IDLE_PATTERN matches -> 'idle'
  *          (Stop hook never fired; monitor recovers the file on its next poll)
  *        - file older than STALL_TIMEOUT and NO pattern matches -> 'stalled'
  *          (mid-task but in a state none of the patterns recognise)
- *      An 'awaiting' file is reverted to 'busy' when the dialog footer is gone
- *      (the agent resumed on its own; monitor rewrites the file later).
+ *      An 'awaiting' file is reverted to 'busy' when the dialog footer is gone,
+ *      or (non-codex) when the busy footer is visible (the agent resumed on its
+ *      own; monitor rewrites the file later).
  *   4. capture-pane regex fallback            -> 'busy' if BUSY_PATTERN matches,
  *      'idle' if IDLE_PATTERN matches, 'starting' if the pane is empty, else 'busy'
  *      ('stalled' requires a busy state file — the fallback never reports it)
@@ -360,7 +441,7 @@ export function detectAgentStatus(
     return cachedTail;
   };
   const matchesAwaiting = (tail: string): boolean =>
-    tail !== '' && awaitingPattern !== '' && grepMatches(awaitingPattern, tail.split('\n').slice(-8).join('\n'));
+    tail !== '' && awaitingPattern !== '' && grepMatches(awaitingPattern, awaitingWindow(tail));
 
   const filePath = path.join(stateDir, `${windowName}.state`);
   try {
@@ -369,8 +450,8 @@ export function detectAgentStatus(
       const ageSeconds = (Date.now() - fs.statSync(filePath).mtimeMs) / 1000;
       const tail = tail5();
       if (tail !== '' && !(busyPattern && grepMatches(busyPattern, tail))) {
-        // Dialog open? Last-non-blank-line check mirrors monitor.sh's awaiting
-        // detection. Not age-gated: the dashboard's 2s poll should flag a
+        // Dialog open? Awaiting-window check (last 8 non-blank lines, draft
+        // lines dropped) mirrors monitor.sh's awaiting detection. Not age-gated: the dashboard's 2s poll should flag a
         // waiting agent long before the monitor's next pass.
         if (matchesAwaiting(tail)) {
           return { state: 'awaiting', reason: 'awaiting-pattern', matchedPattern: 'awaiting' };
@@ -406,7 +487,11 @@ export function detectAgentStatus(
     }
     if (state === 'awaiting') {
       const tail = tail5();
-      if (tail !== '' && !matchesAwaiting(tail)) {
+      // BUG-0013: the busy footer never appears alongside a real dialog, so a
+      // visible one means the agent resumed even if a stale awaiting-looking line
+      // lingers. Codex is exempt: its busy pattern is broad and could match
+      // dialog text.
+      if (tail !== '' && (!matchesAwaiting(tail) || (type !== 'codex' && busyPattern && grepMatches(busyPattern, tail)))) {
         // Dialog gone — the agent resumed on its own. monitor.sh reverts the
         // state file on its next poll; report busy read-only meanwhile.
         return { state: 'busy', reason: 'state-file' };
@@ -437,6 +522,28 @@ export function detectAgentStatus(
     return { state: 'idle', reason: 'regex-fallback', matchedPattern: 'idle' };
   }
   return { state: 'busy', reason: 'regex-fallback' };
+}
+
+// Wrapper around detectAgentStatus(): only ever upgrades 'idle' to 'busy',
+// never touches any other state. See TASK-0184's Approach for why this is a
+// separate function rather than a change to detectAgentStatus()'s own
+// matrix — that function's 18-case behavior is unit-tested exhaustively in
+// state.test.ts and must stay byte-for-byte stable.
+export function detectAgentStatusWithBackgroundJobs(
+  conf: ConductorConf,
+  windowName: string,
+  launchCmd: string,
+  workdir: string,
+  precapturedTail?: string,
+  windowPresent?: boolean,
+  paneCurrentCommand?: string | null,
+): DetectedStatus {
+  const result = detectAgentStatus(conf, windowName, launchCmd, precapturedTail, windowPresent, paneCurrentCommand);
+  if (result.state !== 'idle') return result;
+  if (hasActiveBackgroundJob(conf.stateDir, windowName, workdir, conf.pendingAgentStaleMs)) {
+    return { state: 'busy', reason: 'background-job' };
+  }
+  return result;
 }
 
 export type AgentMode = 'default' | 'acceptEdits' | 'plan' | 'bypass' | 'unknown';
@@ -472,14 +579,15 @@ export function detectAgentMode(conf: ConductorConf, agentName: string, launchCm
 }
 
 /**
- * Check whether a tmux window exists in the given session.
+ * Check whether a tmux window with exactly this name exists in the given session
+ * (exact-name match, not a prefix match).
  *
  * @param {string} sessionName - tmux session name
  * @param {string} windowName - tmux window name
  * @returns {boolean}
  */
 export function isTmuxWindowPresent(sessionName: string, windowName: string): boolean {
-  const result = spawnSync('tmux', ['has-session', '-t', `${sessionName}:${windowName}`], {
+  const result = spawnSync('tmux', ['has-session', '-t', windowTarget(sessionName, windowName)], {
     encoding: 'utf8',
     timeout: TMUX_SYNC_TIMEOUT_MS,
   });
@@ -516,10 +624,67 @@ export function windowState(
   return { count, live: !isPaneDead(sessionName, windowName, launchCmd) };
 }
 
-export function sendTextToPane(sessionName: string, windowName: string, text: string): void {
-  const target = `${sessionName}:${windowName}`;
-  spawnSync('tmux', ['send-keys', '-t', target, '-l', '--', text], { encoding: 'utf8', timeout: TMUX_SYNC_TIMEOUT_MS });
-  spawnSync('tmux', ['send-keys', '-t', target, 'Enter'], { encoding: 'utf8', timeout: TMUX_SYNC_TIMEOUT_MS });
+/**
+ * Single-window variant of {@link bgLiveness} for callers without a window
+ * inventory: one `display-message` for the pane's current command and window
+ * activity (a failed call means the window is absent -> 'stopped').
+ */
+export function bgLivenessForWindow(sessionName: string, windowName: string, launchCmd: string): BgLiveness {
+  const result = spawnSync(
+    'tmux',
+    ['display-message', '-p', '-t', windowTarget(sessionName, windowName), '#{pane_current_command}\t#{window_activity}'],
+    { encoding: 'utf8', timeout: TMUX_SYNC_TIMEOUT_MS },
+  );
+  if (result.status !== 0 || typeof result.stdout !== 'string') return 'stopped';
+  const [paneCommand = '', rawActivity = ''] = result.stdout.replace(/\n$/, '').split('\t');
+  const activitySecs = Number(rawActivity.trim());
+  return bgLiveness({
+    windowPresent: true,
+    paneCommand,
+    launchCmd,
+    ...(rawActivity.trim() !== '' && Number.isFinite(activitySecs)
+      ? { windowActivityMs: activitySecs * 1000, nowMs: Date.now() }
+      : {}),
+  });
+}
+
+export type PaneSendDeps = {
+  run?: ((args: string[]) => void) | undefined;
+  sleep?: ((ms: number) => Promise<void>) | undefined;
+};
+
+const runTmux = (args: string[]): void => {
+  spawnSync('tmux', args, { encoding: 'utf8', timeout: TMUX_SYNC_TIMEOUT_MS });
+};
+
+/** Types `text` into the pane, waits for the CLI to render it, then submits with a separate Enter. */
+export async function sendTextToPane(
+  sessionName: string,
+  windowName: string,
+  text: string,
+  deps?: PaneSendDeps,
+): Promise<void> {
+  const run = deps?.run ?? runTmux;
+  const wait = deps?.sleep ?? sleep;
+  const target = windowTarget(sessionName, windowName);
+  run(['send-keys', '-t', target, '-l', '--', text]);
+  await wait(DISPATCH_SUBMIT_DELAY_MS);
+  run(['send-keys', '-t', target, 'Enter']);
+}
+
+/** Dispatches `cmdText` to the pane, optionally sending `/clear` first and letting the session settle. */
+export async function sendDispatchToPane(
+  sessionName: string,
+  windowName: string,
+  cmdText: string,
+  opts: { clearFirst?: boolean | undefined },
+  deps?: PaneSendDeps,
+): Promise<void> {
+  if (opts.clearFirst) {
+    await sendTextToPane(sessionName, windowName, '/clear', deps);
+    await (deps?.sleep ?? sleep)(DISPATCH_POST_CLEAR_DELAY_MS);
+  }
+  await sendTextToPane(sessionName, windowName, cmdText, deps);
 }
 
 // ── Active task derivation ──────────────────────────────────────────────────
