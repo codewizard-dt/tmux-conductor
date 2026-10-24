@@ -1,13 +1,13 @@
 ---
-id: DEC-0004
-aliases: [DEC-0004]
+id: ADR-0004
+aliases: [ADR-0004, DEC-0004]
 title: "AgentDetailModal Rename: Menu Item vs. Click-to-Edit on the Agent Name"
 created: 2026-09-13
 updated: 2026-09-13
 tags: [frontend, ux, accessibility]
 ---
 
-# DEC-0004: AgentDetailModal Rename: Menu Item vs. Click-to-Edit on the Agent Name
+# ADR-0004: AgentDetailModal Rename: Menu Item vs. Click-to-Edit on the Agent Name
 
 > Single-decision group resolving `ROADMAP-021` Phase 4 item 2: whether `AgentDetailModal` should replace its menu-triggered Rename flow (the "Rename" entry in the shipped `AgentActionsMenu`, TASK-148) with click-to-edit directly on the agent-name text.
 
@@ -21,7 +21,7 @@ tags: [frontend, ux, accessibility]
 
 This item was explicitly deferred pending TASK-148's shipment (`ROADMAP-021` Phase 4 item 2: "evaluate after Phase 2 ships"). It is now unblocked. Backed by dedicated research: [[agent-rename-click-to-edit|wiki/knowledge/sources/agent-rename-click-to-edit.md]] (full primary sources in `raw/research/agent-rename-click-to-edit/sources.md`).
 
-A closely related prior decision in this same modal, [[DEC-0002#D1]] (tabbed "Agent info" panel, accepted no-go), used the same underlying cost structure this decision relies on: no headless-UI/interactive-widget primitive exists anywhere in `frontend/package.json`, so any hand-built custom-widget behavior is new bespoke code with its own accessibility correctness surface, not a free upgrade over the native-element status quo. Tags overlap (`frontend, ux, accessibility`) but the decision areas are distinct — DEC-0002 concerns body-panel structure, this decision concerns the header's rename trigger — so this is filed as a fresh, independent decision rather than a D-block added to DEC-0002; **Supersedes: none**.
+A closely related prior decision in this same modal, [[ADR-0002#D1]] (tabbed "Agent info" panel, accepted no-go), used the same underlying cost structure this decision relies on: no headless-UI/interactive-widget primitive exists anywhere in `frontend/package.json`, so any hand-built custom-widget behavior is new bespoke code with its own accessibility correctness surface, not a free upgrade over the native-element status quo. Tags overlap (`frontend, ux, accessibility`) but the decision areas are distinct — ADR-0002 concerns body-panel structure, this decision concerns the header's rename trigger — so this is filed as a fresh, independent decision rather than a D-block added to ADR-0002; **Supersedes: none**.
 
 ---
 
@@ -43,7 +43,7 @@ A closely related prior decision in this same modal, [[DEC-0002#D1]] (tabbed "Ag
 |---|--------|-----------------|
 | 1 | Discoverability of the rename affordance | Click-to-edit-on-plain-text has no visible signifier; an explicit "Rename" label is self-describing by construction |
 | 2 | Keyboard/screen-reader accessibility cost | Native `<button>` menu items get WCAG 2.1.1 keyboard operability for free; a clickable text element needs manual `tabindex`/key-handling and a way to signal "this is editable" to assistive tech |
-| 3 | No existing interactive-text primitive in `frontend/package.json` | Any click-to-edit implementation is new bespoke code with its own correctness surface, the same constraint `DEC-0002` identified for a hand-built tabs widget in this same modal |
+| 3 | No existing interactive-text primitive in `frontend/package.json` | Any click-to-edit implementation is new bespoke code with its own correctness surface, the same constraint `ADR-0002` identified for a hand-built tabs widget in this same modal |
 | 4 | Marginal capability gained vs. cost, if added *alongside* the menu item rather than replacing it | The feature is already reachable, accessible, and discoverable; a second trigger duplicates it for zero new capability |
 | 5 | Single-user, local-only tool | No broad user base whose aggregate click-savings justify a second, less-accessible entry point to an infrequent action (per `CLAUDE.md`: "fully local and single-user... no auth") |
 
@@ -95,7 +95,7 @@ A closely related prior decision in this same modal, [[DEC-0002#D1]] (tabbed "Ag
 
 ### Decision Outcome
 
-**Chosen option**: **Option B — keep Rename as the explicit "Rename" entry in `AgentActionsMenu`, triggering the existing inline `showRenameInput`/`handleRename` input**, because click-to-edit-on-text is a textbook hidden affordance with no discoverability parity to an explicit label, and would introduce new keyboard/screen-reader accessibility surface (manual focus/key handling, or an edit-state announcement to assistive tech) that the current native-button trigger gets for free. This is the same cost/benefit shape [[DEC-0002#D1]] already used in this exact modal to reject a hand-built tabs widget: no existing primitive in `frontend/package.json` means any custom interactive control is new bespoke accessibility-correctness surface, and here that cost isn't offset by any new capability at all — the action is already reachable, already keyboard-accessible, and already discoverable. Adding click-to-edit as a *second*, parallel trigger (Option C) fares no better: it carries the same discoverability/a11y liability while duplicating a feature that already works, for a single-user local tool where the click-savings on an infrequent action doesn't clear the bar for new custom-widget surface.
+**Chosen option**: **Option B — keep Rename as the explicit "Rename" entry in `AgentActionsMenu`, triggering the existing inline `showRenameInput`/`handleRename` input**, because click-to-edit-on-text is a textbook hidden affordance with no discoverability parity to an explicit label, and would introduce new keyboard/screen-reader accessibility surface (manual focus/key handling, or an edit-state announcement to assistive tech) that the current native-button trigger gets for free. This is the same cost/benefit shape [[ADR-0002#D1]] already used in this exact modal to reject a hand-built tabs widget: no existing primitive in `frontend/package.json` means any custom interactive control is new bespoke accessibility-correctness surface, and here that cost isn't offset by any new capability at all — the action is already reachable, already keyboard-accessible, and already discoverable. Adding click-to-edit as a *second*, parallel trigger (Option C) fares no better: it carries the same discoverability/a11y liability while duplicating a feature that already works, for a single-user local tool where the click-savings on an infrequent action doesn't clear the bar for new custom-widget surface.
 
 ### Decision Flow
 
@@ -130,7 +130,7 @@ flowchart TD
 
 ### Links
 
-- Related decisions: [[DEC-0002#D1]] — same modal, same cost-structure reasoning (no existing custom-widget primitive), different decision area (body-panel structure vs. header rename trigger)
+- Related decisions: [[ADR-0002#D1]] — same modal, same cost-structure reasoning (no existing custom-widget primitive), different decision area (body-panel structure vs. header rename trigger)
 - Supersedes: none
 - Source: [[agent-rename-click-to-edit|wiki/knowledge/sources/agent-rename-click-to-edit.md]], [[accessible-dropdown-menu-pattern|wiki/knowledge/concepts/accessible-dropdown-menu-pattern.md]]
 - Roadmap: `wiki/work/roadmaps/ROADMAP-021-agent-modal-simplification.md` (Phase 4, item 2)

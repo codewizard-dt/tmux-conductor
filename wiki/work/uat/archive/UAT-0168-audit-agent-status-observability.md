@@ -1,5 +1,6 @@
 ---
 id: UAT-0168
+aliases: [UAT-0168]
 title: "UAT: Update stale agent-status-observability wiki pages, then run a full audit of the shipped transitions.jsonl feature (Skipped)"
 task: wiki/work/tasks/TASK-0168-audit-agent-status-observability.md
 status: skipped

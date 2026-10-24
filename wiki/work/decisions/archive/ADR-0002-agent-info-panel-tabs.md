@@ -1,13 +1,13 @@
 ---
-id: DEC-0002
-aliases: [DEC-0002]
+id: ADR-0002
+aliases: [ADR-0002, DEC-0002]
 title: "AgentDetailModal Agent-Info Panel: Tabs vs. Stacked Accordions"
 created: 2026-09-13
 updated: 2026-09-13
 tags: [frontend, ux, accessibility]
 ---
 
-# DEC-0002: AgentDetailModal Agent-Info Panel: Tabs vs. Stacked Accordions
+# ADR-0002: AgentDetailModal Agent-Info Panel: Tabs vs. Stacked Accordions
 
 > Single-decision group resolving `ROADMAP-021` Phase 4 item 1: whether `AgentDetailModal`'s Skills/Diff/Usage/Checkpoints panels should consolidate into one tabbed "Agent info" panel instead of remaining four stacked `<details>` accordions.
 
@@ -25,13 +25,13 @@ This exact idea was already surfaced in same-day prior research on this same mod
 
 ## D1. Keep Skills/Diff/Usage/Checkpoints as four independent stacked accordions (no-go on tabs)
 
-- **Status**: superseded by [[DEC-0005#D1]] (2026-09-13, same day)
+- **Status**: superseded by [[ADR-0005#D1]] (2026-09-13, same day)
 - **Date**: 2026-09-13
 - **Deciders**: David Taylor
 - **Supersedes**: none
 - **Tags**: frontend, ux, accessibility
 
-> **Superseded 2026-09-13**: The product owner gave explicit direction reversing this call — tabs are wanted after all, with a fifth **Terminal** tab (moving the live terminal in from always-visible). See [[DEC-0005#D1]] for the reversal and its added Terminal-tab scope. This block's analysis is preserved unedited below as the historical record of the original (superseded) reasoning.
+> **Superseded 2026-09-13**: The product owner gave explicit direction reversing this call — tabs are wanted after all, with a fifth **Terminal** tab (moving the live terminal in from always-visible). See [[ADR-0005#D1]] for the reversal and its added Terminal-tab scope. This block's analysis is preserved unedited below as the historical record of the original (superseded) reasoning.
 
 ### Context (decision-specific)
 

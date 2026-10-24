@@ -1,13 +1,13 @@
 ---
-id: DEC-0001
-aliases: [DEC-0001]
+id: ADR-0001
+aliases: [ADR-0001, DEC-0001]
 title: "Conductor Usage-Check Hardening"
 created: 2026-08-15
 updated: 2026-08-15
 tags: [conductor-conf, usage-monitoring, reliability]
 ---
 
-# DEC-0001: Conductor Usage-Check Hardening
+# ADR-0001: Conductor Usage-Check Hardening
 
 > Decision Group covering `conductor.conf`'s `USAGE_CHECK_CMD` — both what it should do (D1) and how a no-op value in it must be written (D2). Both decisions came out of the same investigation, triggered by the same discovery: `monitor.sh` calls `check_usage()` before every dispatch, and its documented example values were wrong in ways that fail silently and severely.
 
@@ -126,7 +126,7 @@ flowchart TD
 
 ### Links
 
-- Related decisions: [[DEC-0001-usage-check-hardening|DEC-0001#D2: bare `true`, never `/bin/true`]]
+- Related decisions: [[ADR-0001-usage-check-hardening|ADR-0001#D2: bare `true`, never `/bin/true`]]
 - Supersedes: none
 - Source: [[claude-usage-quota-signal|wiki/knowledge/sources/claude-usage-quota-signal.md]], [[claude-subscription-usage-signal-gap|wiki/knowledge/concepts/claude-subscription-usage-signal-gap.md]]
 - No source task — found and fixed directly in `conductor.conf` during a live investigation session, not via a dedicated `/tackle`.
@@ -217,6 +217,6 @@ flowchart TD
 
 ### Links
 
-- Related decisions: [[DEC-0001-usage-check-hardening|DEC-0001#D1: no automated usage-limit checking]]
+- Related decisions: [[ADR-0001-usage-check-hardening|ADR-0001#D1: no automated usage-limit checking]]
 - Supersedes: none
 - No source task — caught and fixed directly in `conductor.conf` while deploying D1's fix.

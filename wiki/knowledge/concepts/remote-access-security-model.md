@@ -24,8 +24,8 @@ Option 2 is the better fit whenever "single-user, no deployment, no auth" is a s
 
 **Adjacent, distinct threat (2026-09-20):** all of the above is about *network* reachability. Even with the port bound to loopback and no remote access at all, a wildcard CORS origin lets any web page in the user's own browser read the host-server's responses — see [[local-server-cors-wildcard-exposure]]. A mesh VPN does not address it; restricting `CORS_ORIGIN` does.
 
-**Decision**: [[DEC-0003-remote-access-and-trust-boundary|DEC-0003#D2: where the trust boundary lives]] records this choice formally — `proposed`, outcome left open pending `/decision-finalize`.
+**Decision**: [[ADR-0003-remote-access-and-trust-boundary|ADR-0003#D2: where the trust boundary lives]] records this choice formally — `proposed`, outcome left open pending `/decision-finalize`.
 
 relates_to::[[remote-tunnel-access]]
 relates_to::[[Host Server]]
-informs::[[DEC-0003-remote-access-and-trust-boundary]]
+informs::[[ADR-0003-remote-access-and-trust-boundary]]

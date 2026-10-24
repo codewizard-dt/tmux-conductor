@@ -14,11 +14,11 @@ tags: [frontend, ux, accessibility]
 
 # TASK-157 — Consolidate Terminal/Skills/Diff/Usage/Checkpoints into one tabbed panel in AgentDetailModal
 
-implements::[[DEC-0005#D1]]
+implements::[[ADR-0005#D1]]
 
 ## Objective
 
-Per `[[DEC-0005#D1]]` (reversing `DEC-0002#D1`'s no-go), replace `AgentDetailModal`'s current layout — an always-visible terminal (`LogTail`) above four independent stacked `<details>` accordions (Skills, `DiffPanel`, `UsageBreakdown`, `CheckpointList`) — with **one hand-built WAI-ARIA tabbed panel** holding five tabs, in order: **Terminal, Skills, Diff, Usage, Checkpoints**. Terminal is the default-active tab on modal open, preserving today's "terminal is what you see first" behavior. A tab whose panel would currently render `null`/not mount (Diff/Usage/Checkpoints, per-agent) is omitted from the tab strip entirely, not shown disabled.
+Per `[[ADR-0005#D1]]` (reversing `ADR-0002#D1`'s no-go), replace `AgentDetailModal`'s current layout — an always-visible terminal (`LogTail`) above four independent stacked `<details>` accordions (Skills, `DiffPanel`, `UsageBreakdown`, `CheckpointList`) — with **one hand-built WAI-ARIA tabbed panel** holding five tabs, in order: **Terminal, Skills, Diff, Usage, Checkpoints**. Terminal is the default-active tab on modal open, preserving today's "terminal is what you see first" behavior. A tab whose panel would currently render `null`/not mount (Diff/Usage/Checkpoints, per-agent) is omitted from the tab strip entirely, not shown disabled.
 
 **Why this is riskier than a typical accordion→tabs swap**: the terminal moving into a tab means it is only on-screen when its tab is active — this changes the modal's primary interaction model, not just its info panels. Two existing mechanisms assumed the terminal was always visible and must be updated so they still work correctly under tabs:
 1. `TASK-131`'s "Direct Input default-on every `LogTail` mount" effect — must still fire/be visibly focused when the Terminal tab becomes active, not just on component mount (which under tabs may happen once, at modal-open, regardless of which tab is initially shown to the user if a future change ever makes Terminal non-default).

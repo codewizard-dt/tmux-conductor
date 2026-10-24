@@ -700,6 +700,97 @@
       font-weight: 600;
     }
 
+    /* ---- Usage page ---- */
+    .usage-page {
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+
+    .usage-meta {
+      font-size: 12px;
+      color: var(--text-faint);
+    }
+
+    .usage-totals {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+      gap: 12px;
+    }
+
+    .usage-stat {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .usage-stat-label {
+      font-size: 11px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .usage-stat-value {
+      font-family: var(--mono);
+      font-size: 16px;
+      font-weight: 600;
+    }
+
+    .usage-scroll {
+      overflow-x: auto;
+      max-width: 100%;
+    }
+
+    .usage-table {
+      border-collapse: collapse;
+      width: 100%;
+      font-size: 13px;
+    }
+
+    .usage-table th, .usage-table td {
+      border: 1px solid var(--panel-border);
+      padding: 5px 10px;
+      text-align: left;
+    }
+
+    .usage-table th {
+      background: var(--count-bg);
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    .usage-table .num {
+      text-align: right;
+      font-family: var(--mono);
+      white-space: nowrap;
+    }
+
+    .usage-table .mono {
+      font-family: var(--mono);
+      font-size: 12px;
+    }
+
+    .usage-notice {
+      padding: 8px 12px;
+      border-radius: 8px;
+      background: var(--badge-bad-bg);
+      color: var(--badge-bad-text);
+      font-size: 12px;
+    }
+
+    .usage-footnote {
+      margin: 0;
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .card-desc {
+      font-size: 12px;
+      color: var(--text-muted);
+      min-height: 22px;
+    }
+
     .not-found {
       color: var(--text-muted);
       font-style: italic;
@@ -774,6 +865,15 @@
       bugs: 'Bugs',
     };
 
+    // Families whose finished items stay in place and are listed under the
+    // "## Closed" heading of the family index.md (no archive/). tasks, uat and
+    // bugs still archive, so their section is labelled "Archived".
+    const IN_PLACE_FAMILIES = ['requirements', 'decisions', 'roadmaps'];
+
+    function closedLabel(family) {
+      return IN_PLACE_FAMILIES.indexOf(family) !== -1 ? 'Closed' : 'Archived';
+    }
+
     // How often (ms) the poll loop re-fetches the family indexes.
     const POLL_INTERVAL_MS = 5000;
 
@@ -786,6 +886,7 @@
       'proposed': 'neutral',
       'pending': 'neutral',
       'in-progress': 'accent',
+      'pending-uat': 'accent',
       'triaged': 'accent',
       'active': 'accent',
       'done': 'good',
@@ -797,6 +898,7 @@
       'trashed': 'muted',
       'skipped': 'muted',
       'retired': 'muted',
+      'deprecated': 'muted',
       'superseded': 'muted',
       'wontfix': 'muted',
       'duplicate': 'muted',
@@ -850,12 +952,12 @@
     // Two supported source formats:
     //
     // 1. Active-index bullet lines (all sub-parts optional):
-    //      - [TASK-NNN — Title](TASK-NNN-slug.md) — summary · status
+    //      - [TASK-NNNN — Title](TASK-NNNN-slug.md) — summary · status
     //    Separators matched literally: em dash — (U+2014) between title and
     //    summary; middle dot · (U+00B7) before status suffix(es).
     //
     // 2. Archive-index table rows:
-    //      | [[TASK-NNN]] | Title | Final Status | Archived |
+    //      | [[TASK-NNNN]] | Title | Final Status | Archived |
     //    A data row is identified by its first cell being a [[...]] wiki-link
     //    (the header and |----| separator rows fail that gate). Escaped
     //    pipes (\|) inside cells are handled. Archive rows have no markdown
@@ -905,25 +1007,47 @@
       return items;
     }
 
-    // --- Fetch one file, returning parsed items ([] on any failure/404) ---
-    async function fetchIndexFile(url) {
+    // --- Fetch one file's raw text ('' on any failure/404) ---
+    async function fetchIndexText(url) {
       try {
         const resp = await fetch(url, { cache: 'no-store' });
-        if (!resp.ok) return []; // 404 (no archive/empty family) etc. -> zero items
-        const text = await resp.text();
-        return parseIndexMarkdown(text);
+        if (!resp.ok) return ''; // 404 (no archive/empty family) etc. -> zero items
+        return await resp.text();
       } catch (_err) {
-        return [];
+        return '';
       }
     }
 
-    // --- Fetch one family's active + archived items ---
+    // --- Split a family index.md at its "## Closed" heading ---
+    // In-place families (roadmaps, decisions, requirements) list finished
+    // items under "## Closed"; everything before it is the Active section.
+    // Indexes without that heading (tasks/uat/bugs, or an un-migrated
+    // project) come back with empty closedText, so the whole file is active.
+    function splitClosedSection(text) {
+      const lines = (text || '').split(/\r?\n/);
+      const at = lines.findIndex(function (line) {
+        return /^## Closed\s*$/.test(line);
+      });
+      if (at === -1) return { activeText: text || '', closedText: '' };
+      return {
+        activeText: lines.slice(0, at).join('\n'),
+        closedText: lines.slice(at + 1).join('\n'),
+      };
+    }
+
+    // --- Fetch one family's active + archived/closed items ---
+    // archived = Closed-section rows of index.md, then any legacy
+    // archive/index.md rows (tasks/uat/bugs, and un-migrated projects).
     async function fetchFamily(familyName) {
-      const [active, archived] = await Promise.all([
-        fetchIndexFile('/wiki/work/' + familyName + '/index.md'),
-        fetchIndexFile('/wiki/work/' + familyName + '/archive/index.md'),
+      const [indexText, archiveText] = await Promise.all([
+        fetchIndexText('/wiki/work/' + familyName + '/index.md'),
+        fetchIndexText('/wiki/work/' + familyName + '/archive/index.md'),
       ]);
-      return { active: active, archived: archived };
+      const sections = splitClosedSection(indexText);
+      return {
+        active: parseIndexMarkdown(sections.activeText),
+        archived: parseIndexMarkdown(sections.closedText).concat(parseIndexMarkdown(archiveText)),
+      };
     }
 
     // --- Fetch + parse the wiki data for all six families ---
@@ -967,6 +1091,7 @@
         try { return decodeURIComponent(p); } catch (e) { return p; }
       });
       const family = parts[0];
+      if (family === 'usage') return { view: 'usage' };
       if (FAMILIES.indexOf(family) === -1) return { view: 'overview' };
       if (parts.length === 1) return { view: 'family', family: family };
       const file = parts.slice(1).join('/');
@@ -1028,7 +1153,7 @@
 
       const arch = document.createElement('div');
       arch.className = 'card-archived';
-      arch.textContent = archived.length + ' archived';
+      arch.textContent = archived.length + ' ' + closedLabel(family).toLowerCase();
       card.appendChild(arch);
 
       return card;
@@ -1042,7 +1167,30 @@
         const bucket = (data && data[family]) || { active: [], archived: [] };
         grid.appendChild(buildFamilyCard(family, bucket));
       });
+      grid.appendChild(buildUsageCard());
       container.appendChild(grid);
+    }
+
+    // Static entry card for the usage page. It never fetches: the usage
+    // report parse is heavy, so data loads only once #/usage is entered.
+    function buildUsageCard() {
+      const card = document.createElement('a');
+      card.className = 'family-card';
+      card.href = '#/usage';
+
+      const top = document.createElement('div');
+      top.className = 'card-top';
+      const h2 = document.createElement('h2');
+      h2.textContent = 'Usage';
+      top.appendChild(h2);
+      card.appendChild(top);
+
+      const desc = document.createElement('div');
+      desc.className = 'card-desc';
+      desc.textContent = 'Token and cost rollup by model and skill';
+      card.appendChild(desc);
+
+      return card;
     }
 
     // ============================================================
@@ -1116,10 +1264,12 @@
       return row;
     }
 
-    // Archived row: ID chip + title + final-status badge + archived date.
-    // Unlinked: archive tables carry [[ID]] wiki-links, not paths, and
-    // deriving a filename from an ID is unreliable (slugs vary).
-    function buildArchiveRow(item) {
+    // Archived/Closed row: ID chip + title + final-status badge + archived date.
+    // Archive-table rows are unlinked: they carry [[ID]] wiki-links, not paths,
+    // and deriving a filename from an ID is unreliable (slugs vary). Closed
+    // rows from an in-place index are bullets with a real relative path, so
+    // their title links to the item page.
+    function buildArchiveRow(item, family) {
       const row = document.createElement('div');
       row.className = 'archive-item';
 
@@ -1132,9 +1282,13 @@
         row.appendChild(idEl);
       }
 
-      const labelEl = document.createElement('span');
+      const labelEl = document.createElement(item.path ? 'a' : 'span');
       labelEl.className = 'item-label';
       labelEl.textContent = parsed.label || '(untitled)';
+      if (item.path) {
+        labelEl.href = itemHash(family, item.path);
+        labelEl.title = item.path;
+      }
       row.appendChild(labelEl);
 
       const kw = statusKeyword(item.status);
@@ -1207,7 +1361,7 @@
       details.className = 'panel-archive';
       details.open = archiveWasOpen;
       const summary = document.createElement('summary');
-      summary.appendChild(document.createTextNode('Archived '));
+      summary.appendChild(document.createTextNode(closedLabel(family) + ' '));
       const archCount = document.createElement('span');
       archCount.className = 'archive-count';
       archCount.textContent = String(archived.length);
@@ -1217,10 +1371,10 @@
       const list = document.createElement('div');
       list.className = 'panel-archive-list';
       if (archived.length === 0) {
-        list.appendChild(emptyNote('Nothing archived.'));
+        list.appendChild(emptyNote('Nothing ' + closedLabel(family).toLowerCase() + '.'));
       } else {
         archived.forEach(function (item) {
-          list.appendChild(buildArchiveRow(item));
+          list.appendChild(buildArchiveRow(item, family));
         });
       }
       details.appendChild(list);
@@ -1558,6 +1712,342 @@
     }
 
     // ============================================================
+    // View: usage (token and cost rollup from GET /api/usage)
+    // ============================================================
+
+    const USAGE_TIER_TONES = { haiku: 'muted', sonnet: 'accent', opus: 'good', other: 'neutral' };
+    const USAGE_DAYS_SHOWN = 14;
+
+    let usageResult = null;
+    let usageSerialized = null;
+    let usageInFlight = false;
+
+    // Never throws: { state: 'ok', data } on 200, { state: 'empty' } on 404,
+    // { state: 'error' } on any other status or a network/parse failure.
+    async function fetchUsage() {
+      try {
+        const res = await fetch('/api/usage', { cache: 'no-store' });
+        if (res.status === 404) return { state: 'empty' };
+        if (res.status !== 200) return { state: 'error' };
+        const data = await res.json();
+        return { state: 'ok', data: data };
+      } catch (e) {
+        return { state: 'error' };
+      }
+    }
+
+    // Fetch with an overlap guard (the parse can take seconds); re-render only
+    // when the result changed and the viewer is still on the usage page.
+    async function loadUsage() {
+      if (usageInFlight) return;
+      usageInFlight = true;
+      try {
+        const result = await fetchUsage();
+        const serialized = JSON.stringify(result);
+        const changed = serialized !== usageSerialized;
+        usageResult = result;
+        usageSerialized = serialized;
+        if (changed && parseRoute().view === 'usage') renderRoute();
+      } finally {
+        usageInFlight = false;
+      }
+    }
+
+    function usageNum(v) {
+      return typeof v === 'number' && isFinite(v) ? v.toLocaleString() : '—';
+    }
+
+    // Cost is always shown as an estimate; null means no price is known.
+    function usageCost(v) {
+      if (v === null) return 'unpriced';
+      if (typeof v !== 'number' || !isFinite(v)) return '—';
+      return '~$' + v.toLocaleString(undefined, {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      });
+    }
+
+    function usageText(v) {
+      return typeof v === 'string' && v ? v : '—';
+    }
+
+    function usageRows(v) {
+      return Array.isArray(v)
+        ? v.filter(function (r) { return r && typeof r === 'object'; })
+        : [];
+    }
+
+    // Cost-desc sort key: unpriced or missing costs sink to the bottom.
+    function usageCostKey(row) {
+      return typeof row.cost === 'number' && isFinite(row.cost) ? row.cost : -1;
+    }
+
+    function usageObservedModels(row) {
+      if (!row.models || typeof row.models !== 'object') return null;
+      return Object.keys(row.models);
+    }
+
+    // The usage-report script compares declared vs observed model FAMILIES and
+    // emits the verdict as row.modelCheck (match | mismatch | undeclared | unknown);
+    // the dashboard only displays it.
+    function usageDeclaredMismatch(row) {
+      return row.modelCheck === 'mismatch';
+    }
+
+    function buildUsageTierBadge(tier) {
+      const el = document.createElement('span');
+      const key = typeof tier === 'string' ? tier : 'other';
+      el.className = 'badge badge-' + (USAGE_TIER_TONES[key] || 'neutral');
+      el.textContent = typeof tier === 'string' && tier ? tier : '—';
+      return el;
+    }
+
+    // columns: [{ label, num?, mono?, cell(row) -> string | Node }]
+    function buildUsageTable(columns, rows) {
+      const wrap = document.createElement('div');
+      wrap.className = 'usage-scroll';
+      const table = document.createElement('table');
+      table.className = 'usage-table';
+
+      const thead = document.createElement('thead');
+      const headRow = document.createElement('tr');
+      columns.forEach(function (col) {
+        const th = document.createElement('th');
+        if (col.num) th.className = 'num';
+        th.textContent = col.label;
+        headRow.appendChild(th);
+      });
+      thead.appendChild(headRow);
+      table.appendChild(thead);
+
+      const tbody = document.createElement('tbody');
+      rows.forEach(function (row) {
+        const tr = document.createElement('tr');
+        columns.forEach(function (col) {
+          const td = document.createElement('td');
+          if (col.num) td.className = 'num';
+          else if (col.mono) td.className = 'mono';
+          const value = col.cell(row);
+          if (value instanceof Node) td.appendChild(value);
+          else td.textContent = value;
+          tr.appendChild(td);
+        });
+        tbody.appendChild(tr);
+      });
+      table.appendChild(tbody);
+      wrap.appendChild(table);
+      return wrap;
+    }
+
+    function buildUsagePanel(titleText, bodyNode, metaText) {
+      const panel = document.createElement('section');
+      panel.className = 'panel';
+
+      const header = document.createElement('div');
+      header.className = 'panel-header';
+      const title = document.createElement('h2');
+      title.className = 'panel-title';
+      title.textContent = titleText;
+      header.appendChild(title);
+      if (metaText) {
+        const meta = document.createElement('span');
+        meta.className = 'usage-meta';
+        meta.textContent = metaText;
+        header.appendChild(meta);
+      }
+      panel.appendChild(header);
+
+      const body = document.createElement('div');
+      body.className = 'panel-body';
+      body.appendChild(bodyNode);
+      panel.appendChild(body);
+      return panel;
+    }
+
+    function buildUsageTotals(totals) {
+      const grid = document.createElement('div');
+      grid.className = 'usage-totals';
+      [
+        ['Input', usageNum(totals.input)],
+        ['Output', usageNum(totals.output)],
+        ['Cache write', usageNum(totals.cacheCreation)],
+        ['Cache read', usageNum(totals.cacheRead)],
+        ['Est. cost', usageCost(totals.cost)],
+        ['Turns', usageNum(totals.turns)],
+      ].forEach(function (pair) {
+        const stat = document.createElement('div');
+        stat.className = 'usage-stat';
+        const label = document.createElement('span');
+        label.className = 'usage-stat-label';
+        label.textContent = pair[0];
+        const value = document.createElement('span');
+        value.className = 'usage-stat-value';
+        value.textContent = pair[1];
+        stat.appendChild(label);
+        stat.appendChild(value);
+        grid.appendChild(stat);
+      });
+      return grid;
+    }
+
+    function buildUsageByModel(rows) {
+      if (rows.length === 0) return emptyNote('No per-model data.');
+      return buildUsageTable([
+        { label: 'Model', mono: true, cell: function (r) { return usageText(r.model); } },
+        { label: 'Tier', cell: function (r) { return buildUsageTierBadge(r.tier); } },
+        { label: 'Input', num: true, cell: function (r) { return usageNum(r.input); } },
+        { label: 'Output', num: true, cell: function (r) { return usageNum(r.output); } },
+        { label: 'Cache write', num: true, cell: function (r) { return usageNum(r.cacheCreation); } },
+        { label: 'Cache read', num: true, cell: function (r) { return usageNum(r.cacheRead); } },
+        { label: 'Est. cost', num: true, cell: function (r) { return usageCost(r.cost); } },
+        { label: 'Turns', num: true, cell: function (r) { return usageNum(r.turns); } },
+      ], rows);
+    }
+
+    function buildUsageBySkill(rows) {
+      if (rows.length === 0) return emptyNote('No per-skill data.');
+      const sorted = rows.slice().sort(function (a, b) {
+        const diff = usageCostKey(b) - usageCostKey(a);
+        if (diff !== 0) return diff;
+        return (Number(b.turns) || 0) - (Number(a.turns) || 0);
+      });
+      return buildUsageTable([
+        { label: 'Skill', mono: true, cell: function (r) { return usageText(r.skill); } },
+        { label: 'Declared', mono: true, cell: function (r) { return usageText(r.declaredModel); } },
+        {
+          label: 'Observed',
+          mono: true,
+          cell: function (r) {
+            const observed = usageObservedModels(r);
+            if (!observed || observed.length === 0) return '—';
+            return observed
+              .sort(function (a, b) { return (Number(r.models[b]) || 0) - (Number(r.models[a]) || 0); })
+              .map(function (m) { return m + ' ×' + usageNum(r.models[m]); })
+              .join(', ');
+          },
+        },
+        {
+          label: 'Check',
+          cell: function (r) {
+            if (r.modelCheck !== 'match' && r.modelCheck !== 'mismatch') return '—';
+            const badge = document.createElement('span');
+            if (usageDeclaredMismatch(r)) {
+              badge.className = 'badge badge-bad';
+              badge.textContent = 'mismatch';
+              badge.title = 'A different model family than the declared one ran in this skill\'s turns';
+            } else {
+              badge.className = 'badge badge-good';
+              badge.textContent = 'match';
+            }
+            return badge;
+          },
+        },
+        { label: 'Input', num: true, cell: function (r) { return usageNum(r.input); } },
+        { label: 'Output', num: true, cell: function (r) { return usageNum(r.output); } },
+        { label: 'Est. cost', num: true, cell: function (r) { return usageCost(r.cost); } },
+        { label: 'Turns', num: true, cell: function (r) { return usageNum(r.turns); } },
+      ], sorted);
+    }
+
+    // Most recent days first, capped at USAGE_DAYS_SHOWN.
+    function buildUsageByDay(rows) {
+      if (rows.length === 0) return emptyNote('No daily data.');
+      const recent = rows
+        .slice()
+        .sort(function (a, b) { return String(a.date).localeCompare(String(b.date)); })
+        .slice(-USAGE_DAYS_SHOWN)
+        .reverse();
+      return buildUsageTable([
+        { label: 'Date', mono: true, cell: function (r) { return usageText(r.date); } },
+        { label: 'Est. cost', num: true, cell: function (r) { return usageCost(r.cost); } },
+        { label: 'Turns', num: true, cell: function (r) { return usageNum(r.turns); } },
+      ], recent);
+    }
+
+    function buildUsageFootnote(meta) {
+      const parts = [
+        'Costs are estimates, not billing figures.',
+        'Attribution is last-invoked-skill: each turn is credited to the most recently invoked skill.',
+      ];
+      if (typeof meta.pricingAsOf === 'string' && meta.pricingAsOf) {
+        parts.push('Pricing as of ' + meta.pricingAsOf + '.');
+      }
+      if (Array.isArray(meta.unpricedModels) && meta.unpricedModels.length > 0) {
+        parts.push('Unpriced models (cost not estimated): ' + meta.unpricedModels.join(', ') + '.');
+      }
+      const p = document.createElement('p');
+      p.className = 'usage-footnote';
+      p.textContent = parts.join(' ');
+      return p;
+    }
+
+    function renderUsagePage(container, result) {
+      container.textContent = '';
+
+      const back = document.createElement('a');
+      back.className = 'back-link';
+      back.href = '#/';
+      back.textContent = '← Overview';
+      container.appendChild(back);
+
+      const page = document.createElement('div');
+      page.className = 'usage-page';
+      container.appendChild(page);
+
+      function message(text) {
+        page.appendChild(buildUsagePanel('Usage', emptyNote(text)));
+      }
+
+      const emptyText =
+        'No usage found for this project yet. Run `/usage-report` to check that transcripts are being read.';
+
+      if (!result) {
+        message('Loading usage report… this can take a few seconds.');
+        return;
+      }
+      if (result.state === 'error') {
+        message('The usage report could not be generated.');
+        return;
+      }
+      if (result.state === 'empty') {
+        message(emptyText);
+        return;
+      }
+
+      const data = result.data && typeof result.data === 'object' ? result.data : {};
+      const totals = data.totals && typeof data.totals === 'object' ? data.totals : {};
+      const meta = data.meta && typeof data.meta === 'object' ? data.meta : {};
+
+      if (totals.turns === 0) {
+        message(emptyText);
+        return;
+      }
+
+      if (data.schemaVersion !== 1) {
+        const notice = document.createElement('div');
+        notice.className = 'usage-notice';
+        notice.textContent =
+          'Unexpected usage schema version (' + String(data.schemaVersion) +
+          '); expected 1. Figures below may be incomplete or wrong.';
+        page.appendChild(notice);
+      }
+
+      const metaBits = [];
+      if (typeof data.scope === 'string' && data.scope) metaBits.push(data.scope);
+      if (typeof data.generatedAt === 'string' && data.generatedAt) {
+        metaBits.push('generated ' + data.generatedAt);
+      }
+
+      page.appendChild(buildUsagePanel('Totals', buildUsageTotals(totals), metaBits.join(' · ')));
+      page.appendChild(buildUsagePanel('By model', buildUsageByModel(usageRows(data.byModel))));
+      page.appendChild(buildUsagePanel('By skill', buildUsageBySkill(usageRows(data.bySkill))));
+      page.appendChild(
+        buildUsagePanel('Last ' + USAGE_DAYS_SHOWN + ' days', buildUsageByDay(usageRows(data.byDay)))
+      );
+      page.appendChild(buildUsageFootnote(meta));
+    }
+
+    // ============================================================
     // Shell: breadcrumbs, routing, polling, theme
     // ============================================================
 
@@ -1579,10 +2069,12 @@
       sep1.textContent = '›';
       nav.appendChild(sep1);
 
-      if (route.view === 'family') {
+      if (route.view === 'family' || route.view === 'usage') {
         const cur = document.createElement('span');
         cur.className = 'crumb-current';
-        cur.textContent = FAMILY_LABELS[route.family] || route.family;
+        cur.textContent = route.view === 'usage'
+          ? 'Usage'
+          : (FAMILY_LABELS[route.family] || route.family);
         nav.appendChild(cur);
         return;
       }
@@ -1613,9 +2105,18 @@
         renderFamilyPage(container, route.family, wikiData);
       } else if (route.view === 'item') {
         renderItemPage(container, route.family, route.file);
+      } else if (route.view === 'usage') {
+        renderUsagePage(container, usageResult);
       } else {
         renderOverview(container, wikiData);
       }
+    }
+
+    // Hash navigation: paint the route, and kick off the usage fetch only
+    // when the viewer actually enters #/usage.
+    function onHashChange() {
+      renderRoute();
+      if (parseRoute().view === 'usage') loadUsage();
     }
 
     function updateTimestamp(date) {
@@ -1664,6 +2165,9 @@
         } else if (changed || force) {
           renderRoute();
         }
+        // Usage is re-fetched only while its page is showing, so the poll
+        // never runs the report script for a viewer on another page.
+        if (route.view === 'usage') loadUsage();
         updateTimestamp(new Date());
         setBanner(null);
       } catch (err) {
@@ -1716,7 +2220,7 @@
       if (btn) {
         btn.addEventListener('click', function () { refresh(true); });
       }
-      window.addEventListener('hashchange', renderRoute);
+      window.addEventListener('hashchange', onHashChange);
       initTheme();
       renderRoute(); // paint the shell immediately (empty data)
       refresh(true); // then fill with first data

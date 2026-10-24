@@ -18,4 +18,4 @@ The Claude/Anthropic **API** does expose `anthropic-ratelimit-*` response header
 
 **Recommendation**: treat `USAGE_CHECK_CMD='true'` (no automated checking, already deployed) as the correct current state, not a stopgap. Revisit only if `anthropics/claude-code#33820` or an equivalent feature ships. Full findings: `raw/research/claude-usage-quota-signal/index.md`.
 
-This research directly backs `decided_by::[[DEC-0001-usage-check-hardening|DEC-0001#D1]]`, the decision record documenting why `USAGE_CHECK_CMD='true'` was chosen over both the previous broken command and a rejected transcript-heuristic alternative.
+This research directly backs `decided_by::[[ADR-0001-usage-check-hardening|ADR-0001#D1]]`, the decision record documenting why `USAGE_CHECK_CMD='true'` was chosen over both the previous broken command and a rejected transcript-heuristic alternative.

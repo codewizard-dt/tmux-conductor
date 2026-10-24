@@ -19,7 +19,7 @@ Practical integration notes discovered while researching this for `uses::[[agent
 - An action that today swaps its own trigger control for inline UI (e.g. an inline rename `<input>` replacing a "Rename" button) does need rework once that trigger moves inside a closed menu, since there's no "in place" left to swap into.
 - A custom menu's own `Escape` handler must `stopPropagation()` when the host surface (e.g. a modal) already has its own global `Escape`-closes listener, so `Escape` closes the menu first and the host surface second on a repeated press.
 
-**2026-09-13 confirmation** (`derived_from::[[agent-rename-click-to-edit]]`): once `AgentActionsMenu` shipped (TASK-148), a follow-up go/no-go asked whether Rename should move off the menu entirely onto click-to-edit-on-the-name-text. Confirms the note above played out exactly as predicted — the rename `<input>` still swaps in at the menu's own slot (`ml-auto`, not "in place" on the name), and the decision (`DEC-0004#D1`, accepted) kept the menu-item trigger rather than moving to a hidden, less keyboard-accessible click-to-edit affordance on the name text.
+**2026-09-13 confirmation** (`derived_from::[[agent-rename-click-to-edit]]`): once `AgentActionsMenu` shipped (TASK-148), a follow-up go/no-go asked whether Rename should move off the menu entirely onto click-to-edit-on-the-name-text. Confirms the note above played out exactly as predicted — the rename `<input>` still swaps in at the menu's own slot (`ml-auto`, not "in place" on the name), and the decision (`ADR-0004#D1`, accepted) kept the menu-item trigger rather than moving to a hidden, less keyboard-accessible click-to-edit affordance on the name text.
 
 relates_to::[[agent-modal-actions-dropdown]]
 relates_to::[[agent-detail-modal]]

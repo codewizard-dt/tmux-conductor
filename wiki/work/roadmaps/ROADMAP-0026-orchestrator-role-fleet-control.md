@@ -8,7 +8,7 @@ updated: 2026-09-20
 owner: David Taylor
 derived_from: [orchestrator-role-fleet-control, agent-role-capability-grant, background-process-registry, agent-as-tool-vs-subagent, multi-agent-infrastructure-requirements]
 linked_requirements: []
-linked_decisions: [DEC-0006, DEC-0003]
+linked_decisions: [ADR-0006, ADR-0003]
 tags: [orchestration, roles, host-server]
 ---
 
@@ -65,6 +65,6 @@ Add `orchestrator` as an agent role. When every box is checked, an agent with th
 - **Schema versions:** the role-enum migration must claim its version in coordination with ROADMAP-0024's migrations (`TASK-0195`/`0196`/`0198`); the DB is at v10.
 - **UI items follow ROADMAP-0023** (the `AgentList` sidebar/detail rewrite) and touch the same components as ROADMAP-0024's Background tab.
 - **"Completion" is non-semantic by design:** it means an agent's status transition (for example busy to idle), not a task-complete signal. BUG-0001 can misreport idle while background sub-agents run, and `popTask` still marks a task `done` at dispatch. Semantic completion (task id through dispatch, lease and attempt columns) remains out of scope; see `multi-agent-infrastructure-requirements`.
-- **Guardrails are not a security boundary:** a headerless call is treated as a human and agents run with `--dangerously-skip-permissions`, so the role is a grant plus guardrails plus audit. See `agent-role-capability-grant` and DEC-0003.
-- **Enqueue-only:** the orchestrator's grant excludes `/agents/:id/keys` and `/mode` per DEC-0006 driver 7 and `agent-as-tool-vs-subagent`.
-- **DEC-0006 premise to correct:** its "role → behaviour injection exists" holds only for worktree agents; see the contradiction callout in `orchestrator-role-fleet-control`.
+- **Guardrails are not a security boundary:** a headerless call is treated as a human and agents run with `--dangerously-skip-permissions`, so the role is a grant plus guardrails plus audit. See `agent-role-capability-grant` and ADR-0003.
+- **Enqueue-only:** the orchestrator's grant excludes `/agents/:id/keys` and `/mode` per ADR-0006 driver 7 and `agent-as-tool-vs-subagent`.
+- **ADR-0006 premise to correct:** its "role → behaviour injection exists" holds only for worktree agents; see the contradiction callout in `orchestrator-role-fleet-control`.

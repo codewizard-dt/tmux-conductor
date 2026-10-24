@@ -62,7 +62,7 @@ The bg-process routes as of 2026-09-19 (after ROADMAP-020) are `POST /bg-process
 
 **Agent roles and the orchestrator-role gap (2026-09-20, [[An `orchestrator` Agent Role That Manages tmux-Window Agents and Background Processes]]):** `agents.role` is a CHECK-constrained 7-value enum (schema v7; currently v10), mirrored by `rolePresets.ts::ROLE_VALUES`, `role-presets.json`, and the migration test fixtures — all four must change together, and widening the CHECK means an `agents` table rebuild on the v8 `tasks_v8` pattern. A role only changes behaviour for agents with a **worktree**: `applyRoleFragmentToWorktree` is called solely from the two worktree-creation paths in `db.ts`, so a non-worktree agent's role is a label. The spawn command exports only `CONDUCTOR_AGENT_NAME`, `CONDUCTOR_STATE_DIR` and `CONDUCTOR_LOG_DIR` (`index.ts:299`) — no agent id, no role. Nearly every control verb an orchestrator needs (`POST /agents`, `POST`/`DELETE /agents/:id/window`, `POST /tasks`, bg window open/close and tail) is already a route; the only missing one is bg restart (ROADMAP-0024). See [[Agent Role as Capability Grant, Not Permission Wall (No-Auth Trust Model)]] for why a role here is a grant plus guardrails plus audit, not a permission wall.
 
-> **Contradiction:** the DEC-0006 primitive table records role→behaviour injection as existing; per the code it exists only for worktree agents (see the note above).
+> **Contradiction:** the ADR-0006 primitive table records role→behaviour injection as existing; per the code it exists only for worktree agents (see the note above).
 
 uses::[[Fastify]]
 relates_to::[[An `orchestrator` Agent Role That Manages tmux-Window Agents and Background Processes]]

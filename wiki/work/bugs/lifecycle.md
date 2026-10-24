@@ -32,7 +32,7 @@ open ──▶ triaged ──▶ in-progress ──▶ closed
                  └──▶ wontfix | duplicate | cannot-reproduce
 ```
 
-- **open** — filed (`/bug-file`); required-on-report fields present.
+- **open** — filed (`/bug-create`); required-on-report fields present.
 - **triaged** — priority/severity/assignee set (`/bug-triage`); decision to fix, defer, or reject.
 - **in-progress** — actively being fixed.
 - **closed** — fixed and verified (`/bug-close`): root cause + fix commit + regression test recorded.

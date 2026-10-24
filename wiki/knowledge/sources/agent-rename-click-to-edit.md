@@ -10,7 +10,7 @@ tags: [frontend, ux, accessibility]
 
 # Click-to-Edit vs. Menu-Triggered Rename in AgentDetailModal
 
-Research resolving `ROADMAP-021` Phase 4 item 2: whether `AgentDetailModal`'s Rename flow should move from an explicit "Rename" entry in `uses::[[agent-detail-modal]]`'s shipped `AgentActionsMenu` (TASK-148) to click-to-edit directly on the agent-name text. **Recommendation: no-go**, filed and accepted as `DEC-0004#D1`.
+Research resolving `ROADMAP-021` Phase 4 item 2: whether `AgentDetailModal`'s Rename flow should move from an explicit "Rename" entry in `uses::[[agent-detail-modal]]`'s shipped `AgentActionsMenu` (TASK-148) to click-to-edit directly on the agent-name text. **Recommendation: no-go**, filed and accepted as `ADR-0004#D1`.
 
 **Current shipped shape**: the name text (`AgentList.tsx:752`) and the rename trigger are in different places — the menu (or the inline `showRenameInput` input it swaps to) sits at the header's far-right `ml-auto` slot, while the name renders on the left. True click-to-edit would require relocating that input to the name's position, not just deleting the menu entry — a real layout change, not a free trigger-swap.
 

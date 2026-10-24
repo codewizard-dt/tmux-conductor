@@ -1,5 +1,6 @@
 ---
 id: UAT-0179
+aliases: [UAT-0179]
 title: "UAT: Remove the toast notification feature (TASK-146) (Skipped)"
 task: wiki/work/tasks/TASK-0179-remove-toast-notifications.md
 status: skipped

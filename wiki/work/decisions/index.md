@@ -9,4 +9,4 @@ Lists **only active** Decision Groups — a group stays listed while at least on
 
 Entry format: `- [DEC-NNNN — Title](DEC-NNNN-slug.md) — one-line summary · D1 proposed, D2 accepted, …`
 
-_No active Decision Groups — DEC-0003 (the last one) was finalized and archived 2026-09-20._
+_No active Decision Groups — ADR-0003 (the last one) was finalized and archived 2026-09-20._

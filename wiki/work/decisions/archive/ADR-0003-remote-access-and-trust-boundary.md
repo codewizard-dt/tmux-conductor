@@ -1,13 +1,13 @@
 ---
-id: DEC-0003
-aliases: [DEC-0003]
+id: ADR-0003
+aliases: [ADR-0003, DEC-0003]
 title: "Remote Access to the Conductor, and Where Its Trust Boundary Lives"
 created: 2026-09-13
 updated: 2026-09-20
 tags: [remote-access, security, networking]
 ---
 
-# DEC-0003: Remote Access to the Conductor, and Where Its Trust Boundary Lives
+# ADR-0003: Remote Access to the Conductor, and Where Its Trust Boundary Lives
 
 > Decision Group covering external (non-LAN) access to the conductor — **D1**: by what mechanism the dashboard and tmux session become reachable from outside the local network; **D2**: where the trust boundary that protects them lives, i.e. whether `host-server` stays unauthenticated and loopback-bound or grows an authentication layer of its own. The two are tightly coupled — D2 constrains which D1 options are safe — but are independently supersedable: a future multi-user requirement could flip D2 without disturbing D1's transport choice, and vice versa.
 
@@ -182,7 +182,7 @@ flowchart TD
 
 ### Links
 
-- Related decisions: [[DEC-0003-remote-access-and-trust-boundary|DEC-0003#D2: where the trust boundary lives]]
+- Related decisions: [[ADR-0003-remote-access-and-trust-boundary|ADR-0003#D2: where the trust boundary lives]]
 - Supersedes: none
 - Source research: [[remote-tunnel-access|wiki/knowledge/sources/remote-tunnel-access.md]], [[remote-access-security-model|wiki/knowledge/concepts/remote-access-security-model.md]], `raw/research/remote-tunnel-access/`
 - Prior art (both abandoned): [`ROADMAP-005`](../roadmaps/archive/ROADMAP-005-ngrok-tunnel-daemon.md), [`ROADMAP-002`](../roadmaps/archive/ROADMAP-002-hosted-portal-oauth-relay-installer.md), [`ROADMAP-009`](../roadmaps/archive/ROADMAP-009-mobile-remote-access.md)
@@ -314,7 +314,7 @@ flowchart LR
 
 ### Links
 
-- Related decisions: [[DEC-0003-remote-access-and-trust-boundary|DEC-0003#D1: mechanism for reaching the conductor remotely]]
+- Related decisions: [[ADR-0003-remote-access-and-trust-boundary|ADR-0003#D1: mechanism for reaching the conductor remotely]]
 - Supersedes: none
 - Source research: [[remote-access-security-model|wiki/knowledge/concepts/remote-access-security-model.md]], [[remote-tunnel-access|wiki/knowledge/sources/remote-tunnel-access.md]]
 - Related component: [[host-server|wiki/knowledge/entities/components/host-server.md]]

@@ -1,13 +1,13 @@
 ---
-id: DEC-0006
-aliases: [DEC-0006]
+id: ADR-0006
+aliases: [ADR-0006, DEC-0006]
 title: "How a Queued Task Finds Its Agent: Role Router vs. Ephemeral Worktree Worker"
 created: 2026-09-18
 updated: 2026-09-18
 tags: [orchestration, task-routing, agents]
 ---
 
-# DEC-0006: How a Queued Task Finds Its Agent — Role Router vs. Ephemeral Worktree Worker
+# ADR-0006: How a Queued Task Finds Its Agent — Role Router vs. Ephemeral Worktree Worker
 
 > Single decision (**D1**) covering how a queued task is matched to the agent that executes it: by extending the existing SQL precedence with a capability (role) tier, by provisioning a disposable worktree-backed agent per task, by doing both, or by leaving assignment entirely human-driven as it is today.
 
@@ -62,7 +62,7 @@ Research backing: [[orchestrator-agent-routing|wiki/knowledge/sources/orchestrat
 | 4 | Routing decisions must be diagnosable after the fact | This project already learned this with status detection (`transitions.jsonl`); a non-deterministic placement with no recorded reason is undebuggable |
 | 5 | Reuse existing primitives over building a parallel mechanism | `agents.role`, `git.ts`, and the checkpoint path already exist; a second, competing worktree/capability system would be the `bg_processes` split-brain mistake again |
 | 6 | A routing miss must fail open to today's behaviour | Dispatch is the system's critical path; an unmatched task must degrade to the current global-bucket behaviour, never block or error |
-| 7 | Routing must only enqueue or spawn, never inject keystrokes beyond the existing dispatch path | `host-server` has no authentication ([[DEC-0003-remote-access-and-trust-boundary\|DEC-0003#D2]]); widening what writes to a live pane widens an unauthenticated surface |
+| 7 | Routing must only enqueue or spawn, never inject keystrokes beyond the existing dispatch path | `host-server` has no authentication ([[ADR-0003-remote-access-and-trust-boundary\|ADR-0003#D2]]); widening what writes to a live pane widens an unauthenticated surface |
 
 ### Considered Options
 
@@ -189,7 +189,7 @@ flowchart TD
 - Source research: [[orchestrator-agent-routing|wiki/knowledge/sources/orchestrator-agent-routing.md]] · `raw/research/orchestrator-agent-routing/index.md` (round 1), `index-2.md` (round 2)
 - Concepts: [[multi-agent-orchestration-patterns|wiki/knowledge/concepts/multi-agent-orchestration-patterns.md]], [[ephemeral-worker-per-task-orchestration|wiki/knowledge/concepts/ephemeral-worker-per-task-orchestration.md]]
 - Related component: [[host-server|wiki/knowledge/entities/components/host-server.md]]
-- Related decision: [[DEC-0003-remote-access-and-trust-boundary|DEC-0003#D2: where the trust boundary lives]] — constrains driver 7
+- Related decision: [[ADR-0003-remote-access-and-trust-boundary|ADR-0003#D2: where the trust boundary lives]] — constrains driver 7
 - Blocking dependency for the fallback path: `BUG-0001` (open, P1) and [`TASK-133`](../tasks/TASK-133-sentinel-gate-background-agent-dispatch.md)
 - Supersedes: none
 - No source task — implementation tasks are follow-ups to this decision

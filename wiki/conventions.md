@@ -21,7 +21,7 @@ Why this is the one expensive-to-defer rule: typed links, Maps of Content, super
 
 Reference pages by a **stable identity**, not a raw file path — so links survive reorganization.
 
-- **Work families** carry an ID in frontmatter and filename: `REQ-NNN`, `DEC-NNNN` (per-decision `#DM`), `ROADMAP-NNN`, `TASK-NNN`, `UAT-NNN`, `BUG-NNNN`.
+- **Work families** carry an ID in frontmatter and filename: `PRD-NNNN`, `ADR-NNNN` (per-decision `#DM`), `ROADMAP-NNNN`, `TASK-NNNN`, `UAT-NNNN`, `BUG-NNNN`.
 - **Knowledge pages** carry an `id` (kebab-case slug) plus an `aliases:` list of alternative names. Link by title/alias (`[[Karpathy]]`) rather than by path; the alias makes the reference durable even if the file moves.
 
 ## 3. Typed links
@@ -29,12 +29,14 @@ Reference pages by a **stable identity**, not a raw file path — so links survi
 Plain `[[wikilinks]]` are always valid. When a link has a *meaning*, annotate it inline so the graph is semantically navigable:
 
 ```
-implements::[[REQ-012]]
-supersedes::[[DEC-0003#D2]]
+implements::[[PRD-012]]
+supersedes::[[ADR-0003#D2]]
 derived_from::[[sources/karpathy-llm-wiki]]
 ```
 
-**Vocabulary:** `derived_from`, `supersedes`, `superseded_by`, `implements`, `uses`, `depends_on`, `contradicts`, `relates_to`, `caused`, `fixed`.
+**Vocabulary:** `derived_from`, `supersedes`, `superseded_by`, `implements`, `uses`, `depends_on`, `contradicts`, `relates_to`, `caused`, `fixed`, `implemented_by`, `evolved_by`.
+
+`implemented_by::[[TASK-NNNN]]` / `evolved_by::[[ROADMAP-NNNN]]` on a `knowledge/entities/components/` page — the inverse of a task's/roadmap's own `implements::`/`derived_from::` pointing at the concept.
 
 This convention is **declared now but not backfilled** — use it on new and touched pages going forward; a future `/wiki-lint` pass can backfill the back-catalogue. Cost of starting now is zero; it just avoids accumulating a fresh pile of meaning-less links.
 
@@ -44,7 +46,7 @@ Every page has YAML frontmatter. **Base keys (used now):**
 
 | Key | Applies to | Notes |
 |-----|-----------|-------|
-| `id` | all | stable slug or family ID (REQ-/DEC-/TASK-/BUG-/ROADMAP-) |
+| `id` | all | stable slug or family ID (PRD-/ADR-/TASK-/BUG-/ROADMAP-) |
 | `title` | all | human-readable title |
 | `status` | work families | per the family's [lifecycle](#); see each `lifecycle.md` |
 | `created` / `updated` | all | ISO dates (`YYYY-MM-DD`) |
@@ -64,14 +66,14 @@ Adopting the corresponding behavior later is a frontmatter backfill via lint —
 
 [index.md](index.md) is the home Map of Content. Keep folders **shallow** — the link graph and the index carry the structure, not nesting. Status lives in frontmatter so it is greppable / Dataview-queryable without moving files. Tags are signals for discovery, not a replacement for links.
 
-**Per-family active indexes.** Each `wiki/work/<family>/` carries an `index.md` listing **only its active items** (see each family's `lifecycle.md` for the active status set). When an item leaves the active set, its line is deleted from the family index — the file itself stays put until explicitly archived. Knowledge pages are listed in the home index; work items only in their family index (the home index links to the family indexes).
+**Per-family indexes.** Each `wiki/work/<family>/` carries an `index.md` (see each family's `lifecycle.md` for the active status set). For **tasks, UAT and bugs** it lists **only active items**: when an item leaves the active set its line is deleted from the family index — the file itself stays put until explicitly archived. For **roadmaps, decisions and requirements** the index has an `## Active` and a `## Closed` section: a finished item's row moves from Active to Closed and the file never moves. Knowledge pages are listed in the home index; work items only in their family index (the home index links to the family indexes).
 
 ## The two-domain rule
 
 Keep the two organizing laws separate — do not file a stateful artifact under `knowledge/` or a timeless synthesis under `work/`.
 
 - **`knowledge/`** — timeless, descriptive, **link-organized**. Files are revised in place as understanding evolves; there is no `status`. Sub-trees: `sources/`, `concepts/`, `entities/{people,organisations,tools,components}/`.
-- **`work/`** — stateful, **status-organized** lifecycle artifacts. Active files are **never moved** after creation; state lives in the `status:` field; each family has a `lifecycle.md` defining its schema and valid transitions, an `index.md` listing only active items, and an `archive/` subdirectory for terminal items. Sub-trees: `requirements/`, `decisions/`, `roadmaps/`, `tasks/`, `uat/`, `bugs/`.
+- **`work/`** — stateful, **status-organized** lifecycle artifacts. Active files are **never moved** after creation; state lives in the `status:` field; each family has a `lifecycle.md` defining its schema and valid transitions, and an `index.md`. Tasks, UAT and bugs have an `archive/` subdirectory for terminal items; roadmaps, decisions and requirements close in place (Closed section of the index). Sub-trees: `requirements/`, `decisions/`, `roadmaps/`, `tasks/`, `uat/`, `bugs/`.
 
 Cross-domain links are encouraged and carry meaning — e.g. a decision `derived_from::` a source, a task `implements::` a requirement.
 
@@ -79,15 +81,15 @@ Cross-domain links are encouraged and carry meaning — e.g. a decision `derived
 
 ---
 
-## 5. Archiving terminal items
+## 5. Closing and archiving terminal items
 
-Work item files are **permanent while active**. Once a file reaches a terminal status (`done`, `trashed`, `closed`, `passed`, `skipped`, `retired`, `wontfix`, `duplicate`, `cannot-reproduce`, or all decisions `accepted`/`superseded`), it **may** be moved to `<family>/archive/` by `/wiki-archive` to keep the family directory navigable.
+Work item files are **permanent while active**. Once a file reaches a terminal status (`done`, `trashed`, `closed`, `passed`, `skipped`, `retired`, `deprecated`, `wontfix`, `duplicate`, `cannot-reproduce`, or all decisions `accepted`/`deprecated`/`superseded`), what happens next depends on the family. **Tasks, UAT and bugs** **may** be moved to `<family>/archive/` by `/wiki-archive` to keep the family directory navigable. **Roadmaps, decisions and requirements** are never archived: they close in place, and only their row moves from `## Active` to `## Closed` in the family `index.md`.
 
 **Why this is safe:** all links must use stable IDs (`[[TASK-023]]`, `[[BUG-0014]]`), not raw relative paths. Moving a file to `archive/TASK-023.md` changes only its storage location — the ID is unchanged. `/wiki-archive` updates `archive/index.md` and logs the operation.
 
 Archiving is a periodic **maintenance operation**, not part of the close/done workflow. Run `/wiki-archive [family]` when a family directory grows unwieldy.
 
-**`archive/index.md`** — each family's `archive/` carries its own index listing archived items with their final status and archive date. This file is **append-only**: archived items never move again.
+**`archive/index.md`** — each archiving family's (tasks, UAT, bugs) `archive/` carries its own index listing archived items with their final status and archive date. This file is **append-only**: archived items never move again.
 
 ## 6. Log rotation
 
