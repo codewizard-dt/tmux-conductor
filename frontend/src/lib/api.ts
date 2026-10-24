@@ -15,7 +15,7 @@ type ViteEnv = ImportMeta & {
 const viteEnv = (import.meta as ViteEnv).env
 
 /** Conductor API base — Vite proxy at `/api` (overridable via VITE_API_URL). */
-export const API_BASE = viteEnv.VITE_API_URL ?? '/api'
+export const API_BASE = viteEnv.VITE_API_URL || '/api'
 
 async function apiFetch(input: string, init?: RequestInit): Promise<Response> {
   return fetch(input, init)
