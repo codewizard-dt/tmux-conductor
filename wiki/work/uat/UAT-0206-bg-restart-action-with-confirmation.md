@@ -212,7 +212,7 @@ Cases UAT-INT-001 .. UAT-INT-011, UAT-EDGE-001 .. UAT-EDGE-005 and UAT-GATE-001 
   ```
 - **Expected Result**: both calls return HTTP 200 with `{"ok":true,"name":"uat0206-web","restartedAt":"<ISO timestamp>","mechanism":"<string>"}` (the second is not a 429 `restart cooldown`); the audit log gains two records with `"bg":"uat0206-web"`, `"callerKind":"dashboard"`, `"outcome":"restarted"`.
 - **Repeatable Unit Test**: Not applicable: needs the real host-server, a real tmux window and the log file on disk (the header-less request shape itself is covered by UAT-INT-001 and UAT-INT-004; the server-side caller rule by UAT-0193/UAT-0194).
-- [FAIL: auto-judge: requires isolated scratch stack (live host-server, tmux window, audit log) and human verification; not run in this headless pass] <!-- 2026-09-20 -->
+- [FAIL: auto-judge: prerequisite not satisfied — isolated scratch stack (Prerequisites step 2: host-server, tmux session, and dashboard project/agent/bg-process creation) requires manual UI setup, unverifiable in headless mode] <!-- 2026-10-17 -->
 
 ### UAT-MAN-001: Restart from the Background tab: Cancel once, then confirm; marker appears, badge stays running, notice shows (scratch stack only)
 - **Manual**: same scratch stack and gates as UAT-API-001. Never run against real bg processes.
@@ -225,7 +225,7 @@ Cases UAT-INT-001 .. UAT-INT-011, UAT-EDGE-001 .. UAT-EDGE-005 and UAT-GATE-001 
   5. Inspect `tail -n 1 tmp/uat-0206/logs/bg-restarts.jsonl | jq '{bg, callerKind, outcome}'`.
 - **Expected Result**: step 3 the button is disabled and reads `Restarting…` while the request runs, then `Restarted` appears next to it and disappears after about 3 s; step 4 the output shows a `--- restart <ts> ---` divider with the earlier lines kept above it and `web line 1` restarting below it, and the `web` badge is `running` throughout; step 5 the record is `{"bg":"uat0206-web","callerKind":"dashboard","outcome":"restarted"}`. `db` is untouched (its counter never resets).
 - **Repeatable Unit Test**: Not applicable: needs a real tmux window, real log capture and the audit file (the click/confirm/cancel state machine is UAT-INT-003 .. UAT-INT-006 and the tail refresh is UAT-INT-008).
-- [FAIL: auto-judge: manual UI test requires human verification] <!-- 2026-09-20 -->
+- [FAIL: auto-judge: prerequisite not satisfied — isolated scratch stack requires manual UI setup, unverifiable in headless mode; also a UI test requiring human verification] <!-- 2026-10-17 -->
 
 ### UAT-MAN-002: Restart from the tile, then close the window: the tab row becomes Start while the tile shows only Open window (scratch stack only)
 - **Manual**: same scratch stack and gates as UAT-API-001.
@@ -237,7 +237,7 @@ Cases UAT-INT-001 .. UAT-INT-011, UAT-EDGE-001 .. UAT-EDGE-005 and UAT-GATE-001 
   4. Click `Start db`, confirm the dialog copy is `Starts db; its window is not running.`, confirm with `Start`; verify `Started` shows, the badge returns to `running`, and the tile shows `Restart` again.
 - **Expected Result**: all four observations hold; nothing else (the `web` process, other windows) is disturbed.
 - **Repeatable Unit Test**: Not applicable: real window lifecycle and SSE reconciliation are not observable in jsdom (button order, Start-only-in-tab and optimistic patching are covered by UAT-INT-007, UAT-INT-009, UAT-INT-010, UAT-INT-011 and UAT-EDGE-004).
-- [FAIL: auto-judge: manual UI test requires human verification] <!-- 2026-09-20 -->
+- [FAIL: auto-judge: prerequisite not satisfied — isolated scratch stack requires manual UI setup, unverifiable in headless mode; also a UI test requiring human verification] <!-- 2026-10-17 -->
 
 ### UAT-MAN-003: The confirmation dialog and result states are legible in both themes and fully keyboard-operable (scratch stack only)
 - **Manual**: same scratch stack and gates as UAT-API-001.
@@ -248,7 +248,7 @@ Cases UAT-INT-001 .. UAT-INT-011, UAT-EDGE-001 .. UAT-EDGE-005 and UAT-GATE-001 
   3. Keyboard only: Tab to `Restart web`, press Enter to open the dialog, press Escape (closes, nothing sent), reopen and confirm with the keyboard; verify the button shows a visible focus ring and focus is not lost after the dialog closes.
 - **Expected Result**: all observations hold in both themes; no request is sent on Escape; the keyboard path completes a restart.
 - **Repeatable Unit Test**: Not applicable: colour contrast, focus rings and real keyboard focus management are visual/browser behaviour (the Escape/Cancel no-request behaviour is UAT-INT-003 and the error text is UAT-EDGE-001).
-- [FAIL: auto-judge: manual UI test requires human verification] <!-- 2026-09-20 -->
+- [FAIL: auto-judge: prerequisite not satisfied — isolated scratch stack requires manual UI setup, unverifiable in headless mode; also a UI test requiring human verification] <!-- 2026-10-17 -->
 
 ---
 

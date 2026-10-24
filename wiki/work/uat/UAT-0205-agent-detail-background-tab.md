@@ -5,7 +5,7 @@ title: "UAT: Add a Background tab to the agent detail tablist listing the agent'
 status: pending
 task: TASK-0205
 created: 2026-09-20
-updated: 2026-09-20
+updated: 2026-10-17
 ---
 
 # UAT-0205 — UAT: Add a Background tab to the agent detail tablist listing the agent's project's bg processes with a running/exited badge and live output tail
@@ -44,7 +44,7 @@ Cases UAT-UI-001 .. UAT-UI-010, UAT-EDGE-001 .. UAT-EDGE-003 and UAT-GATE-001 ..
 - **Expected Result**: all `BgLivenessBadge (TASK-0205)` tests pass.
 - **Repeatable Unit Test**: Created: `frontend/src/components/BgLivenessBadge.test.tsx`
 - **Unit Test Command**: `cd frontend && npx vitest run src/components/BgLivenessBadge.test.tsx`
-- [FAIL: auto-judge: UI test requires human verification — use /uat-walk (unit test green: 6/6)] <!-- 2026-09-20 -->
+- [x] Pass <!-- 2026-10-17 -->
 
 ### UAT-UI-002: Background tab is present with a project-bg count for an agent that has a project
 - **Page**: Agents page, agent detail pane, tablist (`AgentInfoTabs`)
@@ -54,7 +54,7 @@ Cases UAT-UI-001 .. UAT-UI-010, UAT-EDGE-001 .. UAT-EDGE-003 and UAT-GATE-001 ..
 - **Expected Result**: the test `shows a "Background (N)" tab counting the agent's project bg processes` passes.
 - **Repeatable Unit Test**: Created: `frontend/src/components/AgentList.test.tsx` (describe `AgentList Background tab (TASK-0205)`)
 - **Unit Test Command**: `cd frontend && npx vitest run src/components/AgentList.test.tsx -t "Background tab"`
-- [FAIL: auto-judge: UI test requires human verification — use /uat-walk] <!-- 2026-09-20 -->
+- [x] Pass <!-- 2026-10-17 -->
 
 ### UAT-UI-003: Only the selected agent's own project's bg processes are listed, each with a liveness badge, exited preselected
 - **Page**: Agents page, agent detail pane, Background tab
@@ -64,7 +64,7 @@ Cases UAT-UI-001 .. UAT-UI-010, UAT-EDGE-001 .. UAT-EDGE-003 and UAT-GATE-001 ..
 - **Expected Result**: the test `lists only the selected agent's own project bgs (with liveness badges) when two projects have processes` passes.
 - **Repeatable Unit Test**: Created: `frontend/src/components/AgentList.test.tsx`
 - **Unit Test Command**: `cd frontend && npx vitest run src/components/AgentList.test.tsx -t "Background tab"`
-- [FAIL: auto-judge: UI test requires human verification — use /uat-walk] <!-- 2026-09-20 -->
+- [x] Pass <!-- 2026-10-17 -->
 
 ### UAT-UI-004: Tab body lists the passed bgs, defaults to the first (or first exited) process
 - **Page**: component `frontend/src/components/BackgroundProcessesTab.tsx`
@@ -74,7 +74,7 @@ Cases UAT-UI-001 .. UAT-UI-010, UAT-EDGE-001 .. UAT-EDGE-003 and UAT-GATE-001 ..
 - **Expected Result**: tests `lists only the passed bgs, ...`, `selects the first process by default`, `prefers an exited process for the default selection`, `switches the requested slug when another row is clicked` pass.
 - **Repeatable Unit Test**: Created: `frontend/src/components/BackgroundProcessesTab.test.tsx`
 - **Unit Test Command**: `cd frontend && npx vitest run src/components/BackgroundProcessesTab.test.tsx`
-- [FAIL: auto-judge: UI test requires human verification — use /uat-walk] <!-- 2026-09-20 -->
+- [x] Pass <!-- 2026-10-17 -->
 
 ### UAT-UI-005: Output polling is gated on the tab being active (2 s cadence, immediate on activation)
 - **Page**: Agents page, agent detail pane, Background tab
@@ -84,7 +84,7 @@ Cases UAT-UI-001 .. UAT-UI-010, UAT-EDGE-001 .. UAT-EDGE-003 and UAT-GATE-001 ..
 - **Expected Result**: `does not poll while inactive, and starts immediately when flipped active` and `polls again every 2 seconds` pass; in `AgentList.test.tsx`, `does not poll the output until the Background tab is the active one` passes.
 - **Repeatable Unit Test**: Created: `frontend/src/components/BackgroundProcessesTab.test.tsx`, `frontend/src/components/AgentList.test.tsx`
 - **Unit Test Command**: `cd frontend && npx vitest run src/components/BackgroundProcessesTab.test.tsx src/components/AgentList.test.tsx -t "polling|poll"`
-- [FAIL: auto-judge: UI test requires human verification — use /uat-walk] <!-- 2026-09-20 -->
+- [x] Pass <!-- 2026-10-17 -->
 
 ### UAT-UI-006: Polling stops on tab deactivation and on unmount; in-flight guard prevents overlapping requests
 - **Page**: component `BackgroundProcessesTab` / `useBgTail`
@@ -94,7 +94,7 @@ Cases UAT-UI-001 .. UAT-UI-010, UAT-EDGE-001 .. UAT-EDGE-003 and UAT-GATE-001 ..
 - **Expected Result**: tests `stops polling on unmount`, `stops polling when the tab is deactivated`, `does not issue a second request while one is still in flight` pass.
 - **Repeatable Unit Test**: Created: `frontend/src/components/BackgroundProcessesTab.test.tsx`
 - **Unit Test Command**: `cd frontend && npx vitest run src/components/BackgroundProcessesTab.test.tsx`
-- [FAIL: auto-judge: UI test requires human verification — use /uat-walk] <!-- 2026-09-20 -->
+- [x] Pass <!-- 2026-10-17 -->
 
 ### UAT-UI-007: Polling pauses while the document is hidden and resumes on visibility
 - **Page**: component `BackgroundProcessesTab` / `useBgTail`
@@ -104,7 +104,7 @@ Cases UAT-UI-001 .. UAT-UI-010, UAT-EDGE-001 .. UAT-EDGE-003 and UAT-GATE-001 ..
 - **Expected Result**: test `does not poll while the document is hidden, and resumes when it becomes visible` passes.
 - **Repeatable Unit Test**: Created: `frontend/src/components/BackgroundProcessesTab.test.tsx` (test added by this UAT)
 - **Unit Test Command**: `cd frontend && npx vitest run src/components/BackgroundProcessesTab.test.tsx -t "document is hidden"`
-- [FAIL: auto-judge: UI test requires human verification — use /uat-walk] <!-- 2026-09-20 -->
+- [FAIL: auto-judge: UI test requires human verification — use /uat-walk (unit test green: 1/1)] <!-- 2026-10-17 -->
 
 ### UAT-UI-008: Selection is kept by slug across live updates and reset if the selected process disappears
 - **Page**: component `BackgroundProcessesTab`
@@ -114,7 +114,7 @@ Cases UAT-UI-001 .. UAT-UI-010, UAT-EDGE-001 .. UAT-EDGE-003 and UAT-GATE-001 ..
 - **Expected Result**: tests `keeps the selection by slug across live updates to the bgs list` and `resets the selection to the default when the selected process disappears` pass.
 - **Repeatable Unit Test**: Created: `frontend/src/components/BackgroundProcessesTab.test.tsx` (tests added by this UAT)
 - **Unit Test Command**: `cd frontend && npx vitest run src/components/BackgroundProcessesTab.test.tsx -t "selection"`
-- [FAIL: auto-judge: UI test requires human verification — use /uat-walk] <!-- 2026-09-20 -->
+- [FAIL: auto-judge: UI test requires human verification — use /uat-walk (unit test green: 3/3)] <!-- 2026-10-17 -->
 
 ### UAT-UI-009: Restart marker lines are styled as dividers and the truncation hint shows only when truncated
 - **Page**: component `BackgroundProcessesTab` output panel
@@ -124,7 +124,7 @@ Cases UAT-UI-001 .. UAT-UI-010, UAT-EDGE-001 .. UAT-EDGE-003 and UAT-GATE-001 ..
 - **Expected Result**: tests `styles restart marker lines distinctly from normal output` and `shows the truncation hint only when the tail is truncated` pass.
 - **Repeatable Unit Test**: Created: `frontend/src/components/BackgroundProcessesTab.test.tsx`
 - **Unit Test Command**: `cd frontend && npx vitest run src/components/BackgroundProcessesTab.test.tsx -t "restart marker|truncation hint"`
-- [FAIL: auto-judge: UI test requires human verification — use /uat-walk] <!-- 2026-09-20 -->
+- [FAIL: auto-judge: UI test requires human verification — use /uat-walk (unit test green: 2/2)] <!-- 2026-10-17 -->
 
 ### UAT-UI-010: The bg tile badge (BgProcessRow) reports real liveness, not window presence
 - **Page**: Agents page, no agent selected (`BgProcessSection` tile)
@@ -134,7 +134,7 @@ Cases UAT-UI-001 .. UAT-UI-010, UAT-EDGE-001 .. UAT-EDGE-003 and UAT-GATE-001 ..
 - **Expected Result**: test `the tile badge (BgProcessRow) shows "exited" for liveness "exited" even though the tmux window exists` passes.
 - **Repeatable Unit Test**: Created: `frontend/src/components/AgentList.test.tsx`
 - **Unit Test Command**: `cd frontend && npx vitest run src/components/AgentList.test.tsx -t "tile badge"`
-- [FAIL: auto-judge: UI test requires human verification — use /uat-walk] <!-- 2026-09-20 -->
+- [FAIL: auto-judge: UI test requires human verification — use /uat-walk (unit test green: 1/1)] <!-- 2026-10-17 -->
 
 ### UAT-EDGE-001: Tab is hidden entirely for an agent with no project, and the tablist keeps working
 - **Scenario**: Agent with `projectId: null`. Only "no project" hides the tab (no disabled tab); `AgentInfoTabs` must not break, other tabs stay switchable, and no tail request is ever made.
@@ -169,7 +169,7 @@ Cases UAT-UI-001 .. UAT-UI-010, UAT-EDGE-001 .. UAT-EDGE-003 and UAT-GATE-001 ..
   ```
 - **Expected Result**: exit code 0, no diagnostics printed.
 - **Repeatable Unit Test**: Not applicable: this case is itself a deterministic static gate.
-- [FAIL: auto-judge: tsc exit 2, expected 0 — src/lib/lastPayload.ts(166,39) TS2322 string|undefined not assignable to string (untracked file from another in-flight task, not a TASK-0205 file)] <!-- 2026-09-20 -->
+- [x] Pass <!-- 2026-10-17 -->
 
 ### UAT-GATE-002: ESLint is clean on the new and edited files, and the touched components' test files are green
 - **Description**: No lint regressions in the touched files, and the `projectBgs` prop / `window missing` -> `stopped` label change did not break the sibling tests in the three files this task owns. Scoped to those files on purpose: the whole frontend suite also runs other in-flight tasks' tests (for example `AddBgProcessForm.test.tsx`, being edited concurrently by another task) whose failures are not attributable to TASK-0205.
@@ -192,7 +192,7 @@ Cases UAT-UI-001 .. UAT-UI-010, UAT-EDGE-001 .. UAT-EDGE-003 and UAT-GATE-001 ..
   4. Switch to another tab and open the browser network panel: confirm no `/bg-processes/.../tail` requests while the other tab is active. Return to Background: requests resume immediately, then every ~2 s.
 - **Expected Result**: all four observations hold; badge text (not just colour) reads `running`.
 - **Repeatable Unit Test**: Not applicable: real scrolling, layout and network behaviour are not observable in jsdom (the request gating itself is covered by UAT-UI-005 .. UAT-UI-007).
-- [FAIL: auto-judge: manual/UI test requires human verification — needs isolated scratch stack (:8799/:4399)] <!-- 2026-09-20 -->
+- [FAIL: auto-judge: manual/UI test requires human verification — needs isolated scratch stack (:8799/:4399)] <!-- 2026-10-17 -->
 
 ### UAT-MAN-002: Crashing a bg process flips the badge to exited and the reason stays visible (scratch stack only)
 - **Manual**: same scratch stack and gate as UAT-MAN-001.
@@ -202,7 +202,7 @@ Cases UAT-UI-001 .. UAT-UI-010, UAT-EDGE-001 .. UAT-EDGE-003 and UAT-GATE-001 ..
   2. Watch the Background tab (and the tile view with no agent selected) within a few seconds.
 - **Expected Result**: the `crashy` badge changes from `running` to `exited` on both the tab row and the tile although the tmux window still exists; the output panel still shows the last log lines (including the interrupted output); no `window missing` text anywhere.
 - **Repeatable Unit Test**: Not applicable: needs a real tmux window and the host-server's real liveness detection (payload rendering is covered by UAT-UI-003 and UAT-UI-010; detection is TASK-0191's UAT-0191).
-- [FAIL: auto-judge: manual/UI test requires human verification — needs isolated scratch stack and real tmux window] <!-- 2026-09-20 -->
+- [FAIL: auto-judge: manual/UI test requires human verification — needs isolated scratch stack and real tmux window] <!-- 2026-10-17 -->
 
 ### UAT-MAN-003: Badge and tab are legible in both themes and the tab is absent for a project-less agent (scratch stack only)
 - **Manual**: same scratch stack and gate as UAT-MAN-001.
@@ -213,7 +213,7 @@ Cases UAT-UI-001 .. UAT-UI-010, UAT-EDGE-001 .. UAT-EDGE-003 and UAT-GATE-001 ..
   3. If a project-less agent could be created on the scratch stack, select it and confirm no `Background` tab exists and the remaining tabs still switch.
 - **Expected Result**: `running` (green), `exited` (red), `stopped` (amber) labels are readable against their tinted backgrounds in both themes; keyboard selection works; the tab is absent for an agent with no project (or step 3 is recorded as not producible and covered by UAT-EDGE-001).
 - **Repeatable Unit Test**: Not applicable: colour contrast and focus rings are visual (the label/data-liveness output is covered by UAT-UI-001).
-- [FAIL: auto-judge: manual/UI test requires human verification — visual contrast, focus rings, both themes] <!-- 2026-09-20 -->
+- [FAIL: auto-judge: manual/UI test requires human verification — visual contrast, focus rings, both themes] <!-- 2026-10-17 -->
 
 ---
 

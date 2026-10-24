@@ -21,6 +21,14 @@
 #   expected awaiting -> state file contains `awaiting` afterwards AND return 1
 #   expected busy     -> state file NOT `awaiting` afterwards AND return 1
 #   expected idle     -> return 0
+#   expected stalled  -> return 1, state file still `busy`, LAST_DETECTION
+#                        `state-file` / LAST_STATE_VALUE `busy`. BY DESIGN this
+#                        differs from the TS-side expected.state: stalled is
+#                        host-server-only (monitor.sh has no STALL_TIMEOUT
+#                        branch), so bash classifies it like an ordinary busy.
+#   expected exited   -> return 1 AND LAST_DETECTION `pane-dead`; the manifest's
+#                        optional paneCurrentCommand (default: launch) is what
+#                        the stub tmux reports for display-message.
 #
 # Usage: bash scripts/verify-awaiting-detection.sh
 # Requires bash >= 4 (associative arrays) — same as monitor.sh itself.
@@ -203,11 +211,11 @@ python3 -c "
 import json, sys
 for c in json.load(open(sys.argv[1])):
     sf = c['stateFile'] if c['stateFile'] is not None else '-'
-    print('\t'.join([c['name'], c['launch'], sf, str(c['ageS']), c['pane'], c['expected']['state']]))
+    print('\t'.join([c['name'], c['launch'], sf, str(c['ageS']), c['pane'], c['expected']['state'], c.get('paneCurrentCommand', c['launch'])]))
 " "$MANIFEST" > "$CASES_TSV"
 
 TOTAL=0
-while IFS=$'\t' read -r name launch state_file age_s pane expected; do
+while IFS=$'\t' read -r name launch state_file age_s pane expected pane_cmd; do
   TOTAL=$((TOTAL + 1))
   sf_path="$STATE_DIR/agent-x.state"
   rm -f "$sf_path"
@@ -217,7 +225,7 @@ while IFS=$'\t' read -r name launch state_file age_s pane expected; do
   fi
   AGENT_CMDS=([agent-x]="$launch")
   export FIXTURE_PANE_FILE="$FIXTURE_DIR/$pane"
-  export FIXTURE_CMD_NAME="$launch"
+  export FIXTURE_CMD_NAME="$pane_cmd"
 
   is_idle "conductor:=agent-x" agent-x agent-x
   rc=$?
@@ -245,6 +253,21 @@ while IFS=$'\t' read -r name launch state_file age_s pane expected; do
         check "$label" pass
       else
         check "$label" fail "rc=$rc state-file-after='${after}' (want rc=0)"
+      fi
+      ;;
+    stalled)
+      # TS-side 'stalled' is host-server-only; bash must classify it as plain busy.
+      if [[ $rc -eq 1 && "$after" == "busy" && "$LAST_DETECTION" == "state-file" && "$LAST_STATE_VALUE" == "busy" ]]; then
+        check "$label" pass
+      else
+        check "$label" fail "rc=$rc state-file-after='${after}' detection='${LAST_DETECTION}' value='${LAST_STATE_VALUE}' (want rc=1, 'busy', state-file/busy)"
+      fi
+      ;;
+    exited)
+      if [[ $rc -eq 1 && "$LAST_DETECTION" == "pane-dead" ]]; then
+        check "$label" pass
+      else
+        check "$label" fail "rc=$rc detection='${LAST_DETECTION}' (want rc=1, 'pane-dead')"
       fi
       ;;
     *)

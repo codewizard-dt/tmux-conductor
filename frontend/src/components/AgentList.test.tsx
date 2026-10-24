@@ -1,4 +1,4 @@
-import { useEffect, type ComponentProps } from 'react'
+import { useEffect, type ComponentProps, type ReactNode } from 'react'
 import type { DragEndEvent } from '@dnd-kit/core'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
@@ -24,7 +24,7 @@ const mockLogTailHandlers: {
   onInteractChange: ((interacting: boolean) => void) | undefined
   onCloseModal: (() => void) | undefined
 } = { onInteractChange: undefined, onCloseModal: undefined }
-function MockLogTail(props: { agentId: number; interactSignal?: number; onInteractChange?: (interacting: boolean) => void; onCloseModal?: () => void }) {
+function MockLogTail(props: { agentId: number; interactSignal?: number; onInteractChange?: (interacting: boolean) => void; onCloseModal?: () => void; taskInput?: ReactNode }) {
   useEffect(() => {
     mockLogTailHandlers.onInteractChange = props.onInteractChange
     mockLogTailHandlers.onCloseModal = props.onCloseModal
@@ -34,7 +34,7 @@ function MockLogTail(props: { agentId: number; interactSignal?: number; onIntera
     return () => { logTailUnmountSpy(props.agentId) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
-  return <div data-testid="mock-log-tail" data-agent-id={props.agentId} data-interact-signal={props.interactSignal} />
+  return <div data-testid="mock-log-tail" data-agent-id={props.agentId} data-interact-signal={props.interactSignal}>{props.taskInput}</div>
 }
 vi.mock('./LogTail', () => ({ default: MockLogTail }))
 
@@ -107,6 +107,7 @@ import AgentList, {
 } from './AgentList'
 import AgentsPage from '../pages/AgentsPage'
 import { AGENT_ORDER_STORAGE_KEY } from '../lib/agentOrder'
+import { getActiveAgentProjectId, setActiveAgentProjectId } from '../lib/activeAgent'
 import { SIDEBAR_COLLAPSED_WIDTH_PX, SIDEBAR_WIDTH_PX } from '../lib/layoutConstants'
 import { SIDEBAR_COLLAPSED_STORAGE_KEY, setSidebarCollapsed } from '../lib/sidebarState'
 // RTL's auto-cleanup registration relies on vitest's `test.globals: true`, which this repo
@@ -3145,7 +3146,7 @@ describe('AgentDetailView Details/Queued Tasks tabs (TASK-162 Step 3)', () => {
     expect(within(panel).getByRole('button', { name: 'Default' })).toBeInTheDocument()
   })
 
-  it('renders TaskList and AddTaskForm when the Queued Tasks tab is selected', () => {
+  it('renders only the TaskList (no Add Task box) when the Queued Tasks tab is selected (TASK-0200)', () => {
     const agent: Agent = { ...baseAgent(null), id: 7, name: 'queued-content-agent' }
     stubAgentDetailFetch(agent)
 
@@ -3155,8 +3156,31 @@ describe('AgentDetailView Details/Queued Tasks tabs (TASK-162 Step 3)', () => {
 
     const panel = within(dialog).getByRole('tabpanel', { name: 'Queued tasks (0)' })
     expect(within(panel).getByText('No tasks in queue.')).toBeInTheDocument()
+    expect(within(panel).queryByLabelText('New task text')).toBeNull()
+    expect(within(panel).queryByRole('button', { name: 'Add task' })).toBeNull()
+  })
+
+  it('renders the Add Task box in the Terminal tab bottom bar, with no one-off text box (TASK-0200)', () => {
+    const agent: Agent = { ...baseAgent(null), id: 8, name: 'terminal-task-input-agent', windowPresent: true }
+    stubAgentDetailFetch(agent)
+
+    render(<AgentDetailView agent={agent} project={null} projectId={null} projectBgs={[]} status="idle" onClose={vi.fn()} agentCount={1} onNavigate={vi.fn()} />)
+
+    const panel = within(document.body).getByRole('tabpanel', { name: 'Terminal' })
     expect(within(panel).getByLabelText('New task text')).toBeInTheDocument()
     expect(within(panel).getByRole('button', { name: 'Add task' })).toBeInTheDocument()
+    expect(within(panel).queryByLabelText(/one-off/i)).toBeNull()
+  })
+
+  it('keeps the Add Task box reachable in the no-window fallback, beside Create window (TASK-0200)', () => {
+    const agent: Agent = { ...baseAgent(null), id: 9, name: 'no-window-task-input-agent', state: 'exited', windowPresent: false }
+    stubAgentDetailFetch(agent)
+
+    render(<AgentDetailView agent={agent} project={null} projectId={null} projectBgs={[]} status="exited" onClose={vi.fn()} agentCount={1} onNavigate={vi.fn()} />)
+
+    const panel = within(document.body).getByRole('tabpanel', { name: 'Terminal' })
+    expect(within(panel).getByRole('button', { name: 'Create window' })).toBeInTheDocument()
+    expect(within(panel).getByLabelText('New task text')).toBeInTheDocument()
   })
 })
 
@@ -5655,5 +5679,53 @@ describe('AgentList TASK-0228 clear and sweep interplay with the TASK-0225 mirro
 
     expect(JSON.parse(localStorage.getItem(keyFor(272)) ?? 'null')).toEqual({ text: 'from status', ts: '2026-09-20T11:00:00.000Z', source: 'hook' })
     expect(localStorage.getItem(keyFor(273))).toBeNull()
+  })
+})
+
+// ── Active agent project published for the Add Agent modal preselect (TASK-0232) ──
+describe('AgentList publishes the selected agent project (TASK-0232)', () => {
+  beforeEach(() => {
+    capturedEventSource = null
+    vi.stubGlobal('EventSource', CapturingEventSource)
+    vi.stubGlobal('AudioContext', MockAudioContext)
+    setActiveAgentProjectId(null)
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    setActiveAgentProjectId(null)
+  })
+
+  async function mountPair() {
+    const a: Agent = { ...baseAgent(null), id: 61, name: 'pub-in-project', projectId: 5, projectName: 'proj-five' }
+    const b: Agent = { ...baseAgent(null), id: 62, name: 'pub-no-project', projectId: null, projectName: null }
+    stubAgentDetailFetch(a, undefined)
+    const view = render(<AgentList />)
+    // Fetch stub serves a single agent; push the second one over SSE.
+    const sidebar = await screen.findByRole('complementary', { name: 'Agents' })
+    await within(sidebar).findByRole('button', { name: `${a.name} detail` })
+    act(() => { fireSSE('agent-update', b) })
+    await within(sidebar).findByRole('button', { name: `${b.name} detail` })
+    return { view, sidebar, a, b }
+  }
+
+  it('publishes the project id of the selected agent, null for a project-less agent, and follows switches', async () => {
+    const { sidebar, a, b } = await mountPair()
+    expect(getActiveAgentProjectId()).toBeNull()
+
+    fireEvent.click(within(sidebar).getByRole('button', { name: `${a.name} detail` }))
+    await waitFor(() => { expect(getActiveAgentProjectId()).toBe(5) })
+
+    fireEvent.click(within(sidebar).getByRole('button', { name: `${b.name} detail` }))
+    await waitFor(() => { expect(getActiveAgentProjectId()).toBeNull() })
+  })
+
+  it('resets to null when the Agents list unmounts', async () => {
+    const { view, sidebar, a } = await mountPair()
+    fireEvent.click(within(sidebar).getByRole('button', { name: `${a.name} detail` }))
+    await waitFor(() => { expect(getActiveAgentProjectId()).toBe(5) })
+
+    view.unmount()
+    expect(getActiveAgentProjectId()).toBeNull()
   })
 })

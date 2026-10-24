@@ -1,7 +1,7 @@
 ---
 id: background-process-registry
 title: Background Process Registry (bg_processes) — Mechanism and Gaps
-updated: 2026-09-20
+updated: 2026-10-17
 sources:
   - ../../../raw/research/shared-dev-commands/index.md
   - ../../../raw/research/shared-dev-commands/index-2.md
@@ -116,6 +116,15 @@ Coverage: `scripts/verify-dev-commands-restart.sh` runs the script against a stu
 ### Agent-facing status and tail (TASK-0204)
 
 Outcome (implemented 2026-09-20): `dev-commands.sh status` and `tail` moved from the state file and a raw `tail -n` of the log onto the server's own signals. `status` is online-first and reports `BgStatus.liveness` (`running` / `exited` / `stopped`) as the authoritative field, with the window, `lastRestart` and the poll-lagged state file beside it, because the state file can still say `running` for a process that has crashed back to a shell. `tail` reads the ANSI-stripped text endpoint (restart markers included) and passes `-n` through (positive integer, clamped to the server's 1000). Offline, `status` prints the state file interpreted in the `running` / `exited` / `dead` vocabulary (flagging pre-[[TASK-0191]] `alive`/`idle`/`busy` values as legacy) and `tail` reads `bg-<slug>.log` through a best-effort `sed` escape strip, so an offline agent still gets readable output but not the server's cleaning or restart markers. `SKILL.md`'s earlier `idle/busy/running` vocabulary was never what the monitor wrote and has been replaced. `list` lines carry the liveness value. implements::[[TASK-0204]] builds_on::[[TASK-0203]]
+
+### Verification (TASK-0208)
+
+Outcome (2026-10-17): the restart feature's deferred live checks (`[DEFERRED-TO-UAT]` notes left by [[TASK-0190]]..[[TASK-0207]]) are now consolidated into one script and one UAT, closing [[ROADMAP-0024]].
+
+- **Automated — `scripts/verify-dev-commands.sh`.** Default mode is hermetic (no network, no tmux): the offline `list`/`status`/`tail` paths, slug resolution, `list [--all]` project scoping, and static text assertions on `dev-commands.sh`/`SKILL.md`, plus two sibling verifiers folded into its own summary (`verify-dev-commands-restart.sh`'s stub-server cases, `verify-dev-commands-skill-frontmatter.sh`). `--live` (opt-in) stands up an isolated private host-server + tmux world (own `conductor.conf`/`DB_PATH`/`STATE_DIR`/`LOG_DIR`/`SESSION_NAME`/tmux socket, port `18789` by default) and runs 25 scenario assertions end to end through the real API, real tmux and the real `dev-commands.sh` client: project-scoped `list`, the quoting fixture (double quote/`$HOME`/backtick running literally), kill → `exited`, escape-free `tail`, a successful agent restart (marker, audit, `lastRestart.caller`), the cooldown-skipped retry (exit 5, no second marker), the cross-project denial (exit 3, `project-mismatch`), an unknown-caller 403, and a header-less dashboard restart inside the agent's cooldown (`callerKind:dashboard`). See `scripts/README.md`'s "verify-dev-commands.sh" section for the full isolation/refusal/SKIPPED contract. Unit suites (`host-server/bgRestart.test.ts`, `bgRestartPolicy.test.ts`, `bgAccess.test.ts`, `state.test.ts`, `bgOutput.test.ts`, and the frontend `AgentList.test.tsx`/`BackgroundProcessesTab.test.tsx`/`BgRestartButton.test.tsx`/`BgLastRestart.test.tsx` suites) back the per-component logic the live scenario exercises end to end.
+- **Remains UAT-only — [[UAT-0208]].** The browser/UI cases that no script above exercises: the agent-detail Background tab (only the selected agent's project process, badge, live-updating clean tail), the dashboard's restart-confirmation dialog (Cancel sends nothing, Confirm restarts), and the last-restart display (reads the agent's window name or "from the dashboard", survives a reload). Also UAT-only: confirming output polling *stops* when switching away from the Background tab (only the negative — that it doesn't start early — has automated coverage). `UAT-0208` cross-references `UAT-0191`/`UAT-0192` rather than repeating their API-level liveness/output-endpoint cases.
+
+relates_to::[[UAT-0208]] relates_to::[[TASK-0208]]
 
 ### linked_agent_id
 

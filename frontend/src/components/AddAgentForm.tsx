@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { API_BASE as API_URL, listProjects, spawnAgentInProject, createProject, type Project } from '../lib/api';
 import FolderPickerModal from './FolderPickerModal';
 import {
@@ -30,21 +30,27 @@ const inputCls = [
 interface AddAgentFormProps {
   open: boolean;
   onClose: () => void;
+  /** Project to preselect when the modal opens (e.g. the active agent's project). Seeds the Project select and its default launch command. */
+  defaultProjectId?: number | null;
 }
 
-export default function AddAgentForm({ open, onClose }: AddAgentFormProps) {
+export default function AddAgentForm({ open, onClose, defaultProjectId = null }: AddAgentFormProps) {
   const [name, setName] = useState('');
   const [workdir, setWorkdir] = useState('');
   const [launchCmd, setLaunchCmd] = useState<string>(DEFAULT_LAUNCH_COMMAND);
   const [launchPreset, setLaunchPreset] = useState<LaunchCommandSelection>('claude');
   const [role, setRole] = useState<string>('generic');
+  const [description, setDescription] = useState('');
   const [useWorktree, setUseWorktree] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [projects, setProjects] = useState<Project[]>([]);
-  const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null);
+  const [selectedProjectId, setSelectedProjectId] = useState<number | null>(defaultProjectId);
+  // Mirrors the latest selection so the async project-list load never overwrites a user's pick.
+  const selectedProjectIdRef = useRef(selectedProjectId);
+  useEffect(() => { selectedProjectIdRef.current = selectedProjectId; }, [selectedProjectId]);
   const [showAddProject, setShowAddProject] = useState(false);
   const [newProjName, setNewProjName] = useState('');
   const [newProjWorkdir, setNewProjWorkdir] = useState('');
@@ -58,11 +64,27 @@ export default function AddAgentForm({ open, onClose }: AddAgentFormProps) {
   useEffect(() => {
     void (async () => {
       try {
-        setProjects(await listProjects());
+        const list = await listProjects();
+        setProjects(list);
+        if (defaultProjectId !== null && selectedProjectIdRef.current === defaultProjectId) {
+          const seeded = list.find((p) => p.id === defaultProjectId);
+          if (seeded !== undefined) {
+            setLaunchCmd(seeded.defaultLaunchCmd);
+            setLaunchPreset(presetForCommand(seeded.defaultLaunchCmd));
+          } else {
+            setSelectedProjectId(null);
+          }
+        }
       } catch {
         // Non-fatal: project list stays empty, free-form path still works.
+        // A seeded id with no option to show must not be submitted.
+        if (defaultProjectId !== null && selectedProjectIdRef.current === defaultProjectId) {
+          setSelectedProjectId(null);
+        }
       }
     })();
+    // Seed once on mount; the form is mounted per open.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -88,6 +110,7 @@ export default function AddAgentForm({ open, onClose }: AddAgentFormProps) {
       setLaunchCmd(DEFAULT_LAUNCH_COMMAND);
       setLaunchPreset('claude');
       setRole('generic');
+      setDescription('');
       setUseWorktree(false);
       setShowAdvanced(false);
       setSuccess(true);
@@ -98,7 +121,7 @@ export default function AddAgentForm({ open, onClose }: AddAgentFormProps) {
     if (selectedProject !== null) {
       setSubmitting(true);
       try {
-        await spawnAgentInProject(selectedProject.id, name.trim() || undefined, launchCmd, role, useWorktree);
+        await spawnAgentInProject(selectedProject.id, name.trim() || undefined, launchCmd, role, useWorktree, description.trim() || undefined);
         clearOnSuccess();
       } catch (err: unknown) {
         setError(err instanceof Error ? err.message : 'Failed to spawn agent');
@@ -122,7 +145,7 @@ export default function AddAgentForm({ open, onClose }: AddAgentFormProps) {
       const res = await fetch(`${API_URL}/agents`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, workdir, launchCmd, role, useWorktree }),
+        body: JSON.stringify({ name, workdir, launchCmd, role, useWorktree, ...(description.trim() !== '' ? { description: description.trim() } : {}) }),
       });
 
       if (res.status === 201) {
@@ -401,6 +424,18 @@ export default function AddAgentForm({ open, onClose }: AddAgentFormProps) {
                 />
               )}
             </div>
+          </div>
+
+          <div className={fieldCls}>
+            <label htmlFor="agent-description" className={labelCls}>Description</label>
+            <textarea
+              id="agent-description"
+              value={description}
+              onChange={(e) => { setDescription(e.target.value); }}
+              rows={2}
+              placeholder="What this agent specializes in (optional)"
+              className={inputCls}
+            />
           </div>
 
           <label className="flex cursor-pointer items-center gap-2 text-[12px] text-ink-2">

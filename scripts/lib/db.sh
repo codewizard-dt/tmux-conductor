@@ -190,3 +190,34 @@ checkpoint_agent() {
   fi
   sql "INSERT INTO agent_checkpoints (agent_id, ts, stash_ref) VALUES (${agent_id}, ${ts}, '${stash_ref}');" >/dev/null || true
 }
+
+# ---------------------------------------------------------------------------
+# 7. LEAKY_TMUX_ENV_VARS / unset_leaky_tmux_env — defense-in-depth against the
+# env leak documented in wiki/work/tasks/TASK-0233-stop-env-leak-into-tmux-windows.md
+# ---------------------------------------------------------------------------
+# `tmux new-session` seeds the tmux SERVER's global environment from whatever
+# env the spawning process had — and every window/pane created afterwards
+# (including unrelated Claude Code agent sessions sharing the same tmux
+# server) inherits it. A stale var like DATABASE_URL leaking in via `make
+# dev`'s `export` would otherwise reach every agent window. scripts/conductor.sh
+# and scripts/spawn.sh both call unset_leaky_tmux_env right after their
+# `tmux new-session`, to strip these names from the server's global
+# environment before any other window is created.
+#
+# Keep this list identical to LEAKY_ENV_VARS in host-server/spawnEnv.ts, which
+# scrubs the same names from the env handed to a spawned conductor.sh — two
+# independent layers covering the same leak.
+LEAKY_TMUX_ENV_VARS=(DATABASE_URL HOST_SERVER_URL PUBLIC_API_URL PUBLIC_BASE_URL)
+
+# unset_leaky_tmux_env — remove each LEAKY_TMUX_ENV_VARS entry from the tmux
+# server's global environment (there is one global environment per server,
+# not per session, so this takes no session argument; `-g` makes tmux ignore
+# any `-t`). Best-effort: `set-environment -u` on a name that was never set is
+# not an error, but we tolerate failure anyway (e.g. tmux transiently
+# unavailable) so this never aborts the caller under set -e.
+unset_leaky_tmux_env() {
+  local var
+  for var in "${LEAKY_TMUX_ENV_VARS[@]}"; do
+    tmux set-environment -g -u "$var" 2>/dev/null || true
+  done
+}

@@ -7,9 +7,11 @@ export interface AddTaskFormProps {
   onAdded: (task: Task) => void;
   projectId?: number | null;
   projectName?: string | null;
+  /** Root element classes; defaults to `mt-2`. */
+  className?: string;
 }
 
-export default function AddTaskForm({ agentId, onAdded, projectId, projectName }: AddTaskFormProps) {
+export default function AddTaskForm({ agentId, onAdded, projectId, projectName, className }: AddTaskFormProps) {
   const [value, setValue] = React.useState(() => {
     try { return localStorage.getItem(`conductor:taskDraft:${agentId.toString()}`) ?? '' } catch { return '' }
   });
@@ -28,8 +30,8 @@ export default function AddTaskForm({ agentId, onAdded, projectId, projectName }
     el.style.height = 'auto';
     // AgentInfoTabs keeps every tab panel mounted and toggles `hidden` (display:none)
     // rather than unmounting the inactive ones (TASK-157-ish "always mounted" tab
-    // design), so this effect can fire while the Queued Tasks panel — and this
-    // textarea inside it — is display:none. scrollHeight reads 0 for any element
+    // design), so this effect can fire while the Terminal panel (or the no-window
+    // fallback in it) — and this textarea inside it — is display:none. scrollHeight reads 0 for any element
     // in a display:none subtree; writing that straight to `style.height` would
     // pin the textarea at ~0px (masked only by the CSS min-h-7 floor) until the
     // next value change recomputes it. Skip the write when scrollHeight is 0 so a
@@ -44,7 +46,7 @@ export default function AddTaskForm({ agentId, onAdded, projectId, projectName }
   }, [value]);
 
   // Re-measure once the textarea actually becomes visible (e.g. switching into the
-  // Queued Tasks tab after mounting while its panel was `hidden`), since the effect
+  // Terminal tab after mounting while its panel was `hidden`), since the effect
   // above only re-runs on `value` changes and may have skipped its write while
   // hidden. A ResizeObserver fires when a display:none element's box resolves to
   // its real size, which naturally covers the tab-switch case with no visibility
@@ -159,7 +161,7 @@ export default function AddTaskForm({ agentId, onAdded, projectId, projectName }
   const busy = submitting || uploading;
 
   return (
-    <div className="mt-2">
+    <div className={className ?? 'mt-2'}>
       {projectId != null && projectName != null && (
         <div className="mb-1.5 flex gap-1">
           <button

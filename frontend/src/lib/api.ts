@@ -250,6 +250,7 @@ export interface ApiAgent {
   projectId: number | null;
   worktreePath?: string | null;
   branch?: string | null;
+  description?: string | null;
   createdAt: string;
 }
 
@@ -346,6 +347,19 @@ export async function updateAgentRole(agentId: number, role: string): Promise<Ap
   return (res.json() as Promise<{ agent: ApiAgent }>).then((b) => b.agent);
 }
 
+/** PATCH /api/agents/:id — set (or clear, with an empty string/null) an agent's free-text description. Returns the updated agent. */
+export async function updateAgentDescription(agentId: number, description: string | null): Promise<ApiAgent> {
+  const res = await apiFetch(`${API_BASE}/agents/${agentId.toString()}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ description }),
+  });
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(body.error ?? `HTTP ${res.status.toString()}`);
+  }
+  return (res.json() as Promise<{ agent: ApiAgent }>).then((b) => b.agent);
+}
 
 export async function cloneAgent(agentId: number, opts?: { forceWorktree?: boolean }): Promise<ApiAgent> {
   // `forceWorktree` asks the server to give the clone its own fresh worktree +
@@ -370,6 +384,7 @@ export async function spawnAgentInProject(
   launchCmd?: string,
   role?: string,
   useWorktree?: boolean,
+  description?: string,
 ): Promise<unknown> {
   const res = await apiFetch(`${API_BASE}/projects/${projectId.toString()}/agents`, {
     method: 'POST',
@@ -379,6 +394,7 @@ export async function spawnAgentInProject(
       ...(launchCmd !== undefined ? { launchCmd } : {}),
       ...(role !== undefined ? { role } : {}),
       ...(useWorktree !== undefined ? { useWorktree } : {}),
+      ...(description !== undefined ? { description } : {}),
     }),
   });
   if (!res.ok) {

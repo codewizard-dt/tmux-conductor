@@ -18,6 +18,7 @@ Terminal roadmap files (`done`) moved here by `/wiki-archive` to reduce director
 | [[ROADMAP-014]] | Dashboard performance — instrumentation, capture optimization, WebSocket terminal | done | 2026-06-28 |
 | [[ROADMAP-016]] | Observability improvements — event-loop, tmux, WebSocket, and debug traces | done | 2026-07-04 |
 | [[ROADMAP-015]] | Latency improvements — terminal transport, runtime knobs, state simplification | done | 2026-08-15 |
+| [[ROADMAP-0023]] | Replace the Agents Page Kanban Board with a Sidebar + Detail-Pane Layout | done | 2026-10-17 |
 | [[ROADMAP-017]] | Competitive-audit follow-ups — dispatch latency, perf-budget calibration, UI/UX & task history | done | 2026-09-02 |
 | [[ROADMAP-010]] | Agent observability & UX — token tracking, session recording, role templates | done | 2026-09-02 |
 | [[ROADMAP-007]] | Git workflow — worktree isolation, diff review, checkpoint & rollback | done | 2026-09-02 |

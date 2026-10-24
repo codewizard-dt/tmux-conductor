@@ -338,3 +338,55 @@ describe('LogTail with no tmux window (TASK-0178)', () => {
     expect(screen.queryByRole('button', { name: 'stop' })).toBeNull()
   })
 })
+
+// ── Task-input slot replaces the one-off text box (TASK-0200) ───────────────────────────────────
+//
+// The bottom bar renders the parent-supplied `taskInput` (the Add Task box) followed by the
+// Direct Input toggle. The old "Send one-off text commands" textarea and Send button are gone, and
+// the bar is hidden in History view like before.
+describe('LogTail task-input slot (TASK-0200)', () => {
+  const AGENT_NAME = 'slot-agent'
+
+  function stubSlotFetch() {
+    vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string) => {
+      if (url.includes('/tail')) {
+        return Promise.resolve({ ok: true, json: () => ({ agent: AGENT_NAME, lines: 1, windowPresent: true, text: 'hello' }) })
+      }
+      return Promise.resolve({ ok: true, json: () => ({ log: [] }) })
+    }))
+    vi.stubGlobal('ResizeObserver', class {
+      observe() { /* no-op */ }
+      disconnect() { /* no-op */ }
+    })
+  }
+
+  it('renders the slot next to the Direct Input toggle, with no Send button or one-off textarea', async () => {
+    stubSlotFetch()
+    render(<LogTail agentId={11} agentName={AGENT_NAME} taskInput={<textarea aria-label="slot" />} />)
+
+    expect(await screen.findByLabelText('slot')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Direct Input/ })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Send' })).toBeNull()
+    expect(screen.queryByLabelText(/one-off/i)).toBeNull()
+  })
+
+  it('hides the slot in History view and restores it on Live', async () => {
+    stubSlotFetch()
+    render(<LogTail agentId={12} agentName={AGENT_NAME} taskInput={<textarea aria-label="slot" />} />)
+    await screen.findByLabelText('slot')
+
+    fireEvent.click(screen.getByRole('button', { name: 'History' }))
+    await waitFor(() => { expect(screen.queryByLabelText('slot')).toBeNull() })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Live' }))
+    expect(await screen.findByLabelText('slot')).toBeInTheDocument()
+  })
+
+  it('renders only the Direct Input toggle when no taskInput is supplied', async () => {
+    stubSlotFetch()
+    render(<LogTail agentId={13} agentName={AGENT_NAME} />)
+
+    expect(await screen.findByRole('button', { name: /Direct Input/ })).toBeInTheDocument()
+    expect(screen.queryByRole('textbox')).toBeNull()
+  })
+})

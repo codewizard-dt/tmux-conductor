@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { NavLink } from 'react-router-dom'
 import AddAgentForm from './AddAgentForm'
 import AddBgProcessForm from './AddBgProcessForm'
+import { useActiveAgentProjectId } from '../lib/activeAgent'
 
 type Theme = 'light' | 'dark'
 
@@ -13,6 +14,7 @@ export default function NavBar() {
   const [theme, setTheme] = useState<Theme>(getInitialTheme)
   const [showAddAgent, setShowAddAgent] = useState(false)
   const [showAddBg, setShowAddBg] = useState(false)
+  const activeProjectId = useActiveAgentProjectId()
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', theme === 'dark')
@@ -72,7 +74,7 @@ export default function NavBar() {
           </button>
         </div>
       </header>
-      {showAddAgent && <AddAgentForm open onClose={() => { setShowAddAgent(false) }} />}
+      {showAddAgent && <AddAgentForm open defaultProjectId={activeProjectId} onClose={() => { setShowAddAgent(false) }} />}
       {showAddBg && <AddBgProcessForm open onClose={() => { setShowAddBg(false) }} />}
     </>
   )

@@ -1,7 +1,7 @@
 ---
 name: typecheck
 description: Run strict-typecheck, fix the first error, repeat until clean
-model: claude-sonnet-4-6
+model: claude-sonnet-5
 disable-model-invocation: false
 user-invocable: true
 ---

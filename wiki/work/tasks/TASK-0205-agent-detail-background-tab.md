@@ -4,7 +4,7 @@ aliases: [TASK-0205]
 title: "Add a Background tab to the agent detail tablist listing the agent's project's bg processes with a running/exited badge and live output tail (tab hidden when the agent has no project)"
 status: pending-uat
 created: 2026-09-20
-updated: 2026-09-20
+updated: 2026-10-17
 depends_on: [TASK-0191, TASK-0192, TASK-0195, TASK-0196]
 blocks: [TASK-0206, TASK-0207, TASK-0208]
 parallel_safe_with: [TASK-0202, TASK-0203, TASK-0204]

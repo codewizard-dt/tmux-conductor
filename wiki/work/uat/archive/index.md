@@ -4,6 +4,9 @@ Terminal UAT files (`passed`, `skipped`, or `trashed`) moved here by `/wiki-arch
 
 | ID | Title | Final Status | Archived |
 |----|-------|--------------|----------|
+| [[UAT-0195]] | UAT: Require a project for every bg process (validate POST/PATCH, cascade on project delete, backfill, remove Unassigned UI) | passed | 2026-10-17 |
+| [[UAT-0201]] | UAT: Make the agent sidebar collapsible into a status-dot rail | skipped | 2026-10-17 |
+| [[UAT-007]] | UAT: /api/projects CRUD and spawn-agent-for-project (task TASK-007 archived done without it; skipped) | skipped | 2026-10-17 |
 | [[UAT-0194]] | UAT: Resolve the calling agent's project on the server and restrict bg restart to same-project callers | passed | 2026-09-20 |
 | [[UAT-0198]] | UAT: Drop bg_processes.linked_agent_id via a table-rebuild migration (schema v12) | passed | 2026-09-20 |
 | [[UAT-0217]] | UAT: Cover delete-after-clone worktree and branch teardown with a test | passed | 2026-09-20 |
@@ -14,6 +17,15 @@ Terminal UAT files (`passed`, `skipped`, or `trashed`) moved here by `/wiki-arch
 | [[UAT-0182]] | UAT: Address tmux windows with exact-match `=` targets (6/7 auto-passed; UI-001 skipped by user) | passed | 2026-09-19 |
 | [[UAT-0168]] | UAT: Update stale agent-status-observability wiki pages, then run a full audit of the shipped transitions.jsonl feature | skipped | 2026-09-18 |
 | [[UAT-0201]] | UAT: Make the agent sidebar collapsible into a status-dot rail | skipped | 2026-09-20 |
+| [[UAT-0169]] | UAT: Remove the 3 Kanban status columns and their partition logic from AgentList | skipped | 2026-10-17 |
+| [[UAT-0170]] | UAT: Build the AgentSidebar component grouping agents by project | skipped | 2026-10-17 |
+| [[UAT-0171]] | UAT: Add a status-colored right border to each sidebar agent row | skipped | 2026-10-17 |
+| [[UAT-0173]] | UAT: Wire sidebar row click to render AgentDetailView in the main content area | skipped | 2026-10-17 |
+| [[UAT-0174]] | UAT: Preserve Cmd+Shift+Arrow cycling and notification-driven open/arm-interact against the pane selection | skipped | 2026-10-17 |
+| [[UAT-0175]] | UAT: Move the + Add Agent trigger into NavBar | skipped | 2026-10-17 |
+| [[UAT-0176]] | UAT: Convert AddBgProcessForm into a modal and move its trigger into NavBar | skipped | 2026-10-17 |
+| [[UAT-0177]] | UAT: Relocate InactiveAgentsPanel into a collapsible section at the top of the sidebar | skipped | 2026-10-17 |
+| [[UAT-0178]] | UAT: Repoint InactiveAgentsPanel's open-detail action at the detail pane and retire the modal wrapper | skipped | 2026-10-17 |
 | [[UAT-129]] | UAT: Port isolation for scripts/verify-sqlite-migration.sh | passed | 2026-09-17 |
 | [[UAT-155]] | UAT: Add a Bash >=4 self-check guard to scripts/lib/db.sh | passed | 2026-09-17 |
 | [[UAT-136]] | UAT: Audit every Direct Input focus-transition scenario | passed | 2026-09-13 |
@@ -154,3 +166,8 @@ Terminal UAT files (`passed`, `skipped`, or `trashed`) moved here by `/wiki-arch
 | [[UAT-0181]] | UAT: Remove the Inactive Agents accordion — show all agents in the sidebar with a red border + Show inactive checkbox | passed | 2026-09-19 |
 | [[UAT-0179]] | UAT: Remove the toast notification feature (TASK-146) (Skipped) | skipped | 2026-09-19 |
 | [[UAT-0196]] | UAT: Per-project bg process name uniqueness with a derived project-name slug identity | passed | 2026-09-20 |
+| [[UAT-0207]] | UAT: Show last restart time and the triggering agent next to each process | passed | 2026-10-17 |
+| [[UAT-0191]] | UAT: Report real running/exited liveness for bg processes instead of window-exists-only | passed | 2026-10-17 |
+| [[UAT-0192]] | UAT: Add an ANSI-stripped bg process output endpoint | passed | 2026-10-17 |
+| [[UAT-0193]] | UAT: Add a restart cooldown and an audit log recording which agent triggered each restart | passed | 2026-10-17 |
+| [[UAT-0197]] | UAT: Stop reading and writing bg_processes.linked_agent_id (link input, API/status fields, CONDUCTOR_BG_* env injection, AGENT_BG_LINKS) | passed | 2026-10-17 |

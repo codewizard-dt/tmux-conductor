@@ -103,6 +103,31 @@ else
   fail "dev-commands.sh lost its executable bit after the second run"
 fi
 
+# ---------------------------------------------------------------------------
+# TASK-0208: the installed bundle must include the `restart` subcommand
+# (TASK-0203) and SKILL.md must document it (TASK-0202/0203/0204), not just
+# be byte-identical to whatever the repo source happens to contain.
+# ---------------------------------------------------------------------------
+if grep -q 'restart)' "$SKILLS_DIR/scripts/dev-commands.sh" 2>/dev/null \
+  && grep -q 'cmd_restart "\$@"' "$SKILLS_DIR/scripts/dev-commands.sh" 2>/dev/null; then
+  pass "installed dev-commands.sh dispatches the 'restart' subcommand"
+else
+  fail "installed dev-commands.sh does not dispatch the 'restart' subcommand"
+fi
+
+if grep -q '{list|status|tail|restart}' "$SKILLS_DIR/scripts/dev-commands.sh" 2>/dev/null; then
+  pass "installed dev-commands.sh usage text lists all four subcommands"
+else
+  fail "installed dev-commands.sh usage text is missing one or more subcommands"
+fi
+
+if grep -q 'Restart a process' "$SKILLS_DIR/SKILL.md" 2>/dev/null \
+  && grep -q 'Exit codes:' "$SKILLS_DIR/SKILL.md" 2>/dev/null; then
+  pass "installed SKILL.md documents the restart subcommand and its exit codes"
+else
+  fail "installed SKILL.md does not document the restart subcommand/exit codes"
+fi
+
 echo ""
 if [[ $FAILURES -eq 0 ]]; then
   echo "[verify-dev-commands-install] PASS — install-hooks.sh --skills-dir wiring verified"

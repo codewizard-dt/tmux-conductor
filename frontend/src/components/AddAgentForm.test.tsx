@@ -12,7 +12,7 @@ vi.mock('../lib/api', () => ({
   createProject: vi.fn(),
 }))
 
-import { listProjects } from '../lib/api'
+import { listProjects, spawnAgentInProject, type Project } from '../lib/api'
 import AddAgentForm from './AddAgentForm'
 
 afterEach(() => {
@@ -73,5 +73,63 @@ describe('AddAgentForm', () => {
     fireEvent.click(overlay)
 
     expect(onClose).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('AddAgentForm defaultProjectId (TASK-0232)', () => {
+  const proj = (id: number, name: string, cmd: string) =>
+    ({ id, name, workdir: `/work/${name}`, defaultLaunchCmd: cmd }) as unknown as Project
+  const projects = [proj(1, 'alpha', 'claude'), proj(7, 'beta', 'codex')]
+
+  it('preselects the project and applies its default launch command once the list loads', async () => {
+    vi.mocked(listProjects).mockResolvedValue(projects)
+    render(<AddAgentForm open onClose={vi.fn()} defaultProjectId={7} />)
+
+    await waitFor(() => { expect(screen.getByLabelText('Project')).toHaveValue('7') })
+    fireEvent.click(screen.getByText('▸ Show advanced'))
+    await waitFor(() => { expect(screen.getByLabelText('Launch Command')).toHaveValue('codex') })
+  })
+
+  it('falls back to None when the seeded project is not in the list', async () => {
+    vi.mocked(listProjects).mockResolvedValue(projects)
+    render(<AddAgentForm open onClose={vi.fn()} defaultProjectId={99} />)
+
+    await waitFor(() => { expect(listProjects).toHaveBeenCalled() })
+    await waitFor(() => { expect(screen.getByLabelText('Project')).toHaveValue('') })
+  })
+
+  it('defaults to None with no prop', async () => {
+    vi.mocked(listProjects).mockResolvedValue(projects)
+    render(<AddAgentForm open onClose={vi.fn()} />)
+
+    await waitFor(() => { expect(listProjects).toHaveBeenCalled() })
+    expect(screen.getByLabelText('Project')).toHaveValue('')
+  })
+
+  it('does not overwrite a project the user picked before the list resolved', async () => {
+    let resolve: (v: Project[]) => void = () => {}
+    vi.mocked(listProjects).mockReturnValue(new Promise<Project[]>((r) => { resolve = r }))
+    render(<AddAgentForm open onClose={vi.fn()} defaultProjectId={7} />)
+
+    fireEvent.change(screen.getByLabelText('Project'), { target: { value: '' } })
+    resolve(projects)
+
+    await waitFor(() => { expect(listProjects).toHaveBeenCalled() })
+    await new Promise((r) => setTimeout(r, 0))
+    expect(screen.getByLabelText('Project')).toHaveValue('')
+    fireEvent.click(screen.getByText('▸ Show advanced'))
+    expect(screen.getByLabelText('Launch Command')).not.toHaveValue('codex')
+  })
+
+  it('submits with the seeded project id', async () => {
+    vi.mocked(listProjects).mockResolvedValue(projects)
+    vi.mocked(spawnAgentInProject).mockResolvedValue(undefined)
+    render(<AddAgentForm open onClose={vi.fn()} defaultProjectId={7} />)
+
+    await waitFor(() => { expect(screen.getByLabelText('Project')).toHaveValue('7') })
+    fireEvent.click(screen.getByRole('button', { name: 'Spawn Agent' }))
+
+    await waitFor(() => { expect(spawnAgentInProject).toHaveBeenCalled() })
+    expect(vi.mocked(spawnAgentInProject).mock.calls[0]).toEqual(expect.arrayContaining([7]))
   })
 })

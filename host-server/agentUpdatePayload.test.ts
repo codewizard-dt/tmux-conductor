@@ -13,6 +13,7 @@ const baseAgent: NewAgentUpdateSource = {
   worktreePath: null,
   branch: null,
   role: 'implementer',
+  description: null,
 };
 
 const baseContext: AgentContext = {

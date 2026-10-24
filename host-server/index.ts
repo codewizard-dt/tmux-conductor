@@ -12,10 +12,11 @@ import type { WebSocket } from 'ws';
 import { readConductorConf, DEFAULT_CONF_PATH, type ConductorConf } from './config.ts';
 import { clampTailLines, readLogTail } from './bgOutput.ts';
 import { restartBgProcess, startBgWindow, defaultBgRestartDeps } from './bgRestart.ts';
+import { scrubLeakyEnv } from './spawnEnv.ts';
 import { resolveCallerProject, authorizeRestart, describeCaller } from './bgAccess.ts';
 import { BG_CALLER_HEADER, parseCallerHeader, callerKindFor, evaluateCooldown, buildAuditRecord, defaultAuditDeps, appendAuditRecord, getRestartHistory, type BgRestartAuditInput } from './bgRestartPolicy.ts';
 import type Database from 'better-sqlite3';
-import { openDb, getDbPath, listAgents, getAgentById, createAgent, cloneAgentRecord, addWorktreeToAgent, clearAgentWorktree, deleteAgent, updateAgentName, updateAgentRole, agentWindowName, addTask, deleteTask, reorderTasks, jumpTaskToHead, moveTaskToProject, listTasksForAgentId, listTasksByProject, listCompletedTasks, listProjects, createProject, updateProject, deleteProject, nextAgentName, listSchedules, createSchedule, updateSchedule, deleteSchedule, dueSchedules, fireSchedule, getAllAgentUsageTotals, listAgentUsage, listCheckpoints, insertCheckpoint, getCheckpoint, listTerminalLog, appendTerminalLogChunk, popTask, createBgProcess, deleteBgProcess, updateBgProcess, listBgProcesses, bgSlug, bgSlugCollides, getBgBySlug, listBgSlugs, type AgentUsageTotals, type Agent } from './db.ts';
+import { openDb, getDbPath, listAgents, getAgentById, createAgent, cloneAgentRecord, addWorktreeToAgent, clearAgentWorktree, deleteAgent, updateAgentName, updateAgentRole, updateAgentDescription, agentWindowName, addTask, deleteTask, reorderTasks, jumpTaskToHead, moveTaskToProject, listTasksForAgentId, listTasksByProject, listCompletedTasks, listProjects, createProject, updateProject, deleteProject, nextAgentName, listSchedules, createSchedule, updateSchedule, deleteSchedule, dueSchedules, fireSchedule, getAllAgentUsageTotals, listAgentUsage, listCheckpoints, insertCheckpoint, getCheckpoint, listTerminalLog, appendTerminalLogChunk, popTask, createBgProcess, deleteBgProcess, updateBgProcess, listBgProcesses, bgSlug, bgSlugCollides, getBgBySlug, listBgSlugs, type AgentUsageTotals, type Agent } from './db.ts';
 import { detectAgentStatusWithBackgroundJobs, detectAgentMode, detectAgentType, readTmuxWindowInventory, isTmuxWindowPresent, bgLiveness, bgLivenessForWindow, windowTarget, windowState, getActiveTask, capturePaneTail as capturePaneTailUninstrumented, capturePaneTailRaw as capturePaneTailRawUninstrumented, sendDispatchToPane, extractPaneLabel, applyGlobalPaneSize, type AgentMode, type AgentRunState, type AgentType, type DetectionReason } from './state.ts';
 import { getAgentContext, getCodexAgentContext, type AgentContext } from './context.ts';
 import dotenv from 'dotenv';
@@ -697,7 +698,7 @@ async function sendDirectInput(agentId: number, payload: DirectInputPayload): Pr
 interface Snapshot {
   sessionAlive: boolean;
   sessionExists: boolean;
-  agents: Array<{ id: number; name: string; projectId: number | null; projectName: string | null; state: AgentRunState; status: AgentStatusContract; mode: AgentMode; agentType: AgentType; windowPresent: boolean; queuedTasks: number; launchCmd: string; workdir: string; worktreePath: string | null; branch: string | null; inGitRepo: boolean; role: string; activeTask: string | null; lastPrompt: LastPrompt | null; label: string | null; usage: AgentUsageTotals | null } & AgentContext>;
+  agents: Array<{ id: number; name: string; projectId: number | null; projectName: string | null; state: AgentRunState; status: AgentStatusContract; mode: AgentMode; agentType: AgentType; windowPresent: boolean; queuedTasks: number; launchCmd: string; workdir: string; worktreePath: string | null; branch: string | null; inGitRepo: boolean; role: string; description: string | null; activeTask: string | null; lastPrompt: LastPrompt | null; label: string | null; usage: AgentUsageTotals | null } & AgentContext>;
   bgProcesses: BgStatus[];
 }
 
@@ -892,7 +893,10 @@ await fastify.register((api) => {
       const run = spawnSync('bash', [conductorScript], {
         encoding: 'utf8',
         cwd: REPO_ROOT,
-        env: { ...process.env, CONDUCTOR_NO_ATTACH: '1' },
+        // TASK-0233: scrub conductor-only/leaky vars (e.g. a stale DATABASE_URL)
+        // before conductor.sh's `tmux new-session` seeds the tmux server's
+        // global environment with them — see spawnEnv.ts.
+        env: { ...scrubLeakyEnv(process.env), CONDUCTOR_NO_ATTACH: '1' },
         timeout: 60_000,
       });
       if (run.status !== 0) {
@@ -1078,12 +1082,13 @@ await fastify.register((api) => {
 
   // ── Agent Management ──────────────────────────────────────────────────────
 
-  api.post<{ Body: { name?: string; workdir?: string; launchCmd?: string; role?: string; useWorktree?: boolean } }>('/agents', async (req, reply) => {
+  api.post<{ Body: { name?: string; workdir?: string; launchCmd?: string; role?: string; description?: string; useWorktree?: boolean } }>('/agents', async (req, reply) => {
     const {
       name,
       workdir,
       launchCmd = 'claude --dangerously-skip-permissions --append-system-prompt-file ~/.claude/rules/agent-teams-preference.md',
       role,
+      description,
       useWorktree,
     } = req.body;
 
@@ -1123,7 +1128,7 @@ await fastify.register((api) => {
       return reply.status(409).send({ error: 'window already exists' });
     }
 
-    const newAgent = createAgent(db, { name, workdir, launchCmd, ...(role !== undefined ? { role } : {}), useWorktree: useWorktree === true });
+    const newAgent = createAgent(db, { name, workdir, launchCmd, ...(role !== undefined ? { role } : {}), ...(typeof description === 'string' && description.trim() !== '' ? { description: description.trim() } : {}), useWorktree: useWorktree === true });
     const winName = agentWindowName(newAgent);
     spawnAgentWindow(newAgent, conf);
 
@@ -1475,13 +1480,17 @@ await fastify.register((api) => {
   // Update an agent: rename it, change its role, or both. Renaming updates the
   // DB, tmux window, and state file; a role change only updates the DB and
   // broadcasts the new role — no tmux/state-file work involved.
-  api.patch<{ Params: { id: string }; Body: { name?: string; role?: string } }>('/agents/:id', (req, reply) => {
+  api.patch<{ Params: { id: string }; Body: { name?: string; role?: string; description?: string | null } }>('/agents/:id', (req, reply) => {
     const agentId = parseInt(req.params.id, 10);
     if (isNaN(agentId)) return reply.status(400).send({ error: 'invalid agent id' });
-    const { name: newName, role: newRole } = req.body;
+    const { name: newName, role: newRole, description: newDescription } = req.body;
 
-    if (newName === undefined && newRole === undefined) {
-      return reply.status(400).send({ error: 'at least one of name or role is required' });
+    if (newName === undefined && newRole === undefined && newDescription === undefined) {
+      return reply.status(400).send({ error: 'at least one of name, role or description is required' });
+    }
+
+    if (newDescription !== undefined && newDescription !== null && typeof newDescription !== 'string') {
+      return reply.status(400).send({ error: 'description must be a string or null' });
     }
 
     if (newName !== undefined && (typeof newName !== 'string' || !/^[a-zA-Z0-9_-]+$/.test(newName))) {
@@ -1541,11 +1550,16 @@ await fastify.register((api) => {
       updated = updateAgentRole(db, entry.id, newRole);
     }
 
+    if (newDescription !== undefined) {
+      const trimmed = newDescription === null ? '' : newDescription.trim();
+      updated = updateAgentDescription(db, entry.id, trimmed === '' ? null : trimmed);
+    }
+
     if (renamed) {
       broadcastSSE('agent-renamed', { id: updated.id, oldName, newName: updated.name });
     }
 
-    if (newRole !== undefined) {
+    if (newRole !== undefined || newDescription !== undefined) {
       // Immediately notify SSE clients of the role change — reuses the same
       // context-gathering shape as the clone/respawn routes' 'agent-update' broadcasts.
       const winName = agentWindowName(updated);
@@ -1561,7 +1575,7 @@ await fastify.register((api) => {
         agentType,
         windowPresent, queuedTasks: listTasksForAgentId(db, updated.id, updated.projectId).length,
         launchCmd: updated.launchCmd, workdir: updated.workdir,
-        activeTask: getActiveTask(conf, winName, state), role: updated.role, ...ctx,
+        activeTask: getActiveTask(conf, winName, state), role: updated.role, description: updated.description, ...ctx,
       });
     }
 
@@ -2484,7 +2498,7 @@ await fastify.register((api) => {
     return reply.send({ ok: true, removedBgProcesses: removedBg });
   });
 
-  api.post<{ Params: { id: string }; Body: { name?: unknown; launchCmd?: unknown; role?: unknown; useWorktree?: unknown } }>('/projects/:id/agents', async (req, reply) => {
+  api.post<{ Params: { id: string }; Body: { name?: unknown; launchCmd?: unknown; role?: unknown; description?: unknown; useWorktree?: unknown } }>('/projects/:id/agents', async (req, reply) => {
     const id = parseInt(req.params.id, 10);
     if (isNaN(id)) {
       return reply.status(400).send({ error: 'invalid project id' });
@@ -2495,7 +2509,7 @@ await fastify.register((api) => {
       return reply.status(404).send({ error: `project ${String(id)} not found` });
     }
 
-    const { name: nameOverride, launchCmd: launchCmdOverride, role, useWorktree } = req.body;
+    const { name: nameOverride, launchCmd: launchCmdOverride, role, description, useWorktree } = req.body;
     if (nameOverride !== undefined && (typeof nameOverride !== 'string' || !/^[A-Za-z0-9_-]+$/.test(nameOverride))) {
       return reply.status(400).send({ error: 'name must match ^[A-Za-z0-9_-]+$' });
     }
@@ -2518,6 +2532,7 @@ await fastify.register((api) => {
       launchCmd,
       projectId: id,
       role: effectiveRole,
+      ...(typeof description === 'string' && description.trim() !== '' ? { description: description.trim() } : {}),
       useWorktree: useWorktree === true,
     });
 
@@ -2671,7 +2686,7 @@ await fastify.register((api) => {
           queuedTasks: agent.queuedTasks, windowPresent: agent.windowPresent,
           launchCmd: agent.launchCmd, workdir: agent.workdir,
           worktreePath: agent.worktreePath, branch: agent.branch,
-          role: agent.role,
+          role: agent.role, description: agent.description,
           activeTask: agent.activeTask,
           model: agent.model, modelId: agent.modelId,
           contextTokens: agent.contextTokens, contextPct: agent.contextPct, contextLimit: agent.contextLimit,
@@ -2808,7 +2823,7 @@ function buildSnapshot(): Snapshot {
       workdir: agent.workdir,
       ...resolveAgentWorktree(agent),
       inGitRepo: isInGitRepoCached(agent.workdir),
-      role: agent.role,
+      role: agent.role, description: agent.description,
       activeTask,
       label,
       usage: usageByAgent.get(agent.id) ?? null,
@@ -2927,7 +2942,7 @@ function pollAndDiff() {
         workdir: agent.workdir,
         worktreePath: agent.worktreePath,
         branch: agent.branch,
-        role: agent.role,
+        role: agent.role, description: agent.description,
         activeTask: agent.activeTask,
         label: agent.label,
         model: agent.model,

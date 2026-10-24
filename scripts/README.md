@@ -163,6 +163,25 @@ Usage:
 scripts/add-task.sh <command words...>
 ```
 
+## verify-dev-commands.sh
+
+Regression suite for `skills/dev-commands/scripts/dev-commands.sh`'s four subcommands (`list`/`status`/`tail`/`restart`), with two modes:
+
+- **Default — hermetic (no network, no tmux).** Runs the deterministic offline checks directly against `dev-commands.sh`: the `CONDUCTOR_STATE_DIR`/`CONDUCTOR_LOG_DIR` FATAL guards, the offline `list`/`status`/`tail` fallback paths (`BACKEND_PORT` points at an unused port so every `curl` call fails deterministically), `tail -n`'s argument-order flexibility and escape stripping, slug resolution (TASK-0196), `list [--all]` project scoping (offline only, TASK-0202), and static text assertions on `dev-commands.sh`/`SKILL.md` (the `restart` dispatch, the four-subcommand usage line, the retired `idle/busy/running` vocabulary, and the `--all`/restart-exit-codes documentation). This mode also runs two sibling verifiers as sub-steps and folds their pass/fail into its own summary — `verify-dev-commands-restart.sh` (see above) and `verify-dev-commands-skill-frontmatter.sh` (SKILL.md's disable-model-invocation frontmatter). `verify-dev-commands-install.sh` and `verify-bg-liveness.sh` are standalone siblings and are deliberately **not** folded in (the latter touches a real, if private, tmux socket) — run them separately.
+- **`--live` — opt-in, isolated.** Stands up a throwaway host-server + private tmux world under `./tmp/verify-dev-commands/live/` (`scripts/lib/verify-dev-commands-live.sh`'s `run_live_scenario`, sourced only when `--live` is passed) and runs the agent-driven bg-process-restart scenario end to end through the real API, real tmux and the real `dev-commands.sh` client — never the operator's real `conductor.conf`, DB, tmux server/session, or port 8788/4321.
+  - *Isolation:* a private `conductor.conf` (own `DB_PATH`, `STATE_DIR`, `LOG_DIR`, `SESSION_NAME`) selected via `CONDUCTOR_CONF`; a private tmux server addressed only through its own socket dir (`TMUX_TMPDIR`); `BACKEND_PORT` an unused high port (default `18789`, override with `VERIFY_LIVE_PORT`); the host-server started in the background with the repo's `tsx` and torn down (plus `tmux kill-server` against the private socket only) by a `trap` on `EXIT`/`INT`/`TERM`.
+  - *Safety refusals (exit 3):* belt-and-suspenders checks that the live port is never `8788`, the session name is never `conductor`, and the scratch `CONDUCTOR_CONF` path — whether computed or inherited from the environment — never resolves to the repo's real `conductor.conf`.
+  - *SKIPPED (exit 0, not a failure):* `tmux`/`node`/`jq` missing, `host-server/node_modules` not installed, the repo path containing whitespace, or the chosen port already busy.
+  - *Scenario:* seeds two projects (`alpha`/`beta`), one agent and one `dev` bg process in each, through the real API, then asserts (25 PASS lines, each a named check): project-scoped `list`/`list --all`; a `launchCmd` with a double quote, `$HOME` and a backtick running literally (TASK-0190's quoting fix); killing a process → `liveness: exited`; escape-free `tail`; an agent-driven restart (exit 0, exactly one log marker, new output after it, `liveness: running`, one `outcome:restarted` audit line naming the caller, `GET /api/status`'s `lastRestart.caller`); an immediate second restart (exit 5, cooldown, no second marker, one `outcome:cooldown` audit line); a cross-project restart by slug (exit 3, `outcome:denied`/`project-mismatch`, target process untouched); an unknown `X-Conductor-Agent` header (403, no marker added); a header-less dashboard restart inside the agent's cooldown (succeeds, audited `callerKind:dashboard`); and a final check that no fixture window leaked onto the operator's real tmux server.
+
+Usage:
+```
+bash scripts/verify-dev-commands.sh
+bash scripts/verify-dev-commands.sh --live
+```
+
+An unknown flag prints usage and exits 2. Artifacts land in `./tmp/verify-dev-commands/` (gitignored), never `/tmp`.
+
 ## Archived Scripts
 
 The following scripts are preserved in `scripts/.archive/` for reference but are no longer part of the active system:
@@ -240,9 +259,10 @@ Open `http://localhost:4321` in your browser.
 | `broadcast.sh` | **Useful** |
 | `teardown.sh` | **Essential** |
 | `add-task.sh` | **Useful** |
-| `verify-awaiting-detection.sh` | **Useful** — TASK-0231 / BUG-0013 repeatable check: extracts `monitor.sh`'s `is_idle()` (and the `awaiting_window`/`busy_visible` helpers it needs) into a stubbed-tmux harness and checks it classifies every pane in the shared fixture set `host-server/fixtures/awaiting-panes/manifest.json` the same way `host-server/state.ts` does (that side is pinned by `host-server/state.test.ts`). Usage: `bash scripts/verify-awaiting-detection.sh` |
+| `verify-awaiting-detection.sh` | **Useful** — TASK-0231 / BUG-0013 repeatable check: extracts `monitor.sh`'s `is_idle()` (and the `awaiting_window`/`busy_visible` helpers it needs) into a stubbed-tmux harness and checks it classifies every pane in the shared fixture set `host-server/fixtures/awaiting-panes/manifest.json` the same way `host-server/state.ts` does (that side is pinned by `host-server/state.test.ts`). TASK-0235 extends the manifest beyond `awaiting` to `stalled`, `exited` (optional `paneCurrentCommand` field) and `busy-recovered`; `stalled` is host-server-only, so the bash side asserts it classifies as plain busy. Usage: `bash scripts/verify-awaiting-detection.sh` |
 | `verify-last-payload.sh` | **Useful** — TASK-0229 hermetic check of the `last_prompt` sidecar behavior (real hook scripts, temp state dir under `./tmp/`, safe to run while agents are live) plus the related host-server/frontend unit suites. Usage: `bash scripts/verify-last-payload.sh [--skip-suites]`; the human live round-trip recipe is in `hooks/README.md` ("Verifying `last_prompt`") |
 | `verify-worktree-any-agent.sh` | **Useful** — UAT-0218 opt-in live harness for the "Create worktree" and "Clone into new worktree" flows. Brings up a private host-server (own conf/DB/state/tmux socket/session, port `UAT_PORT`, default 18790) plus fixture repos under `./tmp/uat-0218/`, asserts through the real API, git and tmux, prints `PASS:`/`FAIL: caseN` lines and `ALL PASS` / `FAILED: k case(s)`; `SKIPPED` (exit 0) when a tool is missing or the port is busy. Never touches the real conf, DB, port 8788 or default tmux socket. Usage: `bash scripts/verify-worktree-any-agent.sh [--setup-only \| --cleanup \| --stop-server \| --start-server]` |
+| `audit-sample-transitions.mjs` | **Useful, manual** — interactive human-audit sampler: shows sampled `to: awaiting` (filterable) records from `logs/transitions.jsonl`, asks y/n/skip, and reports agreement with the dialog-marker heuristic. Requires a human at the keyboard (not CI-runnable). Strictly read-only against `transitions.jsonl`; writes only to `--out` (default `./tmp/audit-sample-<ts>.jsonl`). Usage: `node scripts/audit-sample-transitions.mjs [--file <path>] [--since <ISO>] [--to <state>] [--n <count>] [--seed <int>] [--out <path>]` |
 | `report-false-awaiting.mjs` | **Useful** — measures false-awaiting rates (transitions into `awaiting` with no dialog marker, or with `esc to interrupt` visible) from `logs/transitions.jsonl`. Usage: `node scripts/report-false-awaiting.mjs [--since <ISO>] [--file <path>]` |
 | `host-server/` | **Active** |
 | `frontend/` | **Active** |

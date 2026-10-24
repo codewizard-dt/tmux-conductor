@@ -26,6 +26,7 @@ export interface Agent {
   worktreePath: string | null;
   branch: string | null;
   role: string;
+  description: string | null;
   createdAt: string;
 }
 
@@ -175,6 +176,7 @@ interface AgentRow {
   worktree_path?: string | null;
   branch?: string | null;
   role: string;
+  description?: string | null;
   created_at: string;
 }
 
@@ -253,7 +255,7 @@ function mapProject(r: ProjectRow): Project {
 
 function mapAgent(r: AgentRow | AgentWithProjectRow): Agent {
   const projectName = 'project_name' in r ? r.project_name : null;
-  return { id: r.id, name: r.name, workdir: r.workdir, launchCmd: r.launch_cmd, projectId: r.project_id, projectName, worktreePath: r.worktree_path ?? null, branch: r.branch ?? null, role: r.role, createdAt: r.created_at };
+  return { id: r.id, name: r.name, workdir: r.workdir, launchCmd: r.launch_cmd, projectId: r.project_id, projectName, worktreePath: r.worktree_path ?? null, branch: r.branch ?? null, role: r.role, description: r.description ?? null, createdAt: r.created_at };
 }
 
 function mapBgProcess(r: BgProcessRow): BgProcess {
@@ -527,6 +529,12 @@ function runMigrations(db: Database.Database): void {
       rebuildBgProcesses(db, { projectNotNull: countBgRowsMissingProject(db) === 0 });
     }
     db.prepare(`INSERT OR REPLACE INTO meta VALUES ('schema_version', '12')`).run();
+  }
+  if (version < 13) {
+    // TASK-0199: free-text agent description (specialized-agent catalog). Nullable,
+    // no CHECK — a plain ADD COLUMN suffices.
+    db.exec(`ALTER TABLE agents ADD COLUMN description TEXT`);
+    db.prepare(`INSERT OR REPLACE INTO meta VALUES ('schema_version', '13')`).run();
   }
 }
 
@@ -832,7 +840,7 @@ export function getAgentById(db: Database.Database, id: number): Agent | undefin
   return row ? mapAgent(row) : undefined;
 }
 
-export function createAgent(db: Database.Database, data: { name: string; workdir: string; launchCmd: string; projectId?: number; role?: string; useWorktree?: boolean; requireWorktree?: boolean }): Agent {
+export function createAgent(db: Database.Database, data: { name: string; workdir: string; launchCmd: string; projectId?: number; role?: string; description?: string; useWorktree?: boolean; requireWorktree?: boolean }): Agent {
   // TASK-0213: `requireWorktree` turns the best-effort worktree step below into
   // a hard requirement (an explicit "clone into a new worktree" request must
   // never silently hand back a second agent on the same directory). The
@@ -855,8 +863,8 @@ export function createAgent(db: Database.Database, data: { name: string; workdir
     throw new Error(`an agent with tmux window name '${newWindowName}' already exists`);
   }
   const row = db.prepare(
-    `INSERT INTO agents (name, workdir, launch_cmd, project_id, role) VALUES (?, ?, ?, ?, ?) RETURNING id`
-  ).get(data.name, data.workdir, data.launchCmd, data.projectId ?? null, data.role ?? 'generic') as { id: number };
+    `INSERT INTO agents (name, workdir, launch_cmd, project_id, role, description) VALUES (?, ?, ?, ?, ?, ?) RETURNING id`
+  ).get(data.name, data.workdir, data.launchCmd, data.projectId ?? null, data.role ?? 'generic', data.description ?? null) as { id: number };
 
   // ROADMAP-007: worktree creation is opt-in only (data.useWorktree), never
   // automatic — it used to run for every agent whose workdir sat inside a
@@ -928,6 +936,7 @@ export function cloneAgentRecord(db: Database.Database, source: Agent, opts: { f
     launchCmd: source.launchCmd,
     ...(source.projectId != null ? { projectId: source.projectId } : {}),
     role: source.role,
+    ...(source.description ? { description: source.description } : {}),
     useWorktree: forceWorktree || Boolean(source.worktreePath),
     requireWorktree: forceWorktree,
   });
@@ -992,6 +1001,12 @@ export function updateAgentName(db: Database.Database, id: number, newName: stri
 
 export function updateAgentRole(db: Database.Database, id: number, role: string): Agent {
   const updated = db.prepare(`UPDATE agents SET role=? WHERE id=?`).run(role, id);
+  if (updated.changes === 0) throw new Error(`Agent ${String(id)} not found`);
+  return findAgentById(db, id);
+}
+
+export function updateAgentDescription(db: Database.Database, id: number, description: string | null): Agent {
+  const updated = db.prepare(`UPDATE agents SET description=? WHERE id=?`).run(description, id);
   if (updated.changes === 0) throw new Error(`Agent ${String(id)} not found`);
   return findAgentById(db, id);
 }

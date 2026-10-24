@@ -2,12 +2,13 @@
 id: agent-state-determination
 title: Agent State Determination
 aliases: [Agent Status Detection, Agent State Detection]
-updated: 2026-09-20
+updated: 2026-10-17
 sources:
   - ../../raw/research/application-latency-structure/index.md
   - ../../raw/research/application-latency-structure/index-2.md
   - ../../raw/research/transition-observability/index.md
   - ../../raw/research/detect-agent-status-reason-mapping/index.md
+  - ../../raw/research/agent-state-transition-evaluation/index.md
 tags: [agents, state, status, performance]
 ---
 
@@ -33,7 +34,11 @@ The `awaiting` state (a dialog or prompt needs the user) was over-reported while
 
 **The draft-line rule and window.** The awaiting window is the last 8 non-blank pane lines (not just the last one) after dropping Claude Code `❯ <typed draft>` input lines (`^\s*❯\s+\S`). The `>` alternative is now `^\s*>\s*$`: a line that is only `>`. This corrects the earlier "last non-blank line" description of the pattern.
 
-**Shared fixtures.** Both detectors are pinned to one fixture set, `host-server/fixtures/awaiting-panes/manifest.json`: `host-server/state.test.ts` covers the TypeScript side (`awaitingWindow`, the branch guard) and `scripts/verify-awaiting-detection.sh` covers `monitor.sh` (`awaiting_window`, `busy_visible`). `scripts/report-false-awaiting.mjs` re-measures the false-awaiting rate from the transitions log. See [[Dispatch-Path Parity (Two Dispatchers, One Gate)]] for why two implementations need one fixture set.
+**Shared fixtures.** Both detectors are pinned to one fixture set, `host-server/fixtures/awaiting-panes/manifest.json`: `host-server/state.test.ts` covers the TypeScript side (`awaitingWindow`, the branch guard) and `scripts/verify-awaiting-detection.sh` covers `monitor.sh` (`awaiting_window`, `busy_visible`). `scripts/report-false-awaiting.mjs` re-measures the false-awaiting rate from the transitions log. See [[Dispatch-Path Parity (Two Dispatchers, One Gate)]] for why two implementations need one fixture set. `TASK-0235` broadened the manifest beyond `awaiting`: it now also carries `stalled` (host-server-only; `verify-awaiting-detection.sh` asserts the bash-side-equivalent `busy` classification instead, since `monitor.sh` has no `stalled` branch), `exited`, and `busy-recovered` cases, driven by the manifest's optional `paneCurrentCommand` field.
+
+## Evaluating the detectors themselves
+
+The unit tests, shared fixture manifest, and `report-false-awaiting.mjs` together form a three-tier evaluation strategy (branch tests → golden fixtures → production log analysis) that generalizes beyond `awaiting` — see [[Evaluating a Heuristic State Detector (Three-Tier Testing)]] for the full breakdown, including two open gaps: no test exercises a *sequence* of two or more polls (the age-gated `busy-recovered`/`inventory-timeout` branches are untested for "1-switch" history-dependent cases), and `report-false-awaiting.mjs`'s false-positive estimate is a second heuristic validating the first rather than a human-calibrated ground truth.
 
 relates_to::[[Dashboard Performance Benchmarking]]
 relates_to::[[Local Observability]]
@@ -41,3 +46,4 @@ relates_to::[[Dispatch-Path Parity (Two Dispatchers, One Gate)]]
 relates_to::[[Observability for Agent Status Transitions]]
 relates_to::[[detectAgentStatus Return-Site to DetectionReason Mapping]]
 relates_to::[[Testing strategy for monitor.sh's emit_transition_jsonl / transition-diff logic]]
+relates_to::[[Evaluating a Heuristic State Detector (Three-Tier Testing)]]

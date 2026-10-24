@@ -281,6 +281,8 @@ void test('detectAgentStatus: no state file, regex fallback defaults to busy whe
 interface AwaitingPaneCase {
   name: string;
   launch: 'claude' | 'codex';
+  /** Optional pane_current_command; defaults to `launch` (agent still running). */
+  paneCurrentCommand?: string;
   stateFile: 'idle' | 'busy' | 'awaiting' | null;
   ageS: number;
   pane: string;
@@ -292,7 +294,7 @@ const awaitingCases = JSON.parse(
   fs.readFileSync(path.join(awaitingFixtureDir, 'manifest.json'), 'utf8'),
 ) as AwaitingPaneCase[];
 
-void describe('awaiting-pane fixtures (TASK-0231)', () => {
+void describe('shared pane fixtures (TASK-0231, extended TASK-0235)', () => {
   void it('manifest is non-empty', () => {
     assert.ok(awaitingCases.length > 0);
   });
@@ -306,7 +308,7 @@ void describe('awaiting-pane fixtures (TASK-0231)', () => {
         if (c.stateFile !== null) {
           writeState(dir, 'agent-x', c.stateFile, c.ageS * 1000);
         }
-        const result = detectAgentStatus(conf, 'agent-x', c.launch, pane, true, c.launch);
+        const result = detectAgentStatus(conf, 'agent-x', c.launch, pane, true, c.paneCurrentCommand ?? c.launch);
         assert.equal(result.state, c.expected.state, `state for ${c.name}`);
         if (c.expected.reason !== undefined) {
           assert.equal(result.reason, c.expected.reason, `reason for ${c.name}`);

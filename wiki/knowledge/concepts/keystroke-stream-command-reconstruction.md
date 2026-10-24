@@ -19,7 +19,8 @@ When input is forwarded to a terminal **one key at a time** (as `LogTail`'s Dire
 **Design rules that follow:**
 - Model **uncertainty explicitly**: keys that move or rewrite the line the mirror cannot track flip the buffer to "uncertain"; committing an uncertain buffer at `Enter` should **leave the previous record unchanged** rather than store a possibly-wrong one.
 - Keep the reducer **pure** (`(buffer, payload) → { buffer, submitted? }`) so the lossy rules are unit-testable without React or a terminal.
-- Prefer an **exact source when one exists**: an input that submits a whole line in one call (`{ text, enter: true }`, i.e. the send box) needs no reconstruction and should be recorded verbatim.
+- Prefer an **exact source when one exists**: an input that submits a whole line in one call (`{ text, enter: true }`) needs no reconstruction and should be recorded verbatim.
+  > **Contradiction (TASK-0200, 2026-09-20):** the send box that was this example was removed from `LogTail` by TASK-0200 (replaced by the Add Task box, which queues a task rather than typing into the pane). The principle stands, but the terminal currently has no such exact-line input.
 - The exact alternative for the terminal path is reading the line from the pane on `Enter` (server-side `capture-pane`) — exact but racy against TUI redraw and no longer frontend-only.
 - Treat the buffer as **sensitive**: it can hold a password typed into a masked prompt, so decide up-front whether to skip, cap or expire what gets persisted.
 

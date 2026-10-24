@@ -110,5 +110,30 @@
     "ageS": 0,
     "pane": "codex-bare-gt-idle-prompt.txt",
     "expected": { "state": "idle", "reason": "regex-fallback" }
+  },
+  {
+    "name": "stalled-no-pattern-match-bash-busy-equivalent",
+    "launch": "claude",
+    "stateFile": "busy",
+    "ageS": 400,
+    "pane": "stalled-no-pattern-match.txt",
+    "expected": { "state": "stalled", "reason": "inventory-timeout" }
+  },
+  {
+    "name": "exited-shell-prompt",
+    "launch": "claude",
+    "paneCurrentCommand": "zsh",
+    "stateFile": "busy",
+    "ageS": 5,
+    "pane": "exited-shell-prompt.txt",
+    "expected": { "state": "exited", "reason": "exited" }
+  },
+  {
+    "name": "busy-recovered-idle-footer",
+    "launch": "claude",
+    "stateFile": "busy",
+    "ageS": 40,
+    "pane": "busy-recovered-idle-footer.txt",
+    "expected": { "state": "idle", "reason": "busy-recovered" }
   }
 ]

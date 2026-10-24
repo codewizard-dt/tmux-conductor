@@ -3,8 +3,9 @@ import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-
 import { CSS } from '@dnd-kit/utilities'
 import { ChevronLeft, ChevronRight, Square, Trash2 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { API_BASE, addTask, cloneAgent, createWorktreeForAgent, listProjects, renameAgent, restartAgentWindow, updateAgentRole, updateBgProcess, type AgentDisplayStatus, type AgentRunState, type AgentStatusContract, type BgLastRestart as BgLastRestartValue, type BgRestartResult, type Project, type Task } from '../lib/api'
+import { API_BASE, addTask, cloneAgent, createWorktreeForAgent, listProjects, renameAgent, restartAgentWindow, updateAgentDescription, updateAgentRole,updateBgProcess, type AgentDisplayStatus, type AgentRunState, type AgentStatusContract, type BgLastRestart as BgLastRestartValue, type BgRestartResult, type Project, type Task } from '../lib/api'
 import { clearOrder, loadOrder, orderAgents, reorderGroup, saveOrder } from '../lib/agentOrder'
+import { setActiveAgentProjectId } from '../lib/activeAgent'
 import { SIDEBAR_COLLAPSED_WIDTH_PX, SIDEBAR_WIDTH_PX } from '../lib/layoutConstants'
 import { loadSidebarCollapsed, setSidebarCollapsed } from '../lib/sidebarState'
 import { reprobeTerminalSize } from '../lib/terminalSizeProbe'
@@ -51,6 +52,7 @@ export interface Agent {
   worktreePath?: string | null
   inGitRepo?: boolean
   role?: string | null
+  description?: string | null
   activeTask: string | null
   lastPrompt?: { text: string; ts: string } | null
   label?: string | null
@@ -636,12 +638,13 @@ interface AgentDetailViewProps {
   onRenamed?: (id: number, newName: string) => void
   onCloned?: (id: number) => void
   onRoleChanged?: (agentId: number, role: string) => void
+  onDescriptionChanged?: (agentId: number, description: string | null) => void
   onWorktreeCreated?: (id: number, worktreePath: string, branch: string) => void
 }
 
 // The agent detail content, mounted directly in the Agents page's main pane. `onClose` means
 // "deselect" (return the pane to its empty state).
-export function AgentDetailView({ agent, project, projectId, projectBgs, onBgRestarted, status, onClose, armInteract, agentCount, onNavigate, onRenamed, onCloned, onRoleChanged, onWorktreeCreated }: AgentDetailViewProps) {
+export function AgentDetailView({ agent, project, projectId, projectBgs, onBgRestarted, status, onClose, armInteract, agentCount, onNavigate, onRenamed, onCloned, onRoleChanged, onDescriptionChanged, onWorktreeCreated }: AgentDetailViewProps) {
   const isMac = /mac/i.test(navigator.userAgent)
   // TASK-0226: last user payload for the strip under the header (retained until replaced).
   const lastPayload = useLastPayload(agent.id)
@@ -673,6 +676,10 @@ export function AgentDetailView({ agent, project, projectId, projectBgs, onBgRes
   const [roleInput, setRoleInput] = useState('')
   const [showRoleInput, setShowRoleInput] = useState(false)
   const [roleError, setRoleError] = useState<string | null>(null)
+  const [changingDescription, setChangingDescription] = useState(false)
+  const [descriptionInput, setDescriptionInput] = useState('')
+  const [showDescriptionInput, setShowDescriptionInput] = useState(false)
+  const [descriptionError, setDescriptionError] = useState<string | null>(null)
   const [cloning, setCloning] = useState(false)
   const [cloneError, setCloneError] = useState<string | null>(null)
   const [showAddBg, setShowAddBg] = useState(false)
@@ -867,6 +874,22 @@ export function AgentDetailView({ agent, project, projectId, projectBgs, onBgRes
     }
   }
 
+  async function handleChangeDescription() {
+    if (changingDescription) return
+    setChangingDescription(true)
+    setDescriptionError(null)
+    try {
+      const trimmed = descriptionInput.trim()
+      await updateAgentDescription(agent.id, trimmed === '' ? null : trimmed)
+      setShowDescriptionInput(false)
+      onDescriptionChanged?.(agent.id, trimmed === '' ? null : trimmed)
+    } catch (err: unknown) {
+      setDescriptionError(err instanceof Error ? err.message : 'Description change failed')
+    } finally {
+      setChangingDescription(false)
+    }
+  }
+
   async function handleClone(opts?: { forceWorktree?: boolean }) {
     if (cloning) return
     setCloning(true)
@@ -917,6 +940,11 @@ export function AgentDetailView({ agent, project, projectId, projectBgs, onBgRes
       key: 'change-role',
       label: 'Change role',
       onSelect: () => { setRoleInput(agent.role ?? 'generic'); setShowRoleInput(true); setRoleError(null); setShowRenameInput(false) },
+    },
+    {
+      key: 'edit-description',
+      label: 'Edit description',
+      onSelect: () => { setDescriptionInput(agent.description ?? ''); setShowDescriptionInput(true); setDescriptionError(null) },
     },
     {
       key: 'clone',
@@ -974,6 +1002,15 @@ export function AgentDetailView({ agent, project, projectId, projectBgs, onBgRes
             interactSignal={interactSignal}
             onInteractChange={handleInteractChange}
             onCloseModal={onClose}
+            taskInput={(
+              <AddTaskForm
+                className="min-w-0 flex-1"
+                agentId={agent.id}
+                onAdded={(task) => { setTasks((prev) => [...prev, task]) }}
+                projectId={projectId}
+                projectName={project}
+              />
+            )}
           />
         </ErrorBoundary>
       ) : (
@@ -988,6 +1025,13 @@ export function AgentDetailView({ agent, project, projectId, projectBgs, onBgRes
             {creating ? 'Creating…' : 'Create window'}
           </button>
           {windowError && <span className="text-[11px] text-accent-red">{windowError}</span>}
+          <AddTaskForm
+            className="w-full max-w-md text-left"
+            agentId={agent.id}
+            onAdded={(task) => { setTasks((prev) => [...prev, task]) }}
+            projectId={projectId}
+            projectName={project}
+          />
         </div>
       ),
     },
@@ -1076,7 +1120,6 @@ export function AgentDetailView({ agent, project, projectId, projectBgs, onBgRes
       content: (
         <div className="flex-shrink-0">
           <TaskList agentName={agent.name} tasks={tasks} onReorder={setTasks} projectId={projectId} />
-          <AddTaskForm agentId={agent.id} onAdded={(task) => { setTasks((prev) => [...prev, task]) }} projectId={projectId} projectName={project} />
         </div>
       ),
     },
@@ -1260,9 +1303,49 @@ export function AgentDetailView({ agent, project, projectId, projectBgs, onBgRes
           </div>
         )}
 
-        {(renameError ?? roleError ?? closeError ?? removeError ?? cloneError ?? worktreeError ?? restartError) && (
+        {showDescriptionInput ? (
+          <div className="flex flex-shrink-0 items-start gap-2 border-b border-line px-5 py-2">
+            <textarea
+              autoFocus
+              value={descriptionInput}
+              onChange={(e) => { setDescriptionInput(e.target.value) }}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') { setShowDescriptionInput(false) }
+                if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { void handleChangeDescription() }
+              }}
+              rows={2}
+              aria-label="Agent description"
+              placeholder="What this agent specializes in"
+              className="min-w-0 flex-1 rounded-[7px] border border-accent-blue/40 bg-card px-2 py-1 text-[12px] text-ink focus:outline-none focus:ring-1 focus:ring-accent-blue/50"
+            />
+            <button
+              type="button"
+              onClick={() => { void handleChangeDescription() }}
+              disabled={changingDescription}
+              className="inline-flex h-7 cursor-pointer items-center rounded-[7px] bg-accent-green-solid px-3 text-[12px] font-medium text-white transition hover:opacity-85 active:scale-[0.985] disabled:pointer-events-none disabled:opacity-40"
+            >
+              {changingDescription ? 'Saving…' : 'Save'}
+            </button>
+            <button
+              type="button"
+              onClick={() => { setShowDescriptionInput(false) }}
+              className="inline-flex h-7 cursor-pointer items-center rounded-[7px] border border-line bg-card px-3 text-[12px] font-medium text-ink transition hover:bg-canvas active:scale-[0.985]"
+            >
+              Cancel
+            </button>
+          </div>
+        ) : agent.description ? (
+          <div
+            className="flex-shrink-0 border-b border-line px-5 py-1.5 text-[12px] text-ink-2 break-words"
+            title={agent.description}
+          >
+            {agent.description}
+          </div>
+        ) : null}
+
+        {(renameError ?? roleError ?? descriptionError ?? closeError ?? removeError ?? cloneError ?? worktreeError ?? restartError) && (
           <div className="flex-shrink-0 border-b border-line bg-accent-red/5 px-5 py-1.5 text-[11px] text-accent-red break-words">
-            {renameError ?? roleError ?? closeError ?? removeError ?? cloneError ?? worktreeError ?? restartError}
+            {renameError ?? roleError ?? descriptionError ?? closeError ?? removeError ?? cloneError ?? worktreeError ?? restartError}
           </div>
         )}
 
@@ -2281,6 +2364,12 @@ export default function AgentList() {
   // Resolved against the full `agents` state (not only the cycle set) so a selected
   // inactive agent still renders in the pane when "Show inactive" is unchecked.
   const selectedAgent = expandedAgent ? agents.find((a) => a.id === expandedAgent.id) : undefined
+  // TASK-0232: publish the selected agent's project for NavBar's Add Agent modal preselect.
+  const selectedProjectId = selectedAgent?.projectId ?? null
+  useEffect(() => {
+    setActiveAgentProjectId(selectedProjectId)
+  }, [selectedProjectId])
+  useEffect(() => () => { setActiveAgentProjectId(null) }, [])
   // The view's prev/next counter reflects the list the shortcut cycles through.
   const selectedCycleCount = orderedAgentIds.length
 
@@ -2381,6 +2470,10 @@ export default function AgentList() {
               onRoleChanged={(id, role) => {
                 // Optimistic role change by stable id; the next status poll/SSE reconciles too.
                 setAgents((prev) => prev.map((a) => a.id === id ? { ...a, role } : a))
+              }}
+              onDescriptionChanged={(id, description) => {
+                // Optimistic description change by stable id; the SSE agent-update reconciles too.
+                setAgents((prev) => prev.map((a) => a.id === id ? { ...a, description } : a))
               }}
               onWorktreeCreated={(id, worktreePath, branch) => {
                 // Optimistic local patch; the SSE agent-update from the host-server reconciles every other client.

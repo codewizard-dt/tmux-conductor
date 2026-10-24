@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useRef, useState, type DragEvent, type FocusEvent, type KeyboardEvent } from 'react'
+import { Fragment, useEffect, useRef, useState, type DragEvent, type FocusEvent, type KeyboardEvent, type ReactNode } from 'react'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
@@ -158,7 +158,7 @@ function recordFocusedInputAck(agentId: number, inputId: number | undefined, sen
   })
 }
 
-export default function LogTail({ agentId, agentName, maxHeightClass, focused, fillContainer, interactSignal, onInteractChange, onCloseModal }: {
+export default function LogTail({ agentId, agentName, maxHeightClass, focused, fillContainer, interactSignal, onInteractChange, onCloseModal, taskInput }: {
   /** Globally-unique agent id — used for all API calls and SSE filtering. */
   agentId: number
   /** Display name only (not unique across projects). */
@@ -174,14 +174,13 @@ export default function LogTail({ agentId, agentName, maxHeightClass, focused, f
   onInteractChange?: ((interacting: boolean) => void) | undefined
   /** Called when the user presses Esc twice in Direct Input mode to close the modal. */
   onCloseModal?: (() => void) | undefined
+  /** Rendered in the bottom bar in place of the old one-off text box; supplied by AgentDetailView as the Add Task box. */
+  taskInput?: ReactNode | undefined
 }) {
   const [loaded, setLoaded] = useState(false)
   const [windowPresent, setWindowPresent] = useState(false)
   const [failed, setFailed] = useState(false)
   const [interacting, setInteracting] = useState(false)
-  const [sendText, setSendText] = useState(() => {
-    try { return localStorage.getItem(`conductor:sendDraft:${agentId.toString()}`) ?? '' } catch { return '' }
-  })
   const [sendError, setSendError] = useState<string | null>(null)
   const [uploading, setUploading] = useState(false)
   const [dragOver, setDragOver] = useState(false)
@@ -208,7 +207,6 @@ export default function LogTail({ agentId, agentName, maxHeightClass, focused, f
   const pendingTextRef = useRef<string | null>(null)
   const lastWrittenRef = useRef('')
   const writingRef = useRef(false)
-  const sendTextareaRef = useRef<HTMLTextAreaElement>(null)
   const escHintAtRef = useRef<number | null>(null)
   const escHintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   // Trailing-edge debounce for the live-update repaint: while this is running, further live
@@ -277,15 +275,6 @@ export default function LogTail({ agentId, agentName, maxHeightClass, focused, f
     }, LIVE_REPAINT_DEBOUNCE_MS)
   }
 
-  useEffect(() => {
-    const el = sendTextareaRef.current
-    if (!el) return
-    el.style.height = 'auto'
-    const maxH = 80
-    el.style.height = `${String(Math.min(el.scrollHeight, maxH))}px`
-    el.style.overflowY = el.scrollHeight > maxH ? 'auto' : 'hidden'
-  }, [sendText, windowPresent])
-
   // Fetch initial tail to determine windowPresent and capture the first text snapshot.
   useEffect(() => {
     let cancelled = false
@@ -333,6 +322,7 @@ export default function LogTail({ agentId, agentName, maxHeightClass, focused, f
 
   // Create the xterm.js terminal once the tail has loaded, the tmux window is
   // present, and the container div is in the DOM.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!loaded || !windowPresent || !xtermContainerRef.current) return
     const term = new Terminal({
@@ -487,6 +477,7 @@ export default function LogTail({ agentId, agentName, maxHeightClass, focused, f
       }
       client?.close()
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [agentId, focused])
 
   useSSEEvent<{ agentId: number; agent: string; text: string; lines: number }>(
@@ -513,6 +504,7 @@ export default function LogTail({ agentId, agentName, maxHeightClass, focused, f
   }, [focused])
 
    
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (interactSignal === undefined || interactSignal <= 0) return
     // Defer setState to avoid cascading renders (interactive mode is triggered by external signal)
@@ -527,6 +519,7 @@ export default function LogTail({ agentId, agentName, maxHeightClass, focused, f
   // without an extra gating prop. Gated the same way the terminal-creation effect above gates
   // itself (loaded && windowPresent), so captureRef is guaranteed to be mounted, and guarded by
   // a one-shot ref so it never re-arms after the first successful arm.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!loaded || !windowPresent || defaultInteractArmedRef.current) return
     defaultInteractArmedRef.current = true
@@ -542,13 +535,14 @@ export default function LogTail({ agentId, agentName, maxHeightClass, focused, f
   // Capture-phase (not bubble-phase JSX onPaste): xterm.js's own paste listener on this
   // element runs in the bubble phase and calls stopPropagation(), which would otherwise
   // swallow the event before a bubble-phase handler ever sees it.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!interacting) return
     const el = captureRef.current
     if (!el) return
     el.addEventListener('paste', handlePaste, { capture: true })
     return () => { el.removeEventListener('paste', handlePaste, { capture: true }) }
-  }, [interacting, handlePaste])
+  }, [interacting])
 
   function enqueue(payload: KeysPayload) {
     if (focused && terminalWsRef.current?.sendInput(payload)) {
@@ -637,14 +631,6 @@ export default function LogTail({ agentId, agentName, maxHeightClass, focused, f
     if (!(e.relatedTarget instanceof Node) || !captureRef.current?.contains(e.relatedTarget)) {
       setInteracting(false)
     }
-  }
-
-  function handleSendSubmit() {
-    const text = sendText.trim()
-    if (text === '') return
-    enqueue({ text, enter: true })
-    setSendText('')
-    try { localStorage.removeItem(`conductor:sendDraft:${agentId.toString()}`) } catch { /**/ }
   }
 
   return (
@@ -775,34 +761,8 @@ export default function LogTail({ agentId, agentName, maxHeightClass, focused, f
         </>
       )}
       {windowPresent && viewMode === 'live' && (
-        <form
-          onSubmit={(e) => { e.preventDefault(); handleSendSubmit() }}
-          className="mt-1.5 flex items-end gap-1.5"
-        >
-          <textarea
-            ref={sendTextareaRef}
-            value={sendText}
-            rows={1}
-            onChange={(e) => {
-              const v = e.target.value
-              setSendText(v)
-              try { localStorage.setItem(`conductor:sendDraft:${agentId.toString()}`, v) } catch { /**/ }
-            }}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault()
-                handleSendSubmit()
-              }
-            }}
-            placeholder={`Send one-off text commands to ${agentName}…`}
-            className="min-h-7 min-w-0 flex-1 resize-none overflow-hidden rounded-[7px] border border-line-input bg-card px-2 py-1 font-mono text-[11px] text-ink placeholder:text-muted-2"
-            aria-label={`Send one-off text commands to ${agentName}`}
-          />
-          <button
-            type="submit"
-            disabled={sendText.trim() === ''}
-            className="inline-flex h-7 cursor-pointer items-center rounded-[7px] bg-accent-blue-solid px-3 text-[12px] font-medium text-white transition hover:opacity-85 active:scale-[0.985] disabled:pointer-events-none disabled:opacity-40"
-          >Send</button>
+        <div className="mt-1.5 flex items-end gap-1.5">
+          {taskInput}
           <button
             type="button"
             onMouseDown={(e) => { e.preventDefault() }}
@@ -815,7 +775,7 @@ export default function LogTail({ agentId, agentName, maxHeightClass, focused, f
             <span aria-hidden="true">⌨</span>
             {interacting ? 'Stop Direct Input' : 'Direct Input'}
           </button>
-        </form>
+        </div>
       )}
       {sendError && <p className="mt-1 text-[11px] text-accent-red">{sendError}</p>}
     </div>

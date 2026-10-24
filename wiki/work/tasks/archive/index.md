@@ -4,6 +4,17 @@ Terminal task files (`done` or `trashed`) moved here by `/wiki-archive` to reduc
 
 | ID | Title | Final Status | Archived |
 |----|-------|--------------|----------|
+| [[TASK-0187]] | Decide the fate of the single-agent linked_agent_id now that projects own bg processes | done | 2026-10-17 |
+| [[TASK-0188]] | Decide whether bg process names become unique per project | done | 2026-10-17 |
+| [[TASK-0189]] | Spike whether pipe-pane log capture survives respawn-window -k versus kill-window plus new-window | done | 2026-10-17 |
+| [[TASK-0195]] | Require a project for every bg process (validate POST/PATCH, cascade on project delete, backfill, remove Unassigned UI) | done | 2026-10-17 |
+| [[TASK-0219]] | Dump and record UserPromptSubmit payloads for typed, slash, multi-line, Up-recalled and dispatched prompts | done | 2026-10-17 |
+| [[TASK-0220]] | Decide the last-payload storage rules (ordering, length cap, multi-line display, secrets) | done | 2026-10-17 |
+| [[TASK-158]] | Assess shared-dev-commands research assumptions + re-research the split-brain/project-scoping/UI-UX/skill-script gaps | done | 2026-10-17 |
+| [[TASK-0207]] | Show last restart time and the triggering agent next to each process | done | 2026-10-17 |
+| [[TASK-0191]] | Report real running/exited liveness for bg processes instead of window-exists-only | done | 2026-10-17 |
+| [[TASK-0192]] | Add an ANSI-stripped bg process output endpoint | done | 2026-10-17 |
+| [[TASK-0193]] | Add a restart cooldown and an audit log recording which agent triggered each restart | done | 2026-10-17 |
 | [[TASK-0194]] | Resolve the calling agent's project on the server and restrict bg restart to same-project callers | done | 2026-09-20 |
 | [[TASK-0198]] | Drop bg_processes.linked_agent_id via a table-rebuild migration | done | 2026-09-20 |
 | [[TASK-0217]] | Cover delete-after-clone worktree and branch teardown with a test | done | 2026-09-20 |
@@ -14,6 +25,15 @@ Terminal task files (`done` or `trashed`) moved here by `/wiki-archive` to reduc
 | [[TASK-0182]] | Address tmux windows with exact-match `=` targets (inactive agent shows/acts on its `-copy` sibling's pane) | done | 2026-09-19 |
 | [[TASK-0168]] | Update stale agent-status-observability wiki pages, then run a full audit of the shipped transitions.jsonl feature | done | 2026-09-18 |
 | [[TASK-0201]] | Make the agent sidebar collapsible into a status-dot rail | done | 2026-09-20 |
+| [[TASK-0169]] | Remove the 3 Kanban status columns and their partition logic from AgentList | done | 2026-10-17 |
+| [[TASK-0170]] | Build the AgentSidebar component grouping agents by project | done | 2026-10-17 |
+| [[TASK-0171]] | Add a status-colored right border to each sidebar agent row | done | 2026-10-17 |
+| [[TASK-0173]] | Wire sidebar row click to render AgentDetailView in the main content area | done | 2026-10-17 |
+| [[TASK-0174]] | Preserve Cmd+Shift+Arrow cycling and notification-driven open/arm-interact against the pane selection | done | 2026-10-17 |
+| [[TASK-0175]] | Move the + Add Agent trigger into NavBar | done | 2026-10-17 |
+| [[TASK-0176]] | Convert AddBgProcessForm into a modal and move its trigger into NavBar | done | 2026-10-17 |
+| [[TASK-0177]] | Relocate InactiveAgentsPanel into a collapsible section at the top of the sidebar | done | 2026-10-17 |
+| [[TASK-0178]] | Repoint InactiveAgentsPanel's open-detail action at the detail pane and retire the modal wrapper | done | 2026-10-17 |
 | [[TASK-050]] | App Platform live deploy runbook for app/ (api + frontend), invite-gated signups from day one | trashed | 2026-09-17 |
 | [[TASK-129]] | Port isolation for scripts/verify-sqlite-migration.sh | done | 2026-09-17 |
 | [[TASK-155]] | Add a Bash >=4 self-check guard to scripts/lib/db.sh | done | 2026-09-17 |
@@ -181,3 +201,4 @@ Terminal task files (`done` or `trashed`) moved here by `/wiki-archive` to reduc
 | [[TASK-0188]] (duplicate file `TASK-0188-bg-name-global-uniqueness-collision-guard`) | Keep bg process names globally unique and reject bg/agent window-name collisions in both directions | trashed | 2026-09-20 |
 | [[TASK-0189]] (duplicate file `TASK-0189-spike-pipe-pane-respawn-window`) | Spike: does pipe-pane log capture survive respawn-window -k, and can a crash be detected? | trashed | 2026-09-20 |
 | [[TASK-0196]] | Implement per-project bg process name uniqueness with a derived project-name slug identity | done | 2026-09-20 |
+| [[TASK-0197]] | Stop reading and writing bg_processes.linked_agent_id: remove the link input, API/status fields, CONDUCTOR_BG_* env injection, and legacy AGENT_BG_LINKS | done | 2026-10-17 |

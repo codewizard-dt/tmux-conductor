@@ -182,7 +182,7 @@ implements::[[TASK-011]]
 - **Steps**:
   1. Ensure agent `<AGENT>` is idle with an empty queue
   2. Open the dashboard and expand/open the agent's detail panel (click the agent row to open the modal)
-  3. Find the "Add task" form at the bottom of the task list section
+  3. Find the "New task…" / `Add` form in the Terminal tab's bottom bar, next to the `Direct Input` toggle (moved there from the Queued tasks tab by TASK-0200)
   4. Type `echo ui-test` and submit
   5. Observe the form area immediately after submission
 - **Expected Result**:

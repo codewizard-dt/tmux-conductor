@@ -48,6 +48,10 @@ name="${AGENT_NAMES[0]}"
 workdir="${AGENT_DIRS[$name]}"
 launch_cmd="${AGENT_CMDS[$name]}"
 tmux new-session -d -s "$SESSION_NAME" -c "$workdir"
+# TASK-0233: strip known-leaky vars (e.g. a stale DATABASE_URL) from the tmux
+# server's global environment right away, before any other window/pane is
+# created and inherits them. See unset_leaky_tmux_env in lib/db.sh.
+unset_leaky_tmux_env
 
 env_prefix="CONDUCTOR_AGENT_NAME='$name' CONDUCTOR_STATE_DIR='$STATE_DIR' CONDUCTOR_LOG_DIR='$LOG_DIR'"
 tmux send-keys -t "$SESSION_NAME" "$env_prefix $launch_cmd" Enter

@@ -2,7 +2,7 @@
 id: TASK-0200
 aliases: [TASK-0200]
 title: "Replace the terminal's one-off command box with the Add Task box"
-status: todo
+status: pending-uat
 created: 2026-09-19
 updated: 2026-09-19
 depends_on: []
@@ -46,36 +46,36 @@ The Terminal tab of the agent detail view ends in a bottom bar built by `fronten
 
 ### 1. Add the `className` prop to AddTaskForm  <!-- agent: general-purpose -->
 
-- [ ] In `frontend/src/components/AddTaskForm.tsx`, add `className?: string` to `AddTaskFormProps` and use it for the root `<div>` (`className={className ?? 'mt-2'}`); keep every other behaviour identical.
+- [x] In `frontend/src/components/AddTaskForm.tsx`, add `className?: string` to `AddTaskFormProps` and use it for the root `<div>` (`className={className ?? 'mt-2'}`); keep every other behaviour identical.
   - Update the two comments (~L28-37, ~L45-50) that say the textarea can mount inside a hidden Queued Tasks tab: it now mounts in the Terminal tab (and the no-window fallback), while `AgentInfoTabs` still keeps inactive panels mounted `hidden`, so the zero-`scrollHeight` guard and `ResizeObserver` stay as they are.
 
 ### 2. Swap the one-off box for a slot in LogTail  <!-- agent: general-purpose -->
 
-- [ ] In `frontend/src/components/LogTail.tsx`, add `taskInput?: ReactNode | undefined` to the props object (import `ReactNode` from `react` alongside the existing `KeyboardEvent` import) with a doc comment ("Rendered in the bottom bar in place of the old one-off text box; supplied by AgentDetailView as the Add Task box").
-- [ ] Replace the bottom `<form onSubmit=… className="mt-1.5 flex items-end gap-1.5">` (~L778-818) with `<div className="mt-1.5 flex items-end gap-1.5">` containing `{taskInput}` followed by the existing `Direct Input` toggle button (unchanged: `onMouseDown` preventDefault, `aria-pressed`, styles). Keep the `windowPresent && viewMode === 'live'` gate.
-- [ ] Delete the one-off-only code: the `<textarea ref={sendTextareaRef} …>` and `Send` `<button type="submit">`; `handleSendSubmit` (~L641-647); the `sendText`/`setSendText` state (~L181-184); `sendTextareaRef` (~L211); the auto-size `useEffect` (~L280-287). Verify with `find_referencing_symbols`/`search_for_pattern` that nothing else uses `sendText`, `sendTextareaRef` or `conductor:sendDraft`.
-- [ ] Keep `sendError`, `setSendError`, `enqueue`, `enqueueImageUploads` and the `{sendError && …}` line (~L819): Direct Input keystrokes and paste/drop still use them. Confirm `agentName` is still used (Direct Input banner); do not remove the prop.
+- [x] In `frontend/src/components/LogTail.tsx`, add `taskInput?: ReactNode | undefined` to the props object (import `ReactNode` from `react` alongside the existing `KeyboardEvent` import) with a doc comment ("Rendered in the bottom bar in place of the old one-off text box; supplied by AgentDetailView as the Add Task box").
+- [x] Replace the bottom `<form onSubmit=… className="mt-1.5 flex items-end gap-1.5">` (~L778-818) with `<div className="mt-1.5 flex items-end gap-1.5">` containing `{taskInput}` followed by the existing `Direct Input` toggle button (unchanged: `onMouseDown` preventDefault, `aria-pressed`, styles). Keep the `windowPresent && viewMode === 'live'` gate.
+- [x] Delete the one-off-only code: the `<textarea ref={sendTextareaRef} …>` and `Send` `<button type="submit">`; `handleSendSubmit` (~L641-647); the `sendText`/`setSendText` state (~L181-184); `sendTextareaRef` (~L211); the auto-size `useEffect` (~L280-287). Verify with `find_referencing_symbols`/`search_for_pattern` that nothing else uses `sendText`, `sendTextareaRef` or `conductor:sendDraft`.
+- [x] Keep `sendError`, `setSendError`, `enqueue`, `enqueueImageUploads` and the `{sendError && …}` line (~L819): Direct Input keystrokes and paste/drop still use them. Confirm `agentName` is still used (Direct Input banner); do not remove the prop.
 
 ### 3. Render AddTaskForm in the terminal bar; remove it from the Queued tab  <!-- agent: general-purpose -->
 
-- [ ] In `frontend/src/components/AgentList.tsx` `AgentDetailView` (`tabs` array), pass `taskInput={<AddTaskForm className="min-w-0 flex-1" agentId={agent.id} onAdded={(task) => { setTasks((prev) => [...prev, task]) }} projectId={projectId} projectName={project} />}` to `<LogTail>` (~L858-867).
-- [ ] In the same `tabs` array, in the `agent.windowPresent` false fallback (~L870-881), render the same `<AddTaskForm agentId=… />` (default `mt-2` class) below the `Create window` button/`windowError`.
-- [ ] In the `queued-tasks` tab content (~L965-973), delete the `<AddTaskForm …/>` line; keep `<TaskList agentName={agent.name} tasks={tasks} onReorder={setTasks} projectId={projectId} />` and its wrapper. `AddTaskForm` import stays (still used).
+- [x] In `frontend/src/components/AgentList.tsx` `AgentDetailView` (`tabs` array), pass `taskInput={<AddTaskForm className="min-w-0 flex-1" agentId={agent.id} onAdded={(task) => { setTasks((prev) => [...prev, task]) }} projectId={projectId} projectName={project} />}` to `<LogTail>` (~L858-867).
+- [x] In the same `tabs` array, in the `agent.windowPresent` false fallback (~L870-881), render the same `<AddTaskForm agentId=… />` (default `mt-2` class) below the `Create window` button/`windowError`.
+- [x] In the `queued-tasks` tab content (~L965-973), delete the `<AddTaskForm …/>` line; keep `<TaskList agentName={agent.name} tasks={tasks} onReorder={setTasks} projectId={projectId} />` and its wrapper. `AddTaskForm` import stays (still used).
 
 ### 4. Update and add tests  <!-- agent: general-purpose -->
 
-- [ ] `frontend/src/components/AgentList.test.tsx`: extend `MockLogTail` (~L26-37) to accept `taskInput?: ReactNode` and render `{props.taskInput}` inside its `<div data-testid="mock-log-tail">`.
-- [ ] Rewrite the test `'renders TaskList and AddTaskForm when the Queued Tasks tab is selected'` (~L2687-2699): the Queued tasks tabpanel shows `No tasks in queue.` and contains no `New task text` textbox (`queryByLabelText` null, no `Add task` button).
-- [ ] Add tests in the same `describe('AgentDetailView tabbed info panel (TASK-157)')` block: (a) the Terminal tabpanel (agent with `windowPresent: true`) contains `getByLabelText('New task text')` and `getByRole('button', { name: 'Add task' })`, and `queryByLabelText(/one-off/i)` is null; (b) with `windowPresent: false` the Terminal tabpanel shows the `Create window` button AND the `New task text` textbox; (c) submitting text through the Terminal-panel box calls `POST /tasks` (assert via the `stubAgentDetailFetch` fetch mock) and the new row appears in the Queued tasks tab list (`fireEvent.change` + click `Add task`, then switch tab).
-- [ ] `frontend/src/components/LogTail.test.tsx`: add `describe('LogTail task-input slot (TASK-0200)')` reusing the file's `stubFetch()` pattern: rendering `<LogTail agentId agentName taskInput={<textarea aria-label="slot" />} />` shows the slot and the `Direct Input`/`Stop Direct Input` toggle, has no `Send` button and no textbox labelled `Send one-off text commands to …`; clicking the `History` view toggle hides the slot (and `Live` restores it); without `taskInput` the bar renders only the toggle.
-- [ ] Run `npm test --workspace frontend -- AgentList LogTail TaskList` (or the repo's vitest invocation from `.serena` `suggested_commands`) and the frontend typecheck (`global/typecheck-command` memory); fix any failures.
+- [x] `frontend/src/components/AgentList.test.tsx`: extend `MockLogTail` (~L26-37) to accept `taskInput?: ReactNode` and render `{props.taskInput}` inside its `<div data-testid="mock-log-tail">`.
+- [x] Rewrite the test `'renders TaskList and AddTaskForm when the Queued Tasks tab is selected'` (~L2687-2699): the Queued tasks tabpanel shows `No tasks in queue.` and contains no `New task text` textbox (`queryByLabelText` null, no `Add task` button).
+- [x] Add tests in the same `describe('AgentDetailView tabbed info panel (TASK-157)')` block: (a) the Terminal tabpanel (agent with `windowPresent: true`) contains `getByLabelText('New task text')` and `getByRole('button', { name: 'Add task' })`, and `queryByLabelText(/one-off/i)` is null; (b) with `windowPresent: false` the Terminal tabpanel shows the `Create window` button AND the `New task text` textbox; (c) submitting text through the Terminal-panel box calls `POST /tasks` (assert via the `stubAgentDetailFetch` fetch mock) and the new row appears in the Queued tasks tab list (`fireEvent.change` + click `Add task`, then switch tab).
+- [x] `frontend/src/components/LogTail.test.tsx`: add `describe('LogTail task-input slot (TASK-0200)')` reusing the file's `stubFetch()` pattern: rendering `<LogTail agentId agentName taskInput={<textarea aria-label="slot" />} />` shows the slot and the `Direct Input`/`Stop Direct Input` toggle, has no `Send` button and no textbox labelled `Send one-off text commands to …`; clicking the `History` view toggle hides the slot (and `Live` restores it); without `taskInput` the bar renders only the toggle.
+- [x] Run `npm test --workspace frontend -- AgentList LogTail TaskList` (or the repo's vitest invocation from `.serena` `suggested_commands`) and the frontend typecheck (`global/typecheck-command` memory); fix any failures.
 
 ### 5. Wiki and UAT bookkeeping for the moved control  <!-- agent: general-purpose -->
 
-- [ ] `wiki/knowledge/entities/components/log-tail.md` (~L88): revise in place — the send box (`handleSendSubmit`, `conductor:sendDraft`) no longer exists; the bottom bar now hosts the Add Task box via the `taskInput` slot, and `enqueue` is fed only by Direct Input key/paste/image paths.
-- [ ] `wiki/knowledge/sources/terminal-typed-command-persistence.md` (~L18, L20, L22) and `wiki/knowledge/concepts/keystroke-stream-command-reconstruction.md` (~L20): add a dated note that the "send box records an exact `{text, enter:true}` line" path was removed by TASK-0200 (flag it with a `> **Contradiction:**`-style callout rather than silently rewriting the original claim).
-- [ ] `wiki/work/uat/UAT-162-details-queued-tasks-into-tabs.md` UI-001 step 4 (~L36): the Queued tasks panel is now `TaskList` only; the Add Task box lives in the Terminal tab bottom bar. Check `wiki/work/uat/UAT-011-immediate-dispatch.md` (~L180) and `UAT-0180-…md` for the same placement wording and adjust.
+- [x] `wiki/knowledge/entities/components/log-tail.md` (~L88): revise in place — the send box (`handleSendSubmit`, `conductor:sendDraft`) no longer exists; the bottom bar now hosts the Add Task box via the `taskInput` slot, and `enqueue` is fed only by Direct Input key/paste/image paths.
+- [x] `wiki/knowledge/sources/terminal-typed-command-persistence.md` (~L18, L20, L22) and `wiki/knowledge/concepts/keystroke-stream-command-reconstruction.md` (~L20): add a dated note that the "send box records an exact `{text, enter:true}` line" path was removed by TASK-0200 (flag it with a `> **Contradiction:**`-style callout rather than silently rewriting the original claim).
+- [x] `wiki/work/uat/UAT-162-details-queued-tasks-into-tabs.md` UI-001 step 4 (~L36): the Queued tasks panel is now `TaskList` only; the Add Task box lives in the Terminal tab bottom bar. Check `wiki/work/uat/UAT-011-immediate-dispatch.md` (~L180) and `UAT-0180-…md` for the same placement wording and adjust.
 
 ### 6. Verify in the running dashboard  <!-- agent: general-purpose -->
 
-- [ ] With `make dev` running, open an agent with a live window at `http://localhost:4321`: the Terminal tab's bottom bar shows the "New task…" box + `Add` + `Direct Input`, with no "Send one-off text commands" box; typing a task and pressing Enter/`Add` queues it (visible in the Queued tasks tab, or dispatches immediately for an idle agent with an empty queue); Direct Input typing/paste/image-drop still work; History view hides the bar; an agent with no window can still queue via the fallback box. Record the outcome in the task file.
+- [DEFERRED-TO-UAT] With `make dev` running, open an agent with a live window at `http://localhost:4321`: the Terminal tab's bottom bar shows the "New task…" box + `Add` + `Direct Input`, with no "Send one-off text commands" box; typing a task and pressing Enter/`Add` queues it (visible in the Queued tasks tab, or dispatches immediately for an idle agent with an empty queue); Direct Input typing/paste/image-drop still work; History view hides the bar; an agent with no window can still queue via the fallback box. Record the outcome in the task file.

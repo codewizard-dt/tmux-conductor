@@ -11,7 +11,7 @@ import type { AgentMode, AgentRunState, AgentType } from './state.ts';
 
 export type NewAgentUpdateSource = Pick<
   Agent,
-  'id' | 'name' | 'projectId' | 'projectName' | 'launchCmd' | 'workdir' | 'worktreePath' | 'branch' | 'role'
+  'id' | 'name' | 'projectId' | 'projectName' | 'launchCmd' | 'workdir' | 'worktreePath' | 'branch' | 'role' | 'description'
 >;
 
 export interface NewAgentLiveState {
@@ -52,6 +52,7 @@ export function buildNewAgentUpdate(agent: NewAgentUpdateSource, live: NewAgentL
     worktreePath: agent.worktreePath ?? null,
     branch: agent.branch ?? null,
     role: agent.role,
+    description: agent.description ?? null,
     activeTask: live.activeTask ?? null,
     inGitRepo: live.inGitRepo ?? false,
     ...live.context,

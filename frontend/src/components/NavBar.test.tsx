@@ -11,8 +11,9 @@ vi.mock('../lib/api', () => ({
   createProject: vi.fn(),
 }))
 
-import { listProjects } from '../lib/api'
+import { listProjects, type Project } from '../lib/api'
 import NavBar from './NavBar'
+import { setActiveAgentProjectId } from '../lib/activeAgent'
 
 // NavBar reads/writes `document.documentElement.classList` and `localStorage`
 // directly (TASK-122's dark-mode toggle), so each test must reset both —
@@ -20,6 +21,7 @@ import NavBar from './NavBar'
 // for repeated-text renders in ConfirmDialog.test.tsx.
 afterEach(() => {
   cleanup()
+  setActiveAgentProjectId(null)
   document.documentElement.classList.remove('dark')
   localStorage.clear()
   vi.clearAllMocks()
@@ -239,5 +241,38 @@ describe('NavBar Add Background Process trigger', () => {
     expect(screen.queryByRole('button', { name: 'Spawn Agent' })).not.toBeInTheDocument()
 
     await waitFor(() => { expect(listProjects).toHaveBeenCalledTimes(2) })
+  })
+})
+
+describe('NavBar Add Agent preselect (TASK-0232)', () => {
+  const projects = [{ id: 7, name: 'beta', workdir: '/work/beta', defaultLaunchCmd: 'claude' }] as unknown as Project[]
+
+  it('opens with the active agent project selected', async () => {
+    vi.mocked(listProjects).mockResolvedValue(projects)
+    setActiveAgentProjectId(7)
+    renderNavBar()
+    fireEvent.click(screen.getByRole('button', { name: '+ Add Agent' }))
+    await waitFor(() => { expect(screen.getByLabelText('Project')).toHaveValue('7') })
+  })
+
+  it('opens with None when there is no active agent', async () => {
+    vi.mocked(listProjects).mockResolvedValue(projects)
+    renderNavBar()
+    fireEvent.click(screen.getByRole('button', { name: '+ Add Agent' }))
+    await waitFor(() => { expect(listProjects).toHaveBeenCalled() })
+    expect(screen.getByLabelText('Project')).toHaveValue('')
+  })
+
+  it('re-seeds on reopen after the selection changes', async () => {
+    vi.mocked(listProjects).mockResolvedValue(projects)
+    renderNavBar()
+    fireEvent.click(screen.getByRole('button', { name: '+ Add Agent' }))
+    await waitFor(() => { expect(listProjects).toHaveBeenCalled() })
+    expect(screen.getByLabelText('Project')).toHaveValue('')
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }))
+
+    setActiveAgentProjectId(7)
+    fireEvent.click(screen.getByRole('button', { name: '+ Add Agent' }))
+    await waitFor(() => { expect(screen.getByLabelText('Project')).toHaveValue('7') })
   })
 })

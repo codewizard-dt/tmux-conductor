@@ -1,0 +1,4 @@
+● Running build step 3 of 7
+  Compiling host-server/state.ts
+  Compiling host-server/db.ts
+  waiting on the module graph to settle

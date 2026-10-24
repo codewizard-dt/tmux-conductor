@@ -1,0 +1,6 @@
+● Implemented the change and the static gates pass.
+
+────────────────────────────────────────
+❯
+────────────────────────────────────────
+  ⏵⏵ accept edits on (shift+tab to cycle)

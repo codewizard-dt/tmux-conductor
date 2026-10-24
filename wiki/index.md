@@ -1,6 +1,6 @@
 ---
 title: Wiki Index
-updated: 2026-09-20
+updated: 2026-10-17
 ---
 
 # Wiki Index — Home Map
@@ -62,6 +62,7 @@ The wiki is split into two domains with opposite organizing laws:
 - [Create-a-Worktree Action on Any Agent](knowledge/sources/worktree-on-any-agent.md) — a "Create worktree" button + `POST /agents/:id/worktree` already exist but only for agents with no worktree, from the detail pane only; gaps are menu reachability, no second worktree per agent (id-derived path/branch), and Clone sharing a workdir when the source has no worktree; recommends surfacing the action in the actions menu plus a "Clone into new worktree" item
 - [Showing a File Tree of the Project](knowledge/sources/project-file-tree.md) — no file-listing route exists (`/browse` is directories-only and unscoped); recommends a Files tab beside Diff backed by `GET /agents/:id/files` sourced from `git ls-files -co --exclude-standard` (~11 ms here, hides `.env`/`node_modules`), a headless tree library, names only; flags that tab panels all mount up-front and that CORS `*` blocks serving file contents
 - [An `orchestrator` Agent Role That Manages tmux-Window Agents and Background Processes](knowledge/sources/orchestrator-role-fleet-control.md) — nearly every verb an orchestrator needs (create agent, window open/close/reopen, enqueue, bg open/close/tail) already exists as a route, only bg restart is missing (ROADMAP-0024); `agents.role` is a 7-value CHECK enum needing a table-rebuild migration; a role only affects agents with a **worktree**; spawn env carries no agent id or role; under the no-auth model the role is a grant + guardrails + audit, not a permission wall; recommends lifecycle-only v1
+- [How to Evaluate Agent State Transitions](knowledge/sources/agent-state-transition-evaluation.md) — the existing branch-tests + golden-fixtures + production-log architecture already matches 0-switch coverage, golden-master testing, and production replay; gaps are no 1-switch (sequential-poll) tests for age-gated recovery branches and a false-positive proxy that validates itself with a second heuristic instead of a human-calibrated sample
 
 ### Concepts
 - [Agent Worktree Lifecycle (Creation Paths, Identity, Clone Semantics)](knowledge/concepts/agent-worktree-lifecycle.md) — three opt-in creation paths (create-time flag, retroactive route, clone), worktree path/branch derived from the agent id, consumers (checkpoint/diff/rollback/teardown), and the live-agent-cwd and shared-workdir hazards
@@ -106,6 +107,7 @@ The wiki is split into two domains with opposite organizing laws:
 - [React File-Tree Component Options](knowledge/concepts/file-tree-ui-library-options.md) — Headless Tree (recommended), react-arborist (fallback), @pierre/trees (beta, path-first), or hand-rolled; virtualization unnecessary at ~900 paths, keyboard/ARIA work is the real cost
 - [Localhost Server with CORS `*`](knowledge/concepts/local-server-cors-wildcard-exposure.md) — loopback bind doesn't stop cross-origin reads from any page in the user's browser; blocks serving file contents until `CORS_ORIGIN` is restricted and paths are realpath-jailed
 - [Agent Role as Capability Grant, Not Permission Wall (No-Auth Trust Model)](knowledge/concepts/agent-role-capability-grant.md) — with no auth, a headerless call is "human", so a role can't deny anyone; it can grant a route set, constrain recognised callers (no self-target, no orchestrator-creates-orchestrator, fleet cap, confirm on delete) and attribute actions; identify callers by numeric agent id, not the non-injective window name
+- [Evaluating a Heuristic State Detector (Three-Tier Testing)](knowledge/concepts/state-detector-evaluation-tiers.md) — branch tests (0-switch) → golden fixtures grown from real incidents (characterization testing) → production log + offline analysis is a reusable pattern for any heuristic classifier; missing 1-switch sequence tests and a human-calibrated false-positive baseline are the next increments
 
 ### Entities
 - People — [knowledge/entities/people/](knowledge/entities/people/)

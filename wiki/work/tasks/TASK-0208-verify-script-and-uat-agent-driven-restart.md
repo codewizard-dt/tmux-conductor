@@ -2,13 +2,13 @@
 id: TASK-0208
 aliases: [TASK-0208]
 title: "Extend `verify-dev-commands.sh` and write a UAT for an agent-driven restart"
-status: in-progress
+status: pending-uat
 created: 2026-09-20
 updated: 2026-09-20
 depends_on: [TASK-0190, TASK-0191, TASK-0192, TASK-0193, TASK-0194, TASK-0195, TASK-0196, TASK-0202, TASK-0203, TASK-0204, TASK-0205, TASK-0206, TASK-0207]
 blocks: []
 parallel_safe_with: []
-uat: ""
+uat: "[[UAT-0208]]"
 tags: [bg-processes, verification, uat, dev-commands, restart, roadmap-0024]
 ---
 
@@ -69,31 +69,52 @@ Prove the feature the roadmap set out to deliver: **an agent in a project can li
 
 ### 1. Read inputs  <!-- agent: Explore -->
 
-- [ ] Read the merged results of `TASK-0190`..`0207` (each task's `## Notes`/deferred recipes and `[DEFERRED-TO-UAT]` steps) with Serena, and list every deferred live check; make sure each maps to a UAT case above
-- [ ] Read `scripts/verify-dev-commands.sh`, `verify-dev-commands-restart.sh`, `verify-dev-commands-skill-frontmatter.sh`, `verify-dev-commands-install.sh`, `verify-bg-liveness.sh`, and `host-server/config.ts` (`CONDUCTOR_CONF`, `SESSION_NAME`, `DB_PATH`, `STATE_DIR`, `LOG_DIR` sourcing) plus how the host-server starts (root `package.json` scripts, `npx tsx`), how a session is started (`POST /api/session` or `conductor.sh`), and how the API seeds projects/agents/bg processes
-- [ ] Check `Makefile`, `package.json` scripts, `.github/workflows/` and `scripts/README.md` for where `verify-dev-commands.sh` is wired (search with Serena `search_for_pattern`) so new sub-verifiers are run where the old one is
+- [x] Read the merged results of `TASK-0190`..`0207` (each task's `## Notes`/deferred recipes and `[DEFERRED-TO-UAT]` steps) with Serena, and list every deferred live check; make sure each maps to a UAT case above
+- [x] Read `scripts/verify-dev-commands.sh`, `verify-dev-commands-restart.sh`, `verify-dev-commands-skill-frontmatter.sh`, `verify-dev-commands-install.sh`, `verify-bg-liveness.sh`, and `host-server/config.ts` (`CONDUCTOR_CONF`, `SESSION_NAME`, `DB_PATH`, `STATE_DIR`, `LOG_DIR` sourcing) plus how the host-server starts (root `package.json` scripts, `npx tsx`), how a session is started (`POST /api/session` or `conductor.sh`), and how the API seeds projects/agents/bg processes
+- [x] Check `Makefile`, `package.json` scripts, `.github/workflows/` and `scripts/README.md` for where `verify-dev-commands.sh` is wired (search with Serena `search_for_pattern`) so new sub-verifiers are run where the old one is
+
+**Findings (for Step 2/3 agents):**
+- Deferred checks found: (a) `verify-dev-commands.sh` end-of-file comment — live `list`/`list --all` project-scoping smoke, `whoami` cross-check, unknown-`CONDUCTOR_AGENT_NAME` fallback note (TASK-0202); (b)/(c) `verify-dev-commands-restart.sh` two end-of-file comment blocks (TASK-0203/TASK-0204) — live `restart` success+marker, cooldown exit 5, cross-project exit 3, `bg-restarts.jsonl` growth; kill→`exited` liveness, `restart`→`running`+`last restart: <ts> by <caller>`, tail escape-free with restart marker. All three map into the case list in this file's Approach section. TASK-0195/0197/0198 also have stray `[DEFERRED-TO-UAT]`/verification notes but those tasks are **not** in this task's `depends_on` and are orthogonal (project-route validation, env-var retirement, migration safety) — intentionally out of scope, no new case needed.
+- `scripts/verify-dev-commands.sh` (333 lines): hermetic only, `BACKEND_PORT=18788` unused port forces offline paths; tests 1-19 cover FATAL guards, offline list/status/tail fixtures, slug resolution (TASK-0196), `list [--all]` project scoping (TASK-0202, offline only). Ends with the deferred-live comment block (~line 309-321). No CLI flags today.
+- `scripts/verify-dev-commands-restart.sh` (672 lines): spins up an inline Node stub HTTP server (ephemeral port via `PORT_FILE`) mocking `/api/status`, `/api/agents/whoami`, `/api/bg-processes/:slug/tail`, `/api/bg-processes/:slug/restart` by canned slug→response mapping (200/403/409/429 w/ and w/o `Retry-After`/`retryAfterS`, 500, 418, 404). Logs every stub request to `requests.jsonl` for exact-count assertions (e.g. "no retry on 429"). Has `skip()`/`SKIPS` counter for missing `node`/`jq`. Two deferred-live comment blocks at the end (~line 631-659), explicitly "owned by TASK-0208's UAT".
+- `scripts/verify-dev-commands-skill-frontmatter.sh` (38 lines): trivial frontmatter assertion on `skills/dev-commands/SKILL.md`, unrelated to restart.
+- `scripts/verify-dev-commands-install.sh` (113 lines): runs real `install-hooks.sh` twice into scratch dirs, diffs whole files for byte-identity + idempotency. Needs new assertions (not a rewrite) to check the installed bundle contains the `restart` subcommand / updated `SKILL.md` text.
+- `scripts/verify-bg-liveness.sh` (183 lines): the only one of the five touching real tmux, via a **private socket** (`tmux -S $SOCK -f /dev/null`, under `./tmp/verify-bg-liveness/`); replicates `is_shell_cmd`/`launch_cmd_name`/`bg_pane_exited` inline rather than sourcing `monitor.sh`. `GRACE_WAIT_S=4` must exceed the host-server's 3s `BG_STARTUP_GRACE_MS`. Its header comment says it is "exercised in UAT (TASK-0191), not in CI" today.
+- `host-server/config.ts`: `CONDUCTOR_CONF` env var selects the conf file (`DEFAULT_CONF_PATH` falls back to repo-root `conductor.conf`); `readConductorConf()` caches 5s, shells out via `execSync('bash -c "source <conf> && declare -p ..."')`. `STATE_DIR`/`LOG_DIR`/`DB_PATH` resolve relative to the **conf file's own directory**, not cwd. `SESSION_NAME` has no fallback default (empty string if absent) — a `--live` harness must supply its own scratch conf with a unique `SESSION_NAME` plus `CONDUCTOR_CONF` pointed at it for isolation. `BG_RESTART_COOLDOWN_S` (seconds in conf) → `bgRestartCooldownMs` (ms) is the knob to shrink for fast cooldown tests.
+- Host-server start: `host-server/package.json` `"start": "node --import tsx/esm index.ts"` (no-reload) or `"dev": "tsx watch index.ts"`. Port via `PORT`/`BACKEND_PORT` env (default 8788), host `HOST` env (default `127.0.0.1`).
+- Session start: `POST /session/start` (`host-server/index.ts:874-905`) — reconnects if a tmux session named `conf.sessionName` already exists, else runs `scripts/conductor.sh` via `spawnSync` with `CONDUCTOR_NO_ATTACH=1` env (keeps it from attaching to a terminal) — the right env for a scripted `--live` harness.
+- Seed endpoints: `POST /projects` `{name, workdir, defaultLaunchCmd?}` (`index.ts:2394`); `POST /agents` `{name, workdir, launchCmd?, role?, useWorktree?}`, requires session running + window name free (`index.ts:1080`); `POST /bg-processes` `{name, workdir, launchCmd, projectId}` — `projectId` required (TASK-0195), slug is `<projectName>-<name>` via `bgSlug()`, requires session running (`index.ts:1958`); `GET /agents/whoami` resolves the `x-conductor-agent` header (`BG_CALLER_HEADER`, `host-server/bgRestartPolicy.ts:21`) to a caller descriptor (`index.ts:1949`); `POST /bg-processes/:slug/restart` order of checks is 404→403(same-project)→409(session)→429(cooldown)→500(failure)→200 success, auditing every attempt past 404 to `bg-restarts.jsonl` (`index.ts:2165-2251`); `GET /bg-processes/:slug/tail` at `index.ts:2289`.
+- Wiring: **no automated wiring exists today** — no `Makefile` `verify` target, no root `package.json` script runs any `verify-*.sh`, no `.github/workflows/` directory at all (no CI in this repo). `scripts/README.md` only mentions `verify-dev-commands.sh`/`verify-dev-commands-restart.sh` in TASK-0203/0204 prose, not in its scripts table; `verify-dev-commands-skill-frontmatter.sh`, `verify-dev-commands-install.sh`, `verify-bg-liveness.sh` aren't documented there at all. `wiki/knowledge/concepts/background-process-registry.md` and `TASK-0203`'s own file explicitly say TASK-0208 is what wires these into an aggregate run — there is nothing pre-existing to "find and extend" for wiring; Step 2 creates the aggregation inside `verify-dev-commands.sh` itself per this task's Approach (no new Makefile/CI target called for).
+
+<!-- Updated: 2026-10-17 00:00 -->
 
 ### 2. Extend the verify script (hermetic part)  <!-- agent: general-purpose -->
 
-- [ ] Update `scripts/verify-dev-commands.sh`: header comment (subcommands, modes), `--live` flag parsing (unknown flag -> usage, exit 2), a section invoking the sibling verifiers and aggregating their exit codes, and the static text assertions listed in Approach; keep the existing `set -uo pipefail`, `pass`/`fail` helpers and `./tmp/verify-dev-commands/` layout
-- [ ] Extend `scripts/verify-dev-commands-install.sh` to assert the installed skill bundle includes the `restart` subcommand and updated `SKILL.md`
-- [ ] `bash -n` every touched script; run `bash scripts/verify-dev-commands.sh` (default mode) and confirm it is green and hermetic (no network, no tmux)
+- [x] Update `scripts/verify-dev-commands.sh`: header comment (subcommands, modes), `--live` flag parsing (unknown flag -> usage, exit 2), a section invoking the sibling verifiers and aggregating their exit codes, and the static text assertions listed in Approach; keep the existing `set -uo pipefail`, `pass`/`fail` helpers and `./tmp/verify-dev-commands/` layout
+- [x] Extend `scripts/verify-dev-commands-install.sh` to assert the installed skill bundle includes the `restart` subcommand and updated `SKILL.md`
+- [x] `bash -n` every touched script; run `bash scripts/verify-dev-commands.sh` (default mode) and confirm it is green and hermetic (no network, no tmux)
+
+<!-- Updated: 2026-10-17 01:00 -->
 
 ### 3. `--live` mode  <!-- agent: general-purpose -->
 
-- [ ] Implement the isolated world and scenario assertions from Approach in `scripts/verify-dev-commands.sh` (or, if it grows past a comfortable size, `scripts/lib/verify-dev-commands-live.sh` sourced only in `--live`), including the safety refusals, the `trap` cleanup, bounded waits and the SKIPPED path
-- [ ] Run `bash scripts/verify-dev-commands.sh --live` once against the merged code; fix flakiness (deadline polling, not sleeps); confirm afterwards `tmux ls` on the user's real server is unchanged and no stray `verify`/`alpha`/`beta` windows or host-server process remains (`pgrep`), and that nothing outside `./tmp/verify-dev-commands/` was written
-- [ ] If any assertion reveals a defect in an earlier task's code, do not patch it here: record it via `/bug-file` (or a note in the earlier task) and mark the assertion `[KNOWN-FAILING: BUG-NNNN]` only with the user's agreement; otherwise the check must pass
+- [x] Implement the isolated world and scenario assertions from Approach in `scripts/verify-dev-commands.sh` (or, if it grows past a comfortable size, `scripts/lib/verify-dev-commands-live.sh` sourced only in `--live`), including the safety refusals, the `trap` cleanup, bounded waits and the SKIPPED path
+- [x] Run `bash scripts/verify-dev-commands.sh --live` once against the merged code; fix flakiness (deadline polling, not sleeps); confirm afterwards `tmux ls` on the user's real server is unchanged and no stray `verify`/`alpha`/`beta` windows or host-server process remains (`pgrep`), and that nothing outside `./tmp/verify-dev-commands/` was written
+- [x] If any assertion reveals a defect in an earlier task's code, do not patch it here: record it via `/bug-file` (or a note in the earlier task) and mark the assertion `[KNOWN-FAILING: BUG-NNNN]` only with the user's agreement; otherwise the check must pass
+
+**Findings:** No defect in any earlier task's code was found — every scenario assertion passed cleanly (no `[KNOWN-FAILING]` markers needed). Implemented as `scripts/lib/verify-dev-commands-live.sh` (grew past a comfortable size for the main script), sourced only from `run_live()` in `scripts/verify-dev-commands.sh` when `--live` is passed. The private world lives entirely under `./tmp/verify-dev-commands/live/` (own `conductor.conf`/`SESSION_NAME=verifydevcmds0208`/`DB_PATH`/`STATE_DIR`/`LOG_DIR`/tmux socket dir, port 18789 default via `VERIFY_LIVE_PORT`), seeded through the real API (`POST /api/projects`, `/api/projects/:id/agents`, `/api/bg-processes`) and exercised through the real `skills/dev-commands/scripts/dev-commands.sh` client plus a few raw `curl` calls for the header-edge cases (unknown caller, header-less dashboard restart). 25 scenario PASS lines cover: project-scoped `list`/`list --all`; a quoting fixture (`"`, `$HOME`, backtick in `launchCmd`) proving TASK-0190's literal-typing fix; kill→`exited` liveness; escape-free `tail`; agent restart (exit 0, exactly one log marker, new output after it, `liveness: running`, one `outcome:restarted` audit line naming the caller, `GET /api/status` lastRestart.caller); immediate cooldown retry (exit 5, no second marker, one `outcome:cooldown` audit line); cross-project restart by slug (exit 3, denied audit, target process untouched); unknown `X-Conductor-Agent` header (403, no marker added); header-less dashboard restart inside the agent cooldown (succeeds, second marker, `callerKind:dashboard` audit line); and a final check that no fixture window leaked onto the operator's real (default-socket) tmux server. One implementation bug was found and fixed during this step (not an earlier-task defect): the first refusal-guard draft `cd`'d into `$LV_DIR/live`, a directory that doesn't exist until later in setup, so it always refused; fixed by resolving `VERIFY_DIR` (which does exist) and appending `/live` as a string. A second fix: `list`/`status`/`tail` all read a server-side cached poll snapshot (`GET /api/status`, refreshed every `STATUS_POLL_MS`), so the scenario now waits (bounded, deadline-loop) for that snapshot to pick up freshly-created bg processes before asserting against it, instead of racing it. Verified 4 consecutive green `--live` runs (no flakiness) plus the default (hermetic) mode staying green (`exit 0`, 36 top-level PASS / 0 FAIL, both sibling verifiers' 149+1 checks also green); `bash -n` clean on both files. Before/after `tmux list-sessions`/`list-windows -a` and `pgrep -fl index.ts` on the real server were byte-identical (session `conductor`, same 10 windows, same 4 real PIDs) across every run, and `./tmp/verify-dev-commands/live/` is fully removed by the `trap`-driven cleanup after each run (confirmed via a post-run directory listing).
 
 ### 4. Write the UAT  <!-- agent: general-purpose -->
 
-- [ ] Run `/uat-generate TASK-0208` seeded with the case list above; confirm the file is `wiki/work/uat/UAT-0208-agent-driven-bg-restart.md`, uses the `UAT-0192` layout, every case has Steps/Command/Expected Result and the safety note, and that each earlier task's deferred recipe is covered (cross-reference the task numbers in the case titles)
-- [ ] Reference `UAT-0191`/`UAT-0192` instead of repeating their API cases
+- [x] Run `/uat-generate TASK-0208` seeded with the case list above; confirm the file is `wiki/work/uat/UAT-0208-agent-driven-bg-restart.md`, uses the `UAT-0192` layout, every case has Steps/Command/Expected Result and the safety note, and that each earlier task's deferred recipe is covered (cross-reference the task numbers in the case titles)
+- [x] Reference `UAT-0191`/`UAT-0192` instead of repeating their API cases
+
+<!-- Updated: 2026-10-17 01:30 -->
 
 ### 5. Docs and index  <!-- agent: general-purpose -->
 
-- [ ] Update `scripts/README.md` (verify scripts section: default vs `--live`, isolation guarantees, how to run) and `wiki/knowledge/concepts/background-process-registry.md` (verification section: what is automated vs UAT); the family index/log/status flips follow `/uat-generate`
-- [ ] Set this task's `uat: "[[UAT-0208]]"` and status `pending-uat` when the script is green and the UAT exists
+- [x] Update `scripts/README.md` (verify scripts section: default vs `--live`, isolation guarantees, how to run) and `wiki/knowledge/concepts/background-process-registry.md` (verification section: what is automated vs UAT); the family index/log/status flips follow `/uat-generate`
+- [x] Set this task's `uat: "[[UAT-0208]]"` and status `pending-uat` when the script is green and the UAT exists
 
 ## Files touched
 

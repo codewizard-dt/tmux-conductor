@@ -1,18 +1,80 @@
 #!/usr/bin/env bash
-# verify-dev-commands.sh — Regression tests for TASK-160's
-# skills/dev-commands/scripts/dev-commands.sh (list/status/tail).
+# verify-dev-commands.sh — Regression tests for
+# skills/dev-commands/scripts/dev-commands.sh's four subcommands
+# (list/status/tail/restart).
 #
-# Exercises the deterministic parts of the standalone script: the
-# CONDUCTOR_STATE_DIR/CONDUCTOR_LOG_DIR FATAL guards, the offline
-# list/status fallback paths (no live host-server required — BACKEND_PORT
-# points at a port nothing listens on so curl fails deterministically),
-# and tail's -n argument-order flexibility. The live host-server round trip
-# (real /api/status, real bg process, real make dev session) is
-# runtime/e2e behavior and is covered by UAT, not here.
+# Modes:
+#   (no flags)  Default, fully hermetic — no network, no tmux. Exercises the
+#               deterministic parts of the standalone script directly: the
+#               CONDUCTOR_STATE_DIR/CONDUCTOR_LOG_DIR FATAL guards, the
+#               offline list/status/tail fallback paths (BACKEND_PORT points
+#               at a port nothing listens on so curl fails deterministically),
+#               tail's -n argument-order flexibility and escape stripping,
+#               slug resolution (TASK-0196), list [--all] project scoping
+#               (TASK-0202, offline paths only), and static text assertions
+#               on dev-commands.sh/SKILL.md that catch cheap regressions
+#               (the restart dispatch, the four-subcommand usage line, the
+#               retired idle/busy/running vocabulary, and --all plus the
+#               restart exit codes being documented). This mode also runs
+#               two sibling verifiers as sub-steps and folds their pass/fail
+#               into this script's own summary:
+#                 - scripts/verify-dev-commands-restart.sh — the online
+#                   `restart`/`status`/`tail` subcommands against a Node
+#                   stub server (still hermetic: no real network or tmux)
+#                 - scripts/verify-dev-commands-skill-frontmatter.sh —
+#                   SKILL.md's disable-model-invocation frontmatter
+#               scripts/verify-dev-commands-install.sh and
+#               scripts/verify-bg-liveness.sh are standalone siblings and are
+#               NOT folded in here (the latter touches a real, if private,
+#               tmux socket); see scripts/README.md for how to run them.
+#   --live      Opt-in (TASK-0208 Step 3). Stands up an isolated throwaway
+#               host-server + private tmux world under
+#               ./tmp/verify-dev-commands/live/ (its own conductor.conf,
+#               DB_PATH, STATE_DIR, LOG_DIR, SESSION_NAME and tmux socket dir,
+#               via scripts/lib/verify-dev-commands-live.sh's run_live_scenario)
+#               and runs the agent-driven bg-process-restart scenario end to
+#               end through the real API, real tmux and the real
+#               dev-commands.sh client: project-scoped list/list --all, a
+#               killed process reading exited, escape-free tail, a successful
+#               agent restart (marker + audit + liveness), an immediate
+#               cooldown-skipped retry (exit 5, no second marker), a
+#               cross-project restart by slug (exit 3, denied audit), an
+#               unknown X-Conductor-Agent header (403), a header-less
+#               dashboard restart inside the agent cooldown (audited
+#               callerKind:dashboard), a launchCmd containing a double quote,
+#               $HOME and a backtick running literally (TASK-0190's quoting
+#               fix), and GET /api/status reporting lastRestart with the
+#               right caller. Never touches the user's real conductor.conf,
+#               DB, tmux server/session, or port 8788/4321 — see that file's
+#               header for the isolation and refusal guards. Prints
+#               "SKIPPED" (exit 0, not a failure) when tmux/node/jq is
+#               missing, host-server deps aren't installed, or the chosen
+#               port (default 18789, override via VERIFY_LIVE_PORT) is busy.
+#               An unknown flag prints usage and exits 2.
 #
-# Usage: bash scripts/verify-dev-commands.sh
-# Artifacts land in ./tmp/verify-dev-commands/ (gitignored).
+# Usage: bash scripts/verify-dev-commands.sh [--live]
+# Artifacts land in ./tmp/verify-dev-commands/ (gitignored), never /tmp.
 set -uo pipefail
+
+# ---------------------------------------------------------------------------
+# Flag parsing. The only recognized flag is --live (TASK-0208); anything else
+# is a usage error. This runs before any side effects so a bad flag fails
+# fast. --live itself is not yet implemented (see header comment) — it is
+# just recognized here so the flag plumbing is in place ahead of Step 3.
+# ---------------------------------------------------------------------------
+LIVE_MODE=0
+for arg in "$@"; do
+  case "$arg" in
+    --live)
+      LIVE_MODE=1
+      ;;
+    *)
+      echo "Usage: bash scripts/verify-dev-commands.sh [--live]" >&2
+      echo "Unknown flag: $arg" >&2
+      exit 2
+      ;;
+  esac
+done
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -320,6 +382,95 @@ fi
 #   4. CONDUCTOR_AGENT_NAME=<unknown value> dev-commands.sh list
 #        -> falls back to all projects, stderr "Note: could not resolve your project
 #           (not a registered agent ...); showing all projects."
+
+# ---------------------------------------------------------------------------
+# Test 20-23: static text assertions on dev-commands.sh / SKILL.md. Cheap
+# regression guards for things a live run would otherwise be the only way to
+# catch — the restart dispatch, the usage line, the retired bg-process
+# vocabulary, and the --all/exit-codes documentation.
+# ---------------------------------------------------------------------------
+SKILL_MD="$REPO/skills/dev-commands/SKILL.md"
+
+if grep -q 'restart)' "$DEV_CMD" && grep -q 'cmd_restart "\$@"' "$DEV_CMD"; then
+  pass "dev-commands.sh dispatches 'restart' to cmd_restart"
+else
+  fail "dev-commands.sh does not appear to dispatch 'restart' to cmd_restart"
+fi
+
+if grep -q '{list|status|tail|restart}' "$DEV_CMD"; then
+  pass "dev-commands.sh usage text lists all four subcommands (list|status|tail|restart)"
+else
+  fail "dev-commands.sh usage text is missing one or more of list|status|tail|restart"
+fi
+
+if grep -qE 'idle/busy/running|idle\|busy\|running|idle, busy, running' "$SKILL_MD"; then
+  fail "SKILL.md still contains the stale idle/busy/running vocabulary for bg processes"
+else
+  pass "SKILL.md does not contain the stale idle/busy/running vocabulary for bg processes"
+fi
+
+if grep -q -- '--all' "$SKILL_MD"; then
+  pass "SKILL.md documents the --all flag"
+else
+  fail "SKILL.md does not document the --all flag"
+fi
+
+if grep -q 'Exit codes:' "$SKILL_MD" && grep -qE '\|[[:space:]]*5[[:space:]]*\|.*[Cc]ooldown' "$SKILL_MD"; then
+  pass "SKILL.md documents the restart exit codes (including cooldown, exit 5)"
+else
+  fail "SKILL.md does not document the restart exit codes table"
+fi
+
+# ---------------------------------------------------------------------------
+# Sibling verifiers: run as sub-steps and fold their pass/fail into this
+# script's own FAILURES count/exit code. Both are hermetic (no real network,
+# no real tmux) — verify-dev-commands-install.sh and verify-bg-liveness.sh
+# are deliberately NOT folded in here (see header comment / scripts/README.md).
+# ---------------------------------------------------------------------------
+run_sibling() {
+  local desc="$1" script="$2"
+  echo ""
+  echo "[verify-dev-commands] --- Running sibling: $script ($desc) ---"
+  if bash "$SCRIPT_DIR/$script"; then
+    pass "sibling $script passed"
+  else
+    fail "sibling $script failed (see its PASS/FAIL output above)"
+  fi
+}
+
+run_sibling "restart + online status/tail against a Node stub server, TASK-0203/0204" \
+  "verify-dev-commands-restart.sh"
+run_sibling "SKILL.md disable-model-invocation frontmatter" \
+  "verify-dev-commands-skill-frontmatter.sh"
+
+# ---------------------------------------------------------------------------
+# --live mode dispatch point (TASK-0208 Step 3). Sourced only when --live is
+# passed: scripts/lib/verify-dev-commands-live.sh defines run_live_scenario,
+# which stands up an isolated host-server + private tmux world under
+# ./tmp/verify-dev-commands/live/ and runs the agent-driven restart scenario,
+# recording every assertion through this script's own pass()/fail() (so a
+# scenario failure folds into FAILURES/the final exit code exactly like the
+# sibling verifiers above). Default (no-flag) hermetic checks above always
+# run regardless of LIVE_MODE; --live only adds to them.
+# ---------------------------------------------------------------------------
+run_live() {
+  echo ""
+  echo "[verify-dev-commands] --- Running --live scenario (TASK-0208 Step 3) ---"
+  # shellcheck source=scripts/lib/verify-dev-commands-live.sh
+  source "$SCRIPT_DIR/lib/verify-dev-commands-live.sh"
+  local rc=0
+  run_live_scenario || rc=$?
+  case $rc in
+    0) : ;; # scenario ran to completion; pass()/fail() already recorded every assertion
+    2) echo "[verify-dev-commands] --live SKIPPED" ;;
+    3) fail "live: refused to run (unsafe-environment guard tripped — see REFUSED message above)" ;;
+    *) fail "live: scenario aborted unexpectedly (rc=$rc)" ;;
+  esac
+}
+
+if [[ $LIVE_MODE -eq 1 ]]; then
+  run_live
+fi
 
 # ---------------------------------------------------------------------------
 # Summary
